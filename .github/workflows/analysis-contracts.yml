@@ -1,0 +1,32 @@
+name: Analysis design contracts
+on:
+  push:
+    paths:
+      [
+        "contracts/analysis/**",
+        "package.json",
+        "package-lock.json",
+        ".github/workflows/analysis-contracts.yml",
+      ]
+  pull_request:
+    paths:
+      [
+        "contracts/analysis/**",
+        "package.json",
+        "package-lock.json",
+        ".github/workflows/analysis-contracts.yml",
+      ]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run contracts:check

@@ -1,0 +1,15 @@
+node_modules
+**/node_modules
+**/.next
+**/test-results
+**/playwright-report
+.git
+.env*
+**/.env*
+**/.venv
+**/.mypy_cache
+**/.ruff_cache
+**/.pytest_cache
+**/__pycache__
+**/*.egg-info
+**/.data

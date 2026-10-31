@@ -1,0 +1,25 @@
+{
+  "name": "dataflow-ai",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "packages/api-client"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace @dataflow/web",
+    "build": "npm run build --workspace @dataflow/web",
+    "lint": "npm run lint --workspace @dataflow/web",
+    "typecheck": "npm run typecheck --workspace @dataflow/web",
+    "test:e2e": "npm run test:e2e --workspace @dataflow/web",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "api:generate": "npm run generate --workspace @dataflow/api-client",
+    "contracts:examples": "node contracts/analysis/v1/generate.mjs",
+    "contracts:check": "node contracts/analysis/v1/verify.mjs"
+  },
+  "devDependencies": {
+    "prettier": "^3.9.10",
+    "ajv": "^8.17.1",
+    "ajv-formats": "^2.1.1"
+  }
+}

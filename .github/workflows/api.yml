@@ -1,0 +1,65 @@
+name: Backend
+on:
+  push:
+    paths:
+      [
+        "apps/api/**",
+        "contracts/**",
+        "packages/api-client/**",
+        "tools/*.py",
+        ".github/workflows/api.yml",
+      ]
+  pull_request:
+    paths:
+      [
+        "apps/api/**",
+        "contracts/**",
+        "packages/api-client/**",
+        "tools/*.py",
+        ".github/workflows/api.yml",
+      ]
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_USER: dataflow
+          POSTGRES_PASSWORD: dataflow_local
+          POSTGRES_DB: dataflow
+        ports: ["55432:5432"]
+        options: >-
+          --health-cmd "pg_isready -U dataflow -d dataflow"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -c requirements.lock -e ".[dev]"
+        working-directory: apps/api
+      - run: ruff check src tests migrations scripts ../../tools
+        working-directory: apps/api
+      - run: ruff format --check src tests migrations scripts ../../tools
+        working-directory: apps/api
+      - run: mypy
+        working-directory: apps/api
+      - run: alembic upgrade head
+        working-directory: apps/api
+      - run: alembic check
+        working-directory: apps/api
+      - run: pytest -q
+        working-directory: apps/api
+      - run: python scripts/export_openapi.py --check
+        working-directory: apps/api
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run api:generate
+      - run: git diff --exit-code -- packages/api-client/src/schema.ts
