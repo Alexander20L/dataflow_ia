@@ -1,12 +1,21 @@
 from dataflow.modules.cleaning.contracts import (
     ApprovalSource,
     ApprovedEffect,
+    CastParameters,
+    DeduplicateParameters,
     EffectCounts,
     EffectManifest,
     EffectSample,
     FilterRowsParameters,
+    NormalizeNullTokensParameters,
     TrimWhitespaceParameters,
+    cast_column_types,
+    cast_output_schema,
+    deduplicate_column_types,
     derived_version_id,
+    filter_column_types,
+    tokens_column_types,
+    trim_column_types,
 )
 from dataflow.modules.cleaning.domain import (
     effect_sha256,
@@ -15,6 +24,13 @@ from dataflow.modules.cleaning.domain import (
 )
 
 __all__ = [
+    "CastParameters",
+    "DeduplicateParameters",
+    "NormalizeNullTokensParameters",
+    "cast_column_types",
+    "cast_output_schema",
+    "deduplicate_column_types",
+    "tokens_column_types",
     "ApprovalSource",
     "ApprovedEffect",
     "derived_version_id",
@@ -23,6 +39,8 @@ __all__ = [
     "EffectSample",
     "FilterRowsParameters",
     "TrimWhitespaceParameters",
+    "filter_column_types",
+    "trim_column_types",
     "effect_sha256",
     "require_same_effect",
     "require_valid_approval",

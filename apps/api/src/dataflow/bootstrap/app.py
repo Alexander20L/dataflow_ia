@@ -18,6 +18,7 @@ from dataflow.modules.ingestion.presentation import analysis_router
 from dataflow.modules.ingestion.presentation import router as ingestion_router
 from dataflow.modules.planning.presentation import router as planning_router
 from dataflow.modules.projects.presentation import router as projects_router
+from dataflow.modules.quality.presentation import router as quality_router
 from dataflow.modules.understanding.presentation import router as understanding_router
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import engine, session_factory
@@ -28,7 +29,7 @@ logger = logging.getLogger("dataflow.http")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 app = FastAPI(
     title="DataFlow AI API",
-    version="0.7.0",
+    version="0.9.0",
     description="Identidad y proyectos del monolito modular.",
     responses={
         status: {"model": ErrorResponse}
@@ -146,3 +147,4 @@ app.include_router(analysis_router)
 app.include_router(understanding_router)
 app.include_router(planning_router)
 app.include_router(cleaning_router)
+app.include_router(quality_router)

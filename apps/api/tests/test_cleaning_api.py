@@ -232,3 +232,96 @@ def test_cleaning_routes_enforce_ownership_and_csrf(flow: Flow) -> None:
         client.get(f"/api/v1/versions/{uuid4()}"),
     ]:
         assert response.status_code == 404, response.text
+
+
+def semantic_revision(flow: Flow, roles: dict[str, str]) -> dict[str, Any]:
+    """Revisión semántica de la tabla fijada con las columnas indicadas confirmadas."""
+    table = flow.table
+    context = flow.client.get(f"/api/v1/representations/{table['id']}/understanding").json()
+    draft = context["editable"]
+    for column in draft["columns"]:
+        name = next(n for n, i in flow.columns.items() if i == column["column_id"])
+        if name in roles:
+            column.update(
+                role=roles[name],
+                interpretation_type="string",
+                parse_format=None,
+                review_state="confirmed",
+            )
+    response = flow.client.post(
+        f"/api/v1/representations/{table['id']}/semantic-contracts",
+        json={"table_sha256": table["sha256"], "expected_revision": 0, "draft": draft},
+        headers=flow.keyed(),
+    )
+    assert response.status_code == 200, response.text
+    revision: dict[str, Any] = response.json()["revision"]
+    return {k: revision[k] for k in ["id", "revision", "content_sha256"]}
+
+
+def cast_id(flow: Flow, confirm: bool) -> dict[str, Any]:
+    return {
+        "id": "cast",
+        "operation": "cleaning.cast",
+        "version": 1,
+        "input": {"kind": "input"},
+        "parameters": {
+            "column_id": flow.columns["id"],
+            "type": "integer",
+            "format": "integer_ascii",
+            "confirm_identifier_conversion": confirm,
+        },
+    }
+
+
+def test_identifier_guard_and_leading_zero_defense(flow: Flow) -> None:
+    client = flow.client
+    ref = semantic_revision(flow, {"id": "identifier"})
+
+    def plan(confirm: bool) -> dict[str, Any]:
+        response = client.post(
+            f"/api/v1/projects/{flow.project_id}/plans",
+            json={
+                "table_artifact_id": flow.table["id"],
+                "table_sha256": flow.table["sha256"],
+                "semantic_ref": ref,
+                "steps": [cast_id(flow, confirm)],
+            },
+            headers=flow.keyed(),
+        )
+        assert response.status_code == 201, response.text
+        return response.json()  # type: ignore[no-any-return]
+
+    guarded = plan(confirm=False)
+    problems = guarded["validation"]["problems"]
+    assert [(p["code"], p["resolve_in"], p["parameter"]) for p in problems] == [
+        ("IDENTIFIER_CONVERSION_UNCONFIRMED", "plan_steps", "confirm_identifier_conversion")
+    ]
+    blocked = client.post(f"/api/v1/plans/{guarded['id']}/previews", headers=flow.keyed())
+    assert blocked.status_code == 422 and blocked.json()["code"] == "PLAN_INCOMPLETE"
+
+    # Con la confirmación explícita el plan es válido, pero «001» no es un entero ASCII
+    # canónico: la conversión falla y no se publica nada (segunda línea de defensa).
+    confirmed = plan(confirm=True)
+    assert confirmed["validation"]["valid"]
+    preview = flow.preview(confirmed)
+    assert (preview["state"], preview["error_code"]) == ("failed", "CONVERSION_FAILED")
+    failure = preview["failure"]
+    assert failure["code"] == "CONVERSION_FAILED" and failure["total"] == 6
+    assert {s["reason"] for s in failure["samples"]} == {"leading_zero"}
+    assert preview["effect_sha256"] is None and preview["approval"] is None
+
+
+def test_new_operations_are_published_with_column_references(flow: Flow) -> None:
+    catalog = flow.client.get("/api/v1/operations").json()
+    operations = {op["key"]: op for op in catalog["operations"]}
+    assert catalog["catalog_version"] == "analysis-v4"
+    for key, field in [
+        ("cleaning.cast@1", "column_id"),
+        ("cleaning.normalize_null_tokens@1", "column_ids"),
+        ("cleaning.deduplicate@1", "column_ids"),
+    ]:
+        schema = operations[key]["parameters_schema"]
+        assert schema["properties"][field]["x-dataflow-column-ref"] is True, key
+        assert operations[key]["transforms_data"] is True
+    cast = operations["cleaning.cast@1"]["parameters_schema"]["properties"]
+    assert cast["confirm_identifier_conversion"]["default"] is False

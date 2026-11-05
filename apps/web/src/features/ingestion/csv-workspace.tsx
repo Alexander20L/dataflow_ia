@@ -20,6 +20,7 @@ import { useApp } from "@/lib/providers";
 import { ExecutionPanel } from "@/features/executions/execution-panel";
 import { SemanticUnderstanding } from "@/features/understanding/semantic-editor";
 import { CleaningStage } from "@/features/cleaning/proposal";
+import { QualityRules } from "@/features/quality/rules-editor";
 import {
   useCancelImport,
   useDiagnostic,
@@ -58,6 +59,8 @@ export function CsvWorkspace({
   const [planEpoch, setPlanEpoch] = useState(0);
   const [cleaningDirty, setCleaningDirty] = useState(false);
   const [cleaningEpoch, setCleaningEpoch] = useState(0);
+  const [rulesDirty, setRulesDirty] = useState(false);
+  const [rulesEpoch, setRulesEpoch] = useState(0);
   const [pendingChange, setPendingChange] = useState<{
     kind: "stage" | "version" | "offset" | "upload";
     value?: string | number;
@@ -76,6 +79,7 @@ export function CsvWorkspace({
     if (
       semanticDirty ||
       cleaningDirty ||
+      rulesDirty ||
       (planDirty && change.kind !== "stage")
     )
       setPendingChange(change);
@@ -387,6 +391,15 @@ export function CsvWorkspace({
                   diagnostic={diagnostic.data}
                   stage={stage}
                 />
+                {stage === 2 && (
+                  <QualityRules
+                    key={`${version.id}-${rulesEpoch}`}
+                    projectId={projectId}
+                    versionId={version.id}
+                    archived={archived}
+                    onDirtyChange={setRulesDirty}
+                  />
+                )}
                 {stage === 3 && (
                   <CleaningStage
                     key={`${version.id}-${cleaningEpoch}`}
@@ -446,7 +459,9 @@ export function CsvWorkspace({
               ? "Hay cambios semánticos sin guardar"
               : cleaningDirty
                 ? "Hay cambios sin guardar en la propuesta de limpieza"
-                : "Hay cambios sin guardar en el plan"
+                : rulesDirty
+                  ? "Hay cambios sin guardar en las reglas de calidad"
+                  : "Hay cambios sin guardar en el plan"
           }
           onClose={() => setPendingChange(null)}
         >
@@ -463,6 +478,10 @@ export function CsvWorkspace({
                 if (semanticDirty) {
                   setSemanticDirty(false);
                   setSemanticEpoch((epoch) => epoch + 1);
+                }
+                if (rulesDirty) {
+                  setRulesDirty(false);
+                  setRulesEpoch((epoch) => epoch + 1);
                 }
                 if (cleaningDirty) {
                   setCleaningDirty(false);
@@ -656,9 +675,11 @@ function RealResults({
           <div className="info-banner">
             <ShieldCheck size={18} />
             <span>
-              Los valores se conservan como texto en Parquet. Los tipos
-              sugeridos son heurísticas deterministas, no decisiones aprobadas
-              ni sugerencias de IA.
+              {profile.columns.some((c) => c.technical_type !== "string")
+                ? "Esta versión tiene columnas convertidas por una limpieza aprobada (tipo técnico distinto de texto); el resto se conserva como texto. "
+                : "Los valores se conservan como texto en Parquet. "}
+              Los tipos sugeridos son heurísticas deterministas, no decisiones
+              aprobadas ni sugerencias de IA.
             </span>
           </div>
           <div className="table-scroll bordered">

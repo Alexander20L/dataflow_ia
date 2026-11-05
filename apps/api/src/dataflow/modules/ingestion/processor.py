@@ -6,14 +6,25 @@ import hashlib
 import io
 import json
 from pathlib import Path
+from typing import Any
 
 import polars as pl
+from pydantic import TypeAdapter
 
 from dataflow.modules.ingestion.domain import ENGINE_VERSION
-from dataflow.modules.quality.public import evaluate_quality
+from dataflow.modules.quality.public import (
+    Rule,
+    RulesetReference,
+    evaluate_quality,
+    evaluate_rules,
+)
 from dataflow.modules.understanding.contracts import DatasetProfile
 from dataflow.modules.understanding.public import profile_rows
+from dataflow.platform.data_types import DataType
 from dataflow.platform.errors import ApplicationError
+from dataflow.platform.tabular import Cell, frame_types
+
+RULES: TypeAdapter[list[Rule]] = TypeAdapter(list[Rule])
 
 
 def parse_csv(
@@ -88,17 +99,16 @@ def parse_csv(
 
 def load_table(
     source: Path, max_rows: int, max_columns: int
-) -> tuple[list[str], list[list[str | None]]]:
+) -> tuple[list[str], list[list[Cell]], list[tuple[DataType, dict[str, Any]]]]:
+    """Tabla publicada: texto nullable o columnas tipadas del catálogo (Fase 6). Un tipo físico
+    fuera del catálogo se rechaza con UNSUPPORTED_COLUMN_TYPE."""
     frame = pl.read_parquet(source)
     if frame.height > max_rows or frame.width > max_columns:
         raise ApplicationError(
             "TABLE_LIMIT", "La tabla supera los límites fijados en el plan.", 422
         )
-    if any(dtype != pl.String for dtype in frame.dtypes):
-        raise ApplicationError(
-            "UNSUPPORTED_TABLE_TYPE", "Esta versión del motor sólo perfila texto nullable.", 422
-        )
-    return frame.columns, [list(row) for row in frame.iter_rows()]
+    types = frame_types(frame)
+    return frame.columns, [list(row) for row in frame.iter_rows()], types
 
 
 def read(source: Path, output: Path, separator: str, max_rows: int, max_columns: int) -> None:
@@ -129,7 +139,7 @@ def profile(
     max_columns: int,
 ) -> None:
     """understanding.profile@1 sobre una tabla; separador y hash son procedencia del original."""
-    headers, rows = load_table(source, max_rows, max_columns)
+    headers, rows, types = load_table(source, max_rows, max_columns)
     result = DatasetProfile(
         engine_version=ENGINE_VERSION,
         polars_version=pl.__version__,
@@ -137,27 +147,53 @@ def profile(
         separator=separator,
         row_count=len(rows),
         column_count=len(headers),
-        columns=profile_rows(headers, rows),
+        columns=profile_rows(headers, rows, types),
     )
     (output / "profile.json").write_text(result.model_dump_json(), encoding="utf-8")
 
 
 def quality(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
     """quality.evaluate@1 sobre una tabla."""
-    headers, rows = load_table(source, max_rows, max_columns)
-    report = evaluate_quality(headers, rows)
+    headers, rows, types = load_table(source, max_rows, max_columns)
+    report = evaluate_quality(headers, rows, [data_type for data_type, _ in types])
     (output / "quality.json").write_text(report.model_dump_json(), encoding="utf-8")
+
+
+def quality_rules(
+    source: Path,
+    output: Path,
+    columns: list[dict[str, Any]],
+    rules: list[dict[str, Any]],
+    reference: dict[str, Any],
+    max_rows: int,
+    max_columns: int,
+) -> None:
+    """quality.evaluate@2: reglas técnicas (csv-quality-v1) y del usuario por separado."""
+    headers, rows, _ = load_table(source, max_rows, max_columns)
+    report = evaluate_rules(
+        headers,
+        rows,
+        columns,
+        RULES.validate_python(rules),
+        RulesetReference.model_validate(reference),
+    )
+    (output / "quality_rules.json").write_text(report.model_dump_json(), encoding="utf-8")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
-    parser.add_argument("--mode", choices=["read", "profile", "quality"], required=True)
+    parser.add_argument(
+        "--mode", choices=["read", "profile", "quality", "quality_rules"], required=True
+    )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--max-rows", type=int, required=True)
     parser.add_argument("--max-columns", type=int, required=True)
     parser.add_argument("--separator", default=",")
     parser.add_argument("--source-sha256")
+    parser.add_argument("--columns-json")
+    parser.add_argument("--rules-json")
+    parser.add_argument("--reference-json")
     args = parser.parse_args()
     try:
         if args.mode == "read":
@@ -173,8 +209,18 @@ def main() -> None:
                 args.max_rows,
                 args.max_columns,
             )
-        else:
+        elif args.mode == "quality":
             quality(args.input, args.output, args.max_rows, args.max_columns)
+        else:
+            quality_rules(
+                args.input,
+                args.output,
+                json.loads(args.columns_json),
+                json.loads(args.rules_json),
+                json.loads(args.reference_json),
+                args.max_rows,
+                args.max_columns,
+            )
     except ApplicationError as exc:
         (args.output / "error.json").write_text(
             json.dumps({"code": exc.code, "message": exc.message}), encoding="utf-8"

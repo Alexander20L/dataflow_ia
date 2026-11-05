@@ -1,3 +1,4 @@
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Annotated, Any, Literal, Protocol
@@ -6,14 +7,15 @@ from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field
 
 from dataflow.modules.understanding.public import SemanticReference
+from dataflow.platform.data_types import DataType
 
-CATALOG_VERSION = "analysis-v2"
+CATALOG_VERSION = "analysis-v4"
 MAX_STEPS = 16
 # Marca en el esquema de parámetros: el campo contiene IDs de columna de la tabla fijada.
 COLUMN_REF = "x-dataflow-column-ref"
 
 InputKind = Literal["source", "table"]
-OutputKind = Literal["table", "profile", "quality"]
+OutputKind = Literal["table", "profile", "quality", "quality_rules"]
 SemanticRole = Literal["unknown", "identifier", "dimension", "measure", "business_date"]
 ProblemCode = Literal[
     "EMPTY_PLAN",
@@ -25,6 +27,9 @@ ProblemCode = Literal[
     "INVALID_PARAMETERS",
     "UNKNOWN_COLUMN",
     "SEMANTIC_REQUIREMENT_MISSING",
+    "COLUMN_TYPE_MISMATCH",
+    "IDENTIFIER_CONVERSION_UNCONFIRMED",
+    "QUALITY_RULESET_MISMATCH",
 ]
 ResolveIn = Literal["plan_steps", "plan_input", "understanding"]
 PlanStatus = Literal["incomplete", "valid"]
@@ -49,6 +54,33 @@ Requirement = Annotated[
 ]
 
 
+# Esquema tipado de una tabla durante la validación: ID de columna → tipo del catálogo.
+Schema = Mapping[UUID, DataType]
+# Tipos admitidos por cada parámetro de columna, según los parámetros ya validados.
+ColumnTypes = Callable[[Any], Mapping[str, frozenset[DataType]]]
+# Esquema de salida de una operación tabla → tabla (funciones puras, sin datos).
+OutputSchema = Callable[[Any, Schema], dict[UUID, DataType]]
+
+
+@dataclass(frozen=True)
+class IdentifierConversionGuard:
+    """Salvaguarda: una columna confirmada como «identifier» en la revisión fijada no se
+    convierte a un tipo numérico sin la confirmación explícita del parámetro indicado."""
+
+    column_parameter: str
+    type_parameter: str
+    confirmation_parameter: str
+    numeric_types: frozenset[DataType]
+
+
+@dataclass(frozen=True)
+class RulesetRequirement:
+    """Revisión de un conjunto de reglas: hash y tipos que exige a cada columna."""
+
+    content_sha256: str
+    column_types: dict[UUID, frozenset[DataType]]
+
+
 @dataclass(frozen=True)
 class OperationDescriptor:
     name: str
@@ -59,6 +91,11 @@ class OperationDescriptor:
     parameters: type[BaseModel]
     requirements: tuple[SemanticRevisionRequirement | ConfirmedColumnRole, ...] = ()
     transforms_data: bool = False
+    column_types: ColumnTypes | None = None
+    output_schema: OutputSchema | None = None
+    identifier_guard: IdentifierConversionGuard | None = None
+    # (parámetro con el ID de revisión, parámetro con su hash) de un conjunto de reglas.
+    ruleset_reference: tuple[str, str] | None = None
 
     @property
     def key(self) -> str:
@@ -123,6 +160,10 @@ class PlanningFacts:
     column_ids: frozenset[UUID]
     semantic_pinned: bool = False
     confirmed_roles: dict[UUID, SemanticRole] = field(default_factory=dict)
+    # Vacío: tipos desconocidos (p. ej. planes de sistema); no se comprueban tipos.
+    column_types: dict[UUID, DataType] = field(default_factory=dict)
+    # Revisiones de reglas referenciadas por los pasos que existen y son del propietario.
+    quality_rulesets: dict[UUID, RulesetRequirement] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -132,6 +173,7 @@ class PinnedTable:
     project_id: UUID
     input: TableInput
     column_ids: frozenset[UUID]
+    column_types: dict[UUID, DataType] = field(default_factory=dict)
 
 
 class PlanValidation(PlanningModel):
@@ -183,6 +225,7 @@ class PlanningAccess(Protocol):
         self, owner: UUID, reference: SemanticReference, table: TableInput
     ) -> dict[UUID, SemanticRole]: ...
     def semantic_reference(self, owner: UUID, revision: UUID) -> SemanticReference: ...
+    def quality_ruleset(self, owner: UUID, revision: UUID) -> RulesetRequirement | None: ...
     def lock_owner(self, owner: UUID) -> None: ...
 
 

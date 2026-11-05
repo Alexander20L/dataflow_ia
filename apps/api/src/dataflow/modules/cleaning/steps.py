@@ -14,8 +14,11 @@ from pydantic import BaseModel, ValidationError
 from dataflow.modules.cleaning.contracts import (
     ApprovalSource,
     ApprovedEffect,
+    CastParameters,
+    DeduplicateParameters,
     EffectManifest,
     FilterRowsParameters,
+    NormalizeNullTokensParameters,
     TrimWhitespaceParameters,
     derived_version_id,
 )
@@ -80,8 +83,15 @@ class CleaningStep:
         self.objects, self.cleaner = objects, cleaner
 
     def chained(
-        self, lease: Lease, step: PlanStepSpec, source: StepInput, data: bytes
+        self,
+        lease: Lease,
+        step: PlanStepSpec,
+        source: StepInput,
+        data: bytes,
+        columns: list[dict[str, Any]] | None = None,
     ) -> StepResult:
+        """Tabla intermedia privada del intento. `columns` es el esquema de salida si la
+        operación cambia tipos; si no, se conserva el de la entrada."""
         reference = self.objects.put(f"{prefix(lease)}/steps/{step.id}/data.parquet", data)
         return StepResult(
             [],
@@ -90,7 +100,7 @@ class CleaningStep:
                 reference,
                 source.source_sha256,
                 source.separator,
-                source.columns,
+                source.columns if columns is None else columns,
                 lineage=True,
             ),
         )
@@ -136,7 +146,85 @@ class FilterRowsStep(CleaningStep):
         return self.chained(lease, step, source, data)
 
 
-def build_manifest(lease: Lease, source: StepInput, result: EffectResult) -> EffectManifest:
+class NormalizeNullTokensStep(CleaningStep):
+    """cleaning.normalize_null_tokens@1."""
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        require_table(source)
+        assert lease.execution.plan
+        parameters = parse(NormalizeNullTokensParameters, step.parameters)
+        data = self.cleaner.normalize_null_tokens(
+            self.objects.read(source.content),
+            column_names(source, parameters.column_ids),
+            parameters.tokens,
+            source.lineage,
+            lease.execution.plan.config,
+            timeout,
+        )
+        return self.chained(lease, step, source, data)
+
+
+class DeduplicateStep(CleaningStep):
+    """cleaning.deduplicate@1."""
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        require_table(source)
+        assert lease.execution.plan
+        parameters = parse(DeduplicateParameters, step.parameters)
+        data = self.cleaner.deduplicate(
+            self.objects.read(source.content),
+            column_names(source, parameters.column_ids),
+            [str(column) for column in parameters.column_ids],
+            parameters.null_keys,
+            source.lineage,
+            lease.execution.plan.config,
+            timeout,
+        )
+        return self.chained(lease, step, source, data)
+
+
+class CastStep(CleaningStep):
+    """cleaning.cast@1: convierte una columna de texto; el esquema de salida declara el tipo."""
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        require_table(source)
+        assert lease.execution.plan
+        parameters = parse(CastParameters, step.parameters)
+        [name] = column_names(source, [parameters.column_id])
+        data = self.cleaner.cast(
+            self.objects.read(source.content),
+            name,
+            str(parameters.column_id),
+            parameters.type,
+            parameters.scale,
+            source.lineage,
+            lease.execution.plan.config,
+            timeout,
+        )
+        columns = [
+            {
+                **column,
+                "technical_type": parameters.type,
+                "type_parameters": {"scale": parameters.scale}
+                if parameters.type == "decimal"
+                else {},
+            }
+            if str(column["id"]) == str(parameters.column_id)
+            else column
+            for column in source.columns or []
+        ]
+        return self.chained(lease, step, source, data, columns)
+
+
+def build_manifest(
+    lease: Lease, source: StepInput, final: StepInput, result: EffectResult
+) -> EffectManifest:
     """Manifiesto sin IDs temporales ni fechas: plan, entrada, semántica, configuración,
     entorno, salida lógica, linaje y conteos exactos."""
     plan = lease.execution.plan
@@ -149,11 +237,12 @@ def build_manifest(lease: Lease, source: StepInput, result: EffectResult) -> Eff
         config_sha256=str(lease.environment["config_sha256"]),
         environment_sha256=digest("environment", lease.environment),
         output={
-            "columns": source.columns or [],
+            "columns": final.columns or [],
             "logical_content_sha256": result.logical_content_sha256,
         },
         row_lineage_sha256=result.row_lineage_sha256,
         counts=result.counts,
+        rounded_cells=result.rounded_cells,
     )
 
 
@@ -171,10 +260,11 @@ class EffectFinalizer:
             self.objects.read(source.content),
             self.objects.read(final.content),
             source.columns or [],
+            final.columns or [],
             lease.execution.plan.config,
             timeout,
         )
-        manifest = build_manifest(lease, source, result)
+        manifest = build_manifest(lease, source, final, result)
         return result, manifest, effect_sha256(manifest)
 
     def json_output(
@@ -259,7 +349,7 @@ class ApplyFinalizer(EffectFinalizer):
         result, manifest, sha = self.effect(lease, source, final, timeout)
         require_same_effect(approved.effect_sha256, sha)
         version = derived_version_id(lease.execution_id)
-        columns = len(source.columns or [])
+        columns = len(final.columns or [])
         table = self.put(lease, "table.parquet", result.table)
         lineage = self.put(lease, "row_lineage.parquet", result.lineage)
         rows = result.counts.output_rows
@@ -274,7 +364,7 @@ class ApplyFinalizer(EffectFinalizer):
                 PARQUET,
                 rows,
                 columns,
-                source.columns,
+                final.columns,
                 result.logical_content_sha256,
                 version,
             ),

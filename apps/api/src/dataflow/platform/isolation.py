@@ -46,7 +46,9 @@ def run_isolated(
             error_path = directory / "error.json"
             if error_path.exists():
                 error = json.loads(error_path.read_text(encoding="utf-8"))
-                raise ApplicationError(str(error["code"]), str(error["message"]), 422)
+                raise ApplicationError(
+                    str(error["code"]), str(error["message"]), 422, error.get("details")
+                )
             raise ApplicationError(
                 "PROCESSING_ERROR", "El proceso analítico terminó sin resultado.", 422
             )

@@ -69,6 +69,10 @@ test("limpiar espacios en una columna: vista previa, aprobación y versión deri
   await expect(
     stage.getByLabel("Excluir nulos de importe", { exact: true }),
   ).not.toBeChecked();
+  // Q-002 sugiere deduplicar (Fase 6); este recorrido sólo recorta.
+  await stage
+    .getByLabel("Eliminar registros duplicados", { exact: true })
+    .uncheck();
   await stage
     .getByRole("button", { name: "Generar vista previa", exact: true })
     .click();

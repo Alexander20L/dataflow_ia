@@ -1,6 +1,66 @@
 {
   "components": {
     "schemas": {
+      "AllowedValuesRule": {
+        "additionalProperties": false,
+        "description": "Valores de un catálogo: comparación exacta con la cadena canónica de la celda.",
+        "properties": {
+          "column_id": {
+            "format": "uuid",
+            "title": "Column Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9_]{0,39}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "allowed_values",
+            "default": "allowed_values",
+            "title": "Kind",
+            "type": "string"
+          },
+          "severity": {
+            "default": "medium",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 200,
+            "minItems": 1,
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "column_id",
+          "values"
+        ],
+        "title": "AllowedValuesRule",
+        "type": "object"
+      },
       "AnalysisRequest": {
         "additionalProperties": false,
         "properties": {
@@ -344,7 +404,8 @@
               "legacy_diagnostic",
               "effect",
               "effect_samples",
-              "row_lineage"
+              "row_lineage",
+              "quality_rules"
             ],
             "title": "Kind",
             "type": "string"
@@ -489,6 +550,33 @@
           "error_message"
         ],
         "title": "AttemptResponse",
+        "type": "object"
+      },
+      "BaseTable": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "artifact_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Artifact Sha256",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "version_id",
+          "artifact_id",
+          "artifact_sha256"
+        ],
+        "title": "BaseTable",
         "type": "object"
       },
       "ColumnDraft": {
@@ -693,8 +781,14 @@
             "type": "string"
           },
           "technical_type": {
-            "const": "string",
             "default": "string",
+            "enum": [
+              "string",
+              "integer",
+              "decimal",
+              "date",
+              "boolean"
+            ],
             "title": "Technical Type",
             "type": "string"
           },
@@ -814,6 +908,80 @@
           "role"
         ],
         "title": "ConfirmedColumnRole",
+        "type": "object"
+      },
+      "ConvertibleRule": {
+        "additionalProperties": false,
+        "description": "Formato convertible: el texto cumple la gramática de cleaning.cast@1 (sin convertirlo).",
+        "properties": {
+          "column_id": {
+            "format": "uuid",
+            "title": "Column Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9_]{0,39}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "convertible",
+            "default": "convertible",
+            "title": "Kind",
+            "type": "string"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "maximum": 12.0,
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "severity": {
+            "default": "medium",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "integer",
+              "decimal",
+              "date",
+              "boolean"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "column_id",
+          "type"
+        ],
+        "title": "ConvertibleRule",
         "type": "object"
       },
       "CreatePlanRequest": {
@@ -1042,6 +1210,12 @@
             "additionalProperties": true,
             "title": "Plan",
             "type": "object"
+          },
+          "rounded_cells": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Rounded Cells",
+            "type": "integer"
           },
           "row_lineage_sha256": {
             "pattern": "^[0-9a-f]{64}$",
@@ -1547,6 +1721,54 @@
         "title": "ExecutionResponse",
         "type": "object"
       },
+      "FailureSample": {
+        "additionalProperties": false,
+        "description": "Un valor que impide completar la limpieza (política estricta).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "column_id": {
+            "title": "Column Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_row": {
+            "minimum": 1.0,
+            "title": "Source Row",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "column_id",
+          "column",
+          "source_row",
+          "value",
+          "reason",
+          "message"
+        ],
+        "title": "FailureSample",
+        "type": "object"
+      },
       "GrainDefinition": {
         "additionalProperties": false,
         "properties": {
@@ -1988,7 +2210,8 @@
             "enum": [
               "table",
               "profile",
-              "quality"
+              "quality",
+              "quality_rules"
             ],
             "title": "Output Kind",
             "type": "string"
@@ -2331,6 +2554,36 @@
         "title": "PlanView",
         "type": "object"
       },
+      "PreviewFailure": {
+        "additionalProperties": false,
+        "description": "Detalle de una vista previa fallida: conteo total exacto y hasta 50 casos.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/FailureSample"
+            },
+            "maxItems": 50,
+            "title": "Samples",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 1.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "total",
+          "samples"
+        ],
+        "title": "PreviewFailure",
+        "type": "object"
+      },
       "PreviewPage": {
         "properties": {
           "columns": {
@@ -2459,6 +2712,16 @@
             "title": "Execution Id",
             "type": "string"
           },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviewFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "manifest": {
             "anyOf": [
               {
@@ -2533,7 +2796,10 @@
               "INPUT_KIND_MISMATCH",
               "INVALID_PARAMETERS",
               "UNKNOWN_COLUMN",
-              "SEMANTIC_REQUIREMENT_MISSING"
+              "SEMANTIC_REQUIREMENT_MISSING",
+              "COLUMN_TYPE_MISMATCH",
+              "IDENTIFIER_CONVERSION_UNCONFIRMED",
+              "QUALITY_RULESET_MISMATCH"
             ],
             "title": "Code",
             "type": "string"
@@ -2795,6 +3061,131 @@
         "title": "QualityReport",
         "type": "object"
       },
+      "QualityRulesReport": {
+        "additionalProperties": false,
+        "properties": {
+          "cell_count": {
+            "title": "Cell Count",
+            "type": "integer"
+          },
+          "issues": {
+            "items": {
+              "$ref": "#/components/schemas/RuleIssue"
+            },
+            "title": "Issues",
+            "type": "array"
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rule_version": {
+            "const": "csv-quality-v2",
+            "default": "csv-quality-v2",
+            "title": "Rule Version",
+            "type": "string"
+          },
+          "ruleset": {
+            "$ref": "#/components/schemas/RulesetReference"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "technical": {
+            "$ref": "#/components/schemas/TechnicalSummary"
+          },
+          "user": {
+            "$ref": "#/components/schemas/UserSummary"
+          }
+        },
+        "required": [
+          "ruleset",
+          "row_count",
+          "cell_count",
+          "technical",
+          "user",
+          "issues"
+        ],
+        "title": "QualityRulesReport",
+        "type": "object"
+      },
+      "RangeRule": {
+        "additionalProperties": false,
+        "description": "Rango inclusivo para columnas tipadas: entero/decimal (cadena decimal) o fecha ISO.",
+        "properties": {
+          "column_id": {
+            "format": "uuid",
+            "title": "Column Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9_]{0,39}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "range",
+            "default": "range",
+            "title": "Kind",
+            "type": "string"
+          },
+          "maximum": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Maximum"
+          },
+          "minimum": {
+            "anyOf": [
+              {
+                "maxLength": 60,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Minimum"
+          },
+          "severity": {
+            "default": "medium",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "column_id"
+        ],
+        "title": "RangeRule",
+        "type": "object"
+      },
       "RegisterRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2824,6 +3215,56 @@
           "name"
         ],
         "title": "RegisterRequest",
+        "type": "object"
+      },
+      "RequiredRule": {
+        "additionalProperties": false,
+        "description": "Obligatoriedad: la columna no admite nulos.",
+        "properties": {
+          "column_id": {
+            "format": "uuid",
+            "title": "Column Id",
+            "type": "string"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9_]{0,39}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "required",
+            "default": "required",
+            "title": "Kind",
+            "type": "string"
+          },
+          "severity": {
+            "default": "medium",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "column_id"
+        ],
+        "title": "RequiredRule",
         "type": "object"
       },
       "Review": {
@@ -2945,6 +3386,478 @@
           "offset"
         ],
         "title": "RevisionPage",
+        "type": "object"
+      },
+      "RuleIssue": {
+        "additionalProperties": false,
+        "properties": {
+          "affected_rows": {
+            "minimum": 1.0,
+            "title": "Affected Rows",
+            "type": "integer"
+          },
+          "column_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Column Ids",
+            "type": "array"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "description": {
+            "title": "Description",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "technical",
+              "user"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "rule": {
+            "title": "Rule",
+            "type": "string"
+          },
+          "rule_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rule Id"
+          },
+          "sample_row_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "maxItems": 5,
+            "title": "Sample Row Numbers",
+            "type": "array"
+          },
+          "severity": {
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Severity",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "origin",
+          "rule",
+          "rule_id",
+          "column_ids",
+          "columns",
+          "severity",
+          "affected_rows",
+          "sample_row_numbers",
+          "description"
+        ],
+        "title": "RuleIssue",
+        "type": "object"
+      },
+      "RulesetContent": {
+        "additionalProperties": false,
+        "description": "Contenido sometido a hash (dominio `quality_ruleset`).",
+        "properties": {
+          "base_table": {
+            "$ref": "#/components/schemas/BaseTable"
+          },
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "rule_set": {
+            "const": "csv-quality-v2",
+            "default": "csv-quality-v2",
+            "title": "Rule Set",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "allowed_values": "#/components/schemas/AllowedValuesRule",
+                  "convertible": "#/components/schemas/ConvertibleRule",
+                  "range": "#/components/schemas/RangeRule",
+                  "required": "#/components/schemas/RequiredRule",
+                  "unique_key": "#/components/schemas/UniqueKeyRule"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequiredRule"
+                },
+                {
+                  "$ref": "#/components/schemas/UniqueKeyRule"
+                },
+                {
+                  "$ref": "#/components/schemas/RangeRule"
+                },
+                {
+                  "$ref": "#/components/schemas/AllowedValuesRule"
+                },
+                {
+                  "$ref": "#/components/schemas/ConvertibleRule"
+                }
+              ]
+            },
+            "maxItems": 50,
+            "title": "Rules",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "name",
+          "base_table"
+        ],
+        "title": "RulesetContent",
+        "type": "object"
+      },
+      "RulesetContext": {
+        "additionalProperties": false,
+        "properties": {
+          "artifact_id": {
+            "format": "uuid",
+            "title": "Artifact Id",
+            "type": "string"
+          },
+          "others": {
+            "items": {
+              "$ref": "#/components/schemas/RulesetSummary"
+            },
+            "title": "Others",
+            "type": "array"
+          },
+          "own": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RulesetSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "artifact_id",
+          "own",
+          "others"
+        ],
+        "title": "RulesetContext",
+        "type": "object"
+      },
+      "RulesetDraft": {
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "maxLength": 120,
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          },
+          "rules": {
+            "items": {
+              "discriminator": {
+                "mapping": {
+                  "allowed_values": "#/components/schemas/AllowedValuesRule",
+                  "convertible": "#/components/schemas/ConvertibleRule",
+                  "range": "#/components/schemas/RangeRule",
+                  "required": "#/components/schemas/RequiredRule",
+                  "unique_key": "#/components/schemas/UniqueKeyRule"
+                },
+                "propertyName": "kind"
+              },
+              "oneOf": [
+                {
+                  "$ref": "#/components/schemas/RequiredRule"
+                },
+                {
+                  "$ref": "#/components/schemas/UniqueKeyRule"
+                },
+                {
+                  "$ref": "#/components/schemas/RangeRule"
+                },
+                {
+                  "$ref": "#/components/schemas/AllowedValuesRule"
+                },
+                {
+                  "$ref": "#/components/schemas/ConvertibleRule"
+                }
+              ]
+            },
+            "maxItems": 50,
+            "title": "Rules",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name"
+        ],
+        "title": "RulesetDraft",
+        "type": "object"
+      },
+      "RulesetProblem": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "UNKNOWN_COLUMN",
+              "COLUMN_TYPE_MISMATCH",
+              "INVALID_BOUND"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_id",
+          "code",
+          "message"
+        ],
+        "title": "RulesetProblem",
+        "type": "object"
+      },
+      "RulesetReference": {
+        "additionalProperties": false,
+        "properties": {
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "content_sha256"
+        ],
+        "title": "RulesetReference",
+        "type": "object"
+      },
+      "RulesetRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/RulesetContent"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "family_id": {
+            "format": "uuid",
+            "title": "Family Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "previous_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Revision Id"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "family_id",
+          "project_id",
+          "revision",
+          "previous_revision_id",
+          "content",
+          "content_sha256",
+          "created_by",
+          "created_at"
+        ],
+        "title": "RulesetRevision",
+        "type": "object"
+      },
+      "RulesetRevisionPage": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/RulesetReference"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "total": {
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "total"
+        ],
+        "title": "RulesetRevisionPage",
+        "type": "object"
+      },
+      "RulesetSummary": {
+        "additionalProperties": false,
+        "description": "Conjunto de reglas del proyecto y si es aplicable a la tabla consultada.",
+        "properties": {
+          "anchored_here": {
+            "title": "Anchored Here",
+            "type": "boolean"
+          },
+          "applicable": {
+            "title": "Applicable",
+            "type": "boolean"
+          },
+          "family_id": {
+            "format": "uuid",
+            "title": "Family Id",
+            "type": "string"
+          },
+          "head": {
+            "$ref": "#/components/schemas/RulesetRevision"
+          },
+          "problems": {
+            "items": {
+              "$ref": "#/components/schemas/RulesetProblem"
+            },
+            "title": "Problems",
+            "type": "array"
+          },
+          "revision_count": {
+            "title": "Revision Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "family_id",
+          "head",
+          "revision_count",
+          "anchored_here",
+          "applicable",
+          "problems"
+        ],
+        "title": "RulesetSummary",
+        "type": "object"
+      },
+      "SaveRulesetRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/RulesetDraft"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "table_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Table Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table_sha256",
+          "expected_revision",
+          "draft"
+        ],
+        "title": "SaveRulesetRequest",
+        "type": "object"
+      },
+      "SaveRulesetResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "changed": {
+            "title": "Changed",
+            "type": "boolean"
+          },
+          "revision": {
+            "$ref": "#/components/schemas/RulesetRevision"
+          }
+        },
+        "required": [
+          "revision",
+          "changed"
+        ],
+        "title": "SaveRulesetResponse",
         "type": "object"
       },
       "SaveSemanticRequest": {
@@ -3208,6 +4121,34 @@
           "columns"
         ],
         "title": "SemanticDraft",
+        "type": "object"
+      },
+      "SemanticKeyRef": {
+        "additionalProperties": false,
+        "description": "Revisión semántica de la que se tomó la clave (procedencia, no dependencia).",
+        "properties": {
+          "content_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revision": {
+            "minimum": 1.0,
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "content_sha256"
+        ],
+        "title": "SemanticKeyRef",
         "type": "object"
       },
       "SemanticReference": {
@@ -3491,6 +4432,36 @@
         "title": "TableReference",
         "type": "object"
       },
+      "TechnicalSummary": {
+        "additionalProperties": false,
+        "description": "Completitud técnica (csv-quality-v1): no incluye reglas de negocio.",
+        "properties": {
+          "completeness_percent": {
+            "title": "Completeness Percent",
+            "type": "number"
+          },
+          "duplicate_rows": {
+            "title": "Duplicate Rows",
+            "type": "integer"
+          },
+          "missing_cells": {
+            "title": "Missing Cells",
+            "type": "integer"
+          },
+          "whitespace_cells": {
+            "title": "Whitespace Cells",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "completeness_percent",
+          "missing_cells",
+          "duplicate_rows",
+          "whitespace_cells"
+        ],
+        "title": "TechnicalSummary",
+        "type": "object"
+      },
       "UnderstandingContext": {
         "additionalProperties": false,
         "properties": {
@@ -3575,6 +4546,80 @@
         "title": "UnderstandingContext",
         "type": "object"
       },
+      "UniqueKeyRule": {
+        "additionalProperties": false,
+        "description": "Unicidad de clave: los registros que repiten una clave ya vista (en el orden de la tabla)\nson infracciones. Una clave con algún nulo es infracción: una clave no puede ser nula.",
+        "properties": {
+          "column_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "maxItems": 16,
+            "minItems": 1,
+            "title": "Column Ids",
+            "type": "array"
+          },
+          "description": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Description"
+          },
+          "id": {
+            "pattern": "^[a-z][a-z0-9_]{0,39}$",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "const": "unique_key",
+            "default": "unique_key",
+            "title": "Kind",
+            "type": "string"
+          },
+          "semantic_ref": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SemanticKeyRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "severity": {
+            "default": "medium",
+            "enum": [
+              "low",
+              "medium",
+              "high"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "source": {
+            "default": "user",
+            "enum": [
+              "user",
+              "semantic_key"
+            ],
+            "title": "Source",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "column_ids"
+        ],
+        "title": "UniqueKeyRule",
+        "type": "object"
+      },
       "UpdateProjectRequest": {
         "additionalProperties": false,
         "properties": {
@@ -3625,6 +4670,25 @@
           "name"
         ],
         "title": "UserResponse",
+        "type": "object"
+      },
+      "UserSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "rules_evaluated": {
+            "title": "Rules Evaluated",
+            "type": "integer"
+          },
+          "rules_failed": {
+            "title": "Rules Failed",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "rules_evaluated",
+          "rules_failed"
+        ],
+        "title": "UserSummary",
         "type": "object"
       },
       "VersionPage": {
@@ -3815,7 +4879,7 @@
   "info": {
     "description": "Identidad y proyectos del monolito modular.",
     "title": "DataFlow AI API",
-    "version": "0.7.0"
+    "version": "0.9.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -5869,6 +6933,170 @@
         "summary": "Execution Quality",
         "tags": [
           "Executions"
+        ]
+      }
+    },
+    "/api/v1/executions/{execution_id}/quality-rules": {
+      "get": {
+        "operationId": "getExecutionQualityRules",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Execution Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/QualityRulesReport"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Report",
+        "tags": [
+          "Quality rules"
         ]
       }
     },
@@ -8698,6 +9926,334 @@
         ]
       }
     },
+    "/api/v1/quality-ruleset-families/{family_id}/revisions": {
+      "get": {
+        "operationId": "listQualityRulesetRevisions",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "family_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Family Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulesetRevisionPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "History",
+        "tags": [
+          "Quality rules"
+        ]
+      }
+    },
+    "/api/v1/quality-rulesets/{revision_id}": {
+      "get": {
+        "operationId": "getQualityRulesetRevision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulesetRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Revision",
+        "tags": [
+          "Quality rules"
+        ]
+      }
+    },
     "/api/v1/representations/{artifact_id}/applicable-operations": {
       "get": {
         "operationId": "listApplicableOperations",
@@ -8880,6 +10436,352 @@
         "summary": "Applicable Operations",
         "tags": [
           "Planning"
+        ]
+      }
+    },
+    "/api/v1/representations/{artifact_id}/quality-rulesets": {
+      "get": {
+        "operationId": "getQualityRulesets",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/RulesetContext"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Context",
+        "tags": [
+          "Quality rules"
+        ]
+      },
+      "post": {
+        "operationId": "saveQualityRuleset",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveRulesetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SaveRulesetResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Save",
+        "tags": [
+          "Quality rules"
         ]
       }
     },

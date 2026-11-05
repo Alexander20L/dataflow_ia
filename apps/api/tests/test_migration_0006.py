@@ -83,7 +83,12 @@ def test_0006_is_additive_and_protects_approvals_and_lineage(
 
         with Session(engine, expire_on_commit=False) as db:
             with engine.connect() as connection:
-                diff = compare_metadata(MigrationContext.configure(connection), Base.metadata)
+                # Sólo los objetos que existen hasta 0006; las tablas de migraciones
+                # posteriores se comparan en su propia prueba.
+                context = MigrationContext.configure(
+                    connection, opts={"include_object": exists_at_0006}
+                )
+                diff = compare_metadata(context, Base.metadata)
             assert diff == [], diff
             executions = make_executions(db)
             after = {
@@ -174,3 +179,18 @@ def test_0006_is_additive_and_protects_approvals_and_lineage(
         with admin.begin() as connection:
             connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+LATER_TABLES = {
+    "execution_error_details",
+    "quality_ruleset_families",
+    "quality_ruleset_revisions",
+    "quality_ruleset_save_requests",
+}
+
+
+def exists_at_0006(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    table = name if type_ == "table" else getattr(getattr(obj, "table", None), "name", None)
+    return table not in LATER_TABLES

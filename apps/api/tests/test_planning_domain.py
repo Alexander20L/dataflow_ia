@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from dataflow.modules.planning.contracts import (
     COLUMN_REF,
     ConfirmedColumnRole,
+    IdentifierConversionGuard,
     OperationDescriptor,
     PlanDraft,
     PlanningFacts,
@@ -16,6 +17,7 @@ from dataflow.modules.planning.contracts import (
 )
 from dataflow.modules.planning.domain import plan_status, validate_plan
 from dataflow.modules.understanding.public import SemanticReference
+from dataflow.platform.data_types import NUMERIC, TEXT, DataType
 
 
 class NoParameters(BaseModel):
@@ -35,6 +37,17 @@ class ColumnsParameters(BaseModel):
 class MeasureParameters(BaseModel):
     model_config = ConfigDict(extra="forbid")
     column: UUID = Field(json_schema_extra={COLUMN_REF: True})
+
+
+class CastParameters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    column: UUID = Field(json_schema_extra={COLUMN_REF: True})
+    type: Literal["integer", "decimal", "date", "boolean"]
+    confirm: bool = False
+
+
+def cast_schema(parameters: CastParameters, schema: Any) -> dict[UUID, DataType]:
+    return {**schema, parameters.column: parameters.type}
 
 
 DESCRIPTORS = [
@@ -58,6 +71,28 @@ DESCRIPTORS = [
         "quality",
         MeasureParameters,
         (ConfirmedColumnRole(parameter="column", role="measure"),),
+    ),
+    OperationDescriptor(
+        "fake.upper",
+        1,
+        "Mayúsculas",
+        "table",
+        "table",
+        ColumnsParameters,
+        transforms_data=True,
+        column_types=lambda parameters: {"columns": TEXT},
+    ),
+    OperationDescriptor(
+        "fake.cast",
+        1,
+        "Convertir",
+        "table",
+        "table",
+        CastParameters,
+        transforms_data=True,
+        column_types=lambda parameters: {"column": TEXT},
+        output_schema=cast_schema,
+        identifier_guard=IdentifierConversionGuard("column", "type", "confirm", NUMERIC),
     ),
 ]
 
@@ -217,3 +252,76 @@ def test_confirmed_column_role_requirement() -> None:
 
 def test_operations_without_requirements_do_not_need_semantics() -> None:
     assert "SEMANTIC_REQUIREMENT_MISSING" not in codes(problems([step("profile")]))
+
+
+TYPED = {COLUMN: "string", OTHER: "integer"}
+
+
+def upper(id: str = "upper", source: str | None = None, column: UUID = COLUMN) -> PlanStep:
+    return step(id, "fake.upper", source, {"columns": [str(column)]})
+
+
+def cast(
+    id: str = "cast",
+    source: str | None = None,
+    type: str = "integer",
+    confirm: bool = False,
+    column: UUID = COLUMN,
+) -> PlanStep:
+    return step(id, "fake.cast", source, {"column": str(column), "type": type, "confirm": confirm})
+
+
+def test_column_type_mismatch_against_the_pinned_table() -> None:
+    assert problems([upper(column=COLUMN)], facts(column_types=TYPED)) == []
+    result = problems([upper(column=OTHER)], facts(column_types=TYPED))
+    assert codes(result) == ["COLUMN_TYPE_MISMATCH"]
+    assert (result[0].resolve_in, result[0].step_id, result[0].parameter) == (
+        "plan_steps",
+        "upper",
+        "columns",
+    )
+    assert "«integer»" in result[0].message
+
+
+def test_schema_propagates_between_steps() -> None:
+    # Texto antes de convertir: válido. Después la columna ya es un entero.
+    assert problems([upper(), cast(source="upper")], facts(column_types=TYPED)) == []
+    result = problems([cast(), upper(source="cast")], facts(column_types=TYPED))
+    assert codes(result) == ["COLUMN_TYPE_MISMATCH"] and result[0].step_id == "upper"
+    # Convertir dos veces: la segunda recibe un entero.
+    twice = problems([cast(), cast("again", source="cast")], facts(column_types=TYPED))
+    assert codes(twice) == ["COLUMN_TYPE_MISMATCH"] and twice[0].step_id == "again"
+    # Los pasos que no consumen la salida convertida ven el esquema de la entrada.
+    assert problems([cast(), upper("other")], facts(column_types=TYPED)) == []
+
+
+def test_unknown_types_or_invalid_parameters_do_not_cascade() -> None:
+    assert problems([upper(column=OTHER)], facts()) == []
+    invalid = step("cast", "fake.cast", None, {"column": str(COLUMN), "type": "float"})
+    result = problems([invalid, upper(source="cast")], facts(column_types=TYPED))
+    assert codes(result) == ["INVALID_PARAMETERS"]
+
+
+IDENTIFIER = {COLUMN: "identifier"}
+
+
+@pytest.mark.parametrize(
+    ("type", "confirm", "pinned", "roles", "expected"),
+    [
+        ("integer", False, True, IDENTIFIER, ["IDENTIFIER_CONVERSION_UNCONFIRMED"]),
+        ("decimal", False, True, IDENTIFIER, ["IDENTIFIER_CONVERSION_UNCONFIRMED"]),
+        ("integer", True, True, IDENTIFIER, []),  # confirmación explícita
+        ("integer", False, False, IDENTIFIER, []),  # sin revisión fijada no hay salvaguarda
+        ("date", False, True, IDENTIFIER, []),  # no numérico
+        ("integer", False, True, {COLUMN: "measure"}, []),
+        ("integer", False, True, {}, []),  # columna sin confirmar
+    ],
+)
+def test_identifier_conversion_guard(
+    type: str, confirm: bool, pinned: bool, roles: dict[UUID, str], expected: list[str]
+) -> None:
+    context = facts(column_types=TYPED, semantic_pinned=pinned, confirmed_roles=roles)
+    result = problems([cast(type=type, confirm=confirm)], context, pinned=pinned)
+    assert codes(result) == expected
+    if expected:
+        assert (result[0].resolve_in, result[0].parameter) == ("plan_steps", "confirm")
