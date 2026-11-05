@@ -37,6 +37,8 @@ class VersionResponse(BaseModel):
     error_code: str | None
     error_message: str | None
     attempts: int
+    kind: Literal["imported", "derived"]
+    parent_version_id: UUID | None
 
 
 class VersionPage(BaseModel):

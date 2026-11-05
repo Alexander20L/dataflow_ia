@@ -30,3 +30,5 @@ class Version:
     error_code: str | None
     error_message: str | None
     attempts: int
+    kind: Literal["imported", "derived"] = "imported"
+    parent_version_id: UUID | None = None

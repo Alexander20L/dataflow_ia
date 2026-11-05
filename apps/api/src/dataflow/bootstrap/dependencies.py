@@ -7,12 +7,14 @@ from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.services import (
     make_analysis,
+    make_cleaning,
     make_datasets,
     make_executions,
     make_ingestion,
     make_planning,
     make_semantics,
 )
+from dataflow.modules.cleaning.application import CleaningService
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.datasets.public import Datasets
 from dataflow.modules.executions.public import Executions
@@ -118,3 +120,10 @@ def planning_service(db: Db, objects: Objects) -> PlanningService:
 
 
 Planning = Annotated[PlanningService, Depends(planning_service)]
+
+
+def cleaning_service(db: Db, objects: Objects) -> CleaningService:
+    return make_cleaning(db, objects)
+
+
+Cleaning = Annotated[CleaningService, Depends(cleaning_service)]

@@ -1,6 +1,6 @@
 # DataFlow AI
 
-Plataforma de análisis de datos supervisado. **API 0.6 / Fase 4:** planes versionados con operaciones de catálogo, validación con requisitos pendientes y ejecución sobre la tabla exacta. Incluye el contexto semántico de Fase 3 y CSV, originales, perfilado y calidad reales. Limpieza y etapas posteriores continúan como demostración independiente.
+Plataforma de análisis de datos supervisado. **API 0.7 / Fase 5:** limpieza supervisada de CSV propios (recortar espacios, excluir registros) con vista previa sobre todo el dataset, aprobación del efecto exacto y versión derivada con diagnóstico nuevo; el original no cambia. Incluye los planes versionados de Fase 4, el contexto semántico de Fase 3 y CSV, originales, perfilado y calidad reales. Exploración y etapas posteriores continúan como demostración independiente.
 
 ## Ejecutar
 
@@ -92,6 +92,8 @@ Las cargas se confirman con metadatos y trabajo en una transacción PostgreSQL. 
 
 En cada CSV procesado, **Planes y ejecuciones** permite armar un plan con operaciones del catálogo (perfil, calidad), guardarlo como revisión inmutable sobre una tabla identificada por su hash y ejecutarlo. Un plan incompleto muestra qué le falta y no se ejecuta. Cambiar la versión predeterminada no altera la entrada de un plan. Cada ejecución conserva su plan, resultados e historial. El diagnóstico baseline permanece fijo; ejecutar análisis no crea otra versión del archivo. [Documentación Fase 4](docs/architecture/phase-4.md).
 
+En la etapa **Limpieza** de un CSV propio, la propuesta se arma desde el diagnóstico (Q-003 → recortar espacios; Q-001 → excluir nulos). La vista previa calcula el efecto exacto sobre todo el dataset y destaca los nulos creados, porque limpiar puede bajar la completitud. Tras aprobar ese efecto, aplicarlo publica una versión derivada (v2) con su propio diagnóstico y linaje; v1 y su original se conservan y siguen seleccionables. La derivada no pasa a ser la predeterminada. [Documentación Fase 5](docs/architecture/phase-5.md).
+
 En **Entendimiento → Revisión semántica** declara filas, roles, interpretación, claves, unidades/moneda y nulos. Guarda revisiones parciales y consulta su historial. No convierte ni limpia valores. Un plan puede fijar una revisión exacta o continuar sin contrato para análisis técnicos. [Documentación Fase 3](docs/architecture/phase-3.md).
 
 Sólo el tema y la limpieza del ejemplo se conservan en localStorage (`dataflow-ui-v2`). Restablecer la demo no elimina proyectos de la cuenta. El almacenamiento legado `dataflow-demo-v1` se conserva sin importar sus proyectos automáticamente: no se atribuyen datos locales a una cuenta sin una migración explícita.
@@ -118,11 +120,13 @@ Consultar `docs/architecture/implementation-plan.md` para fases y verificación 
 
 ### Diseño del siguiente incremento — Fase 1
 
-Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación de datasets/ejecuciones: [Fase 2](docs/architecture/phase-2.md). Revisión semántica persistida: [Fase 3](docs/architecture/phase-3.md). Planes y catálogo de operaciones: [Fase 4](docs/architecture/phase-4.md). Limpieza, aprobaciones y derivadas se incorporarán en fases posteriores.
+Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación de datasets/ejecuciones: [Fase 2](docs/architecture/phase-2.md). Revisión semántica persistida: [Fase 3](docs/architecture/phase-3.md). Planes y catálogo de operaciones: [Fase 4](docs/architecture/phase-4.md). Limpieza supervisada y versiones derivadas: [Fase 5](docs/architecture/phase-5.md).
 
 `npm run contracts:check` verifica sus esquemas, ejemplos y casos negativos sin API ni PostgreSQL. Para regenerar exclusivamente los artefactos de diseño: `npm run contracts:examples`. El contrato HTTP vigente continúa en `contracts/openapi/dataflow.json`.
 
 ## Contenedor y CI
+
+**Actualizar desde 0.6 / esquema 0005:** 0006 es aditiva (aprobaciones y linaje de versiones, sin backfill). Desplegar API y worker juntos: el catálogo pasa a `analysis-v2` y los planes guardados conservan su versión y su hash. Un despliegue invalida las aprobaciones pendientes de aplicar (el hash de entorno cambia), que deben repetir la vista previa. Detalles en [Fase 5](docs/architecture/phase-5.md).
 
 **Actualizar desde 0.5 / esquema 0004:** 0005 es aditiva (tablas nuevas, sin backfill) y no modifica planes ni ejecuciones existentes. Esperar a que terminen los trabajos en curso y desplegar API y worker juntos: un worker 0.5 no reclama ejecuciones `plan`, pero no debe convivir con planes de usuario. Detalles en [Fase 4](docs/architecture/phase-4.md).
 

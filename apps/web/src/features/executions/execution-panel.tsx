@@ -23,6 +23,8 @@ const labels = {
 function runLabel(run: Execution) {
   if (run.kind === "csv_import") return "Ingesta baseline";
   if (run.kind === "plan") return `Plan revisión ${run.plan?.revision ?? "?"}`;
+  if (run.kind === "cleaning_preview") return "Vista previa de limpieza";
+  if (run.kind === "cleaning_apply") return "Aplicación de limpieza";
   const steps = run.plan?.content.steps;
   return Array.isArray(steps) && steps.length === 1
     ? "Sólo calidad (0.5)"
@@ -65,7 +67,7 @@ export function ExecutionPanel({
             de la carga.
           </p>
         </div>
-        <span className="badge neutral">Catálogo analysis-v1</span>
+        <span className="badge neutral">Catálogo analysis-v2</span>
       </div>
       <PlanEditor
         projectId={projectId}

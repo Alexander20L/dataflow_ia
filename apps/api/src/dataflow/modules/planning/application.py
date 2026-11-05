@@ -208,6 +208,13 @@ class PlanningService:
                     "y no se puede ejecutar.",
                     422,
                 )
+            if self.transforms_data(plan):
+                raise ApplicationError(
+                    "APPROVAL_REQUIRED",
+                    "Este plan transforma datos: genera una vista previa y apruébala antes de "
+                    "aplicarlo.",
+                    409,
+                )
             table = self.pinned(owner, plan)
             run = self.executions.enqueue_existing_plan(
                 owner,
@@ -223,6 +230,13 @@ class PlanningService:
         except Exception:
             self.uow.rollback()
             raise
+
+    def transforms_data(self, plan: UserPlan) -> bool:
+        return any(
+            (descriptor := self.catalog.descriptor(step["operation"], step["version"])) is not None
+            and descriptor.transforms_data
+            for step in plan.revision.content["steps"]
+        )
 
     def pinned(self, owner: UUID, plan: UserPlan) -> PinnedTable:
         """Re-verifica la tabla fijada: nunca se sustituye por la versión predeterminada."""

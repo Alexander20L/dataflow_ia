@@ -2,18 +2,20 @@ from uuid import uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.cleaning_access import CleaningPlanAccess
 from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry
 from dataflow.bootstrap.planning_access import PlanningTableAccess
 from dataflow.bootstrap.provenance import environment_snapshot
 from dataflow.bootstrap.semantic_access import SemanticRepresentationAccess
 from dataflow.modules.audit.public import record_event
+from dataflow.modules.cleaning.application import CleaningService
 from dataflow.modules.cleaning.engine import IsolatedCleaner
 from dataflow.modules.cleaning.public import (
     ApprovalSource,
     derived_version_id,
     require_valid_approval,
 )
-from dataflow.modules.cleaning.repository import SQLApprovalSource
+from dataflow.modules.cleaning.repository import SQLApprovalRepository, SQLApprovalSource
 from dataflow.modules.cleaning.steps import (
     ApplyFinalizer,
     FilterRowsStep,
@@ -249,4 +251,18 @@ def make_planning(db: Session, objects: LocalObjects) -> PlanningService:
         OperationCatalog(),
         SQLUnitOfWork(db),
         processing_config(),
+    )
+
+
+def make_cleaning(db: Session, objects: LocalObjects) -> CleaningService:
+    require_ready(db)
+    datasets = make_datasets(db)
+    return CleaningService(
+        make_executions(db),
+        CleaningPlanAccess(make_planning(db, objects), ProjectPermissions(db), datasets),
+        SQLApprovalRepository(db),
+        OperationCatalog(),
+        datasets,
+        objects,
+        SQLUnitOfWork(db),
     )

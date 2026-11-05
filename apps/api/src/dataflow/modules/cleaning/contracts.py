@@ -1,4 +1,5 @@
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid5
 
@@ -97,3 +98,68 @@ class ApprovedEffect:
 
 class ApprovalSource(Protocol):
     def approved_effect(self, approval: UUID) -> ApprovedEffect | None: ...
+
+
+class CleaningModel(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class ApprovalView(CleaningModel):
+    id: UUID
+    plan_revision_id: UUID
+    preview_execution_id: UUID
+    effect_sha256: str
+    input_artifact_sha256: str
+    semantic_revision_id: UUID | None
+    config_sha256: str
+    environment_sha256: str
+    approved_by: UUID
+    approved_at: datetime
+    revoked_at: datetime | None
+    status: Literal["active", "revoked"]
+
+
+class ApplyStatus(CleaningModel):
+    execution_id: UUID
+    state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    error_code: str | None
+    error_message: str | None
+
+
+class PreviewView(CleaningModel):
+    execution_id: UUID
+    plan_revision_id: UUID
+    project_id: UUID
+    version_id: UUID
+    state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    error_code: str | None
+    error_message: str | None
+    effect_sha256: str | None
+    manifest: EffectManifest | None
+    samples: list[EffectSample]
+    approval: ApprovalView | None
+    apply: ApplyStatus | None
+
+
+class LineageOperation(CleaningModel):
+    step_id: str
+    operation: str
+    version: int
+    parameters: dict[str, Any]
+
+
+class LineageView(CleaningModel):
+    version_id: UUID
+    kind: Literal["imported", "derived"]
+    parent_version_id: UUID | None
+    producer_execution_id: UUID | None
+    plan_revision_id: UUID | None
+    effect_sha256: str | None
+    operations: list[LineageOperation]
+
+
+class ApprovalRepository(Protocol):
+    def get(self, owner: UUID, approval: UUID) -> ApprovalView: ...
+    def active(self, preview: UUID) -> ApprovalView | None: ...
+    def add(self, approval: ApprovalView, correlation: str) -> None: ...
+    def revoke(self, approval: UUID, at: datetime, correlation: str) -> None: ...
