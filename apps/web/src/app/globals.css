@@ -307,6 +307,242 @@
 .execution-panel > .fine-print {
   margin-top: 8px;
 }
+
+/* Planificación (Fase 4) */
+.plan-editor {
+  display: grid;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+.plan-editor > .dataset-controls {
+  padding: 0;
+}
+.plan-form {
+  display: grid;
+  gap: 14px;
+}
+.plan-form .warning-banner,
+.plan-form .info-banner {
+  margin: 0;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.plan-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
+  gap: 16px;
+}
+.plan-layout h4,
+.plan-summary h4 {
+  font-size: 12px;
+  margin: 0 0 10px;
+}
+.plan-steps {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+.plan-step {
+  display: grid;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+}
+.plan-step:focus,
+#plan-catalog:focus {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.plan-step-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12px;
+}
+.plan-step-heading > small {
+  color: var(--muted);
+  font-size: 10px;
+  flex: 1;
+}
+.parameter-form {
+  display: grid;
+  gap: 10px;
+}
+.parameter-field {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  min-width: 0;
+}
+.parameter-field label,
+.parameter-label,
+.parameter-field legend {
+  font-size: 10px;
+  color: var(--muted);
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+fieldset.parameter-field {
+  border: 0;
+  padding: 0;
+  margin: 0;
+}
+.parameter-field select,
+.parameter-field input:not([type="checkbox"]) {
+  width: 100%;
+}
+.parameter-field output {
+  font-size: 11px;
+  overflow-wrap: anywhere;
+}
+.check-option {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.operation-picker {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.operation-picker > li {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11px;
+}
+.operation-picker > li > div {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+.operation-picker > li small {
+  font-size: 10px;
+  overflow-wrap: anywhere;
+}
+.operation-picker > li.unavailable {
+  background: var(--surface-secondary);
+}
+.plan-summary {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 14px 16px;
+  display: grid;
+  gap: 12px;
+}
+.plan-summary-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.plan-summary-heading h4 {
+  margin: 0;
+}
+.plan-facts {
+  display: grid;
+  gap: 10px;
+  margin: 0;
+  font-size: 11px;
+}
+.plan-facts dt {
+  font-size: 10px;
+  color: var(--muted);
+  margin-bottom: 2px;
+}
+.plan-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.plan-valid {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  margin: 0;
+}
+.plan-problems {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.plan-problems > li {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 7px;
+  font-size: 11px;
+  background: #fff9ec;
+  border: 1px solid #f3e7c7;
+  color: #8a6a2f;
+}
+.dark .plan-problems > li {
+  background: #332a1b;
+  border-color: #4b3920;
+  color: #e5bd77;
+}
+.plan-problems > li > svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+.plan-problems > li > div {
+  display: grid;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+.plan-problems small {
+  font-size: 9px;
+  opacity: 0.8;
+}
+.link-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: none;
+  border: 0;
+  padding: 0;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--primary);
+  cursor: pointer;
+  white-space: nowrap;
+}
+.link-button:hover {
+  text-decoration: underline;
+}
+@media (max-width: 760px) {
+  .plan-layout {
+    grid-template-columns: 1fr;
+  }
+  .operation-picker > li,
+  .plan-problems > li {
+    flex-wrap: wrap;
+  }
+  .link-button {
+    white-space: normal;
+  }
+}
 @media (max-width: 760px) {
   .execution-panel {
     padding: 0 15px 20px;

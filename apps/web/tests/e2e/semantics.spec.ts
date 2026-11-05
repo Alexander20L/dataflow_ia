@@ -40,7 +40,7 @@ async function prepare(page: Page) {
   return { version, baseline };
 }
 
-test("guardar contexto, consultar revisiones y fijar una revisión histórica a un análisis", async ({
+test("guardar contexto, consultar revisiones y fijar una revisión histórica a un plan", async ({
   page,
 }) => {
   const { version, baseline } = await prepare(page);
@@ -122,13 +122,24 @@ test("guardar contexto, consultar revisiones y fijar una revisión histórica a 
     exact: true,
   });
   await panel
-    .getByLabel("Contexto semántico (opcional)")
+    .getByLabel("Revisión semántica (opcional)")
     .selectOption(firstId!);
+  await panel
+    .getByRole("button", { name: "Añadir Evaluar calidad", exact: true })
+    .click();
+  await panel
+    .getByRole("button", { name: "Guardar plan", exact: true })
+    .click();
+  const summary = panel.getByRole("region", { name: "Resumen del plan" });
+  await expect(summary.getByTestId("plan-status")).toHaveText(
+    "Válido · listo para ejecutar",
+  );
+  await expect(summary).toContainText("Revisión 1 · SHA");
   const oldRun = await panel
     .getByLabel("Ejecución", { exact: true })
     .inputValue();
   await panel
-    .getByRole("button", { name: "Ejecutar análisis", exact: true })
+    .getByRole("button", { name: "Ejecutar plan", exact: true })
     .click();
   await expect(panel.getByLabel("Ejecución", { exact: true })).not.toHaveValue(
     oldRun,

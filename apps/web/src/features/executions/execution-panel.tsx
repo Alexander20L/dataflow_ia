@@ -1,19 +1,16 @@
 "use client";
 import { useState } from "react";
-import { Activity, ArrowRight, GitBranch, LoaderCircle } from "lucide-react";
+import { Activity, GitBranch } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
-import { useApp } from "@/lib/providers";
-import { useSemanticHistory } from "@/features/understanding/api";
+import { PlanEditor } from "@/features/planning/plan-editor";
 import {
   useCancelExecution,
-  useCreateAnalysis,
   useExecution,
   useExecutionQuality,
-  useRepresentations,
   useVersionExecutions,
-  type AnalysisKind,
+  type Execution,
 } from "./api";
 
 const labels = {
@@ -23,32 +20,34 @@ const labels = {
   failed: "Error",
   cancelled: "Cancelada",
 };
+function runLabel(run: Execution) {
+  if (run.kind === "csv_import") return "Ingesta baseline";
+  if (run.kind === "plan") return `Plan revisión ${run.plan?.revision ?? "?"}`;
+  const steps = run.plan?.content.steps;
+  return Array.isArray(steps) && steps.length === 1
+    ? "Sólo calidad (0.5)"
+    : "Perfil y calidad (0.5)";
+}
 export function ExecutionPanel({
+  projectId,
   versionId,
   archived,
+  onDirtyChange,
+  onOpenUnderstanding,
 }: {
+  projectId: string;
   versionId: string;
   archived: boolean;
+  onDirtyChange: (dirty: boolean) => void;
+  onOpenUnderstanding: () => void;
 }) {
   const runs = useVersionExecutions(versionId);
-  const tables = useRepresentations(versionId);
   const [selected, setSelected] = useState<string | null>(null);
-  const [selectedTable, setSelectedTable] = useState<string | null>(null);
-  const [kind, setKind] = useState<AnalysisKind>("profile_quality");
-  const [semanticId, setSemanticId] = useState<string | null>(null);
   const [confirmCancel, setConfirmCancel] = useState(false);
-  const create = useCreateAnalysis(versionId);
   const cancel = useCancelExecution(versionId);
-  const { notify } = useApp();
   const run = runs.data?.find((run) => run.id === selected) ?? runs.data?.[0];
-  const table =
-    tables.data?.find((table) => table.id === selectedTable) ??
-    tables.data?.[0];
   const detail = useExecution(run);
   const quality = useExecutionQuality(run);
-  const semantics = useSemanticHistory(table?.id);
-  const semanticRef =
-    semantics.data?.items.find((item) => item.id === semanticId) ?? null;
   return (
     <section
       className="execution-panel"
@@ -57,119 +56,25 @@ export function ExecutionPanel({
       <div className="section-heading">
         <div>
           <h3>
-            <Activity size={17} /> Ejecuciones independientes
+            <Activity size={17} /> Planes y ejecuciones
           </h3>
           <p>
-            Cada análisis conserva su plan, intentos y resultados. No sustituye
-            el diagnóstico inicial de la carga.
+            Arma un plan con operaciones del catálogo, guárdalo como revisión
+            inmutable y ejecútalo sobre su tabla exacta. Cada ejecución conserva
+            su plan, intentos y resultados; no sustituye el diagnóstico inicial
+            de la carga.
           </p>
         </div>
-        <span className="badge neutral">Planes de sistema</span>
+        <span className="badge neutral">Catálogo analysis-v1</span>
       </div>
-      <div className="analysis-controls">
-        <div>
-          <label htmlFor="analysis-table">Tabla de entrada fijada</label>
-          <select
-            id="analysis-table"
-            value={table?.id ?? ""}
-            disabled={tables.isPending || create.isPending}
-            onChange={(e) => {
-              setSelectedTable(e.target.value);
-              setSemanticId(null);
-            }}
-          >
-            {tables.data?.map((item) => (
-              <option key={item.id} value={item.id}>
-                {item.id.slice(0, 8)} · SHA {item.sha256.slice(0, 10)}
-              </option>
-            ))}
-            {!tables.data?.length && (
-              <option value="">Sin tabla publicada</option>
-            )}
-          </select>
-        </div>
-        <div>
-          <label htmlFor="analysis-kind">Análisis</label>
-          <select
-            id="analysis-kind"
-            value={kind}
-            onChange={(e) => setKind(e.target.value as AnalysisKind)}
-            disabled={create.isPending}
-          >
-            <option value="profile_quality">Perfil y calidad</option>
-            <option value="quality_only">Sólo calidad</option>
-          </select>
-        </div>
-        <div>
-          <label htmlFor="analysis-semantics">
-            Contexto semántico (opcional)
-          </label>
-          <select
-            id="analysis-semantics"
-            value={semanticId ?? ""}
-            disabled={create.isPending || semantics.isPending}
-            onChange={(e) => setSemanticId(e.target.value || null)}
-          >
-            <option value="">Sin contrato · análisis técnico</option>
-            {semantics.data?.items.map((item) => (
-              <option key={item.id} value={item.id}>
-                Revisión {item.revision} · {item.content_sha256.slice(0, 10)}
-              </option>
-            ))}
-          </select>
-        </div>
-        <Button
-          disabled={
-            !table ||
-            archived ||
-            create.isPending ||
-            (!!semanticId && !semanticRef)
-          }
-          onClick={async () => {
-            if (!table) return;
-            try {
-              const result = await create.mutateAsync({
-                table_artifact_id: table.id,
-                table_sha256: table.sha256,
-                analysis_kind: kind,
-                semantic_ref: semanticRef,
-              });
-              setSelected(result.id);
-              notify("Análisis encolado sobre la tabla seleccionada.");
-            } catch {
-              /* Error visible. */
-            }
-          }}
-        >
-          {create.isPending ? (
-            <LoaderCircle className="spin" size={16} />
-          ) : (
-            <ArrowRight size={16} />
-          )}
-          Ejecutar análisis
-        </Button>
-      </div>
-      {semantics.isError && (
-        <p className="auth-error" role="alert">
-          {errorMessage(semantics.error)}
-        </p>
-      )}
-      {(semantics.data?.total ?? 0) > 20 && (
-        <p className="fine-print muted">
-          El selector muestra las últimas 20 revisiones; el historial semántico
-          permite consultar las anteriores.
-        </p>
-      )}
-      {tables.isError && (
-        <p className="auth-error" role="alert">
-          {errorMessage(tables.error)}
-        </p>
-      )}
-      {create.isError && (
-        <p className="auth-error" role="alert">
-          {errorMessage(create.error)}
-        </p>
-      )}
+      <PlanEditor
+        projectId={projectId}
+        versionId={versionId}
+        archived={archived}
+        onDirtyChange={onDirtyChange}
+        onOpenUnderstanding={onOpenUnderstanding}
+        onExecuted={setSelected}
+      />
       {runs.isPending ? (
         <p className="empty-copy" role="status">
           Cargando ejecuciones…
@@ -193,14 +98,8 @@ export function ExecutionPanel({
             >
               {runs.data?.map((item) => (
                 <option key={item.id} value={item.id}>
-                  {item.kind === "csv_import"
-                    ? "Ingesta baseline"
-                    : item.plan?.content.steps &&
-                        Array.isArray(item.plan.content.steps) &&
-                        item.plan.content.steps.length === 1
-                      ? "Sólo calidad"
-                      : "Perfil y calidad"}{" "}
-                  · {item.id.slice(0, 8)} · {labels[item.state]}
+                  {runLabel(item)} · {item.id.slice(0, 8)} ·{" "}
+                  {labels[item.state]}
                 </option>
               ))}
             </select>
