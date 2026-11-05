@@ -91,10 +91,12 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 1–3  | 0.5 | `main`                      | contratos, datasets/ejecuciones separados, semántica                        |
 | 4    | 0.6 | `feat/fase-4-planificacion` | planes versionados, catálogo `analysis-v1`, worker por pasos                |
 | 5    | 0.7 | `feat/fase-5-limpieza`      | trim/filter_rows, vista previa, aprobación, derivada; con commits, sin push |
-| 6    | 0.8 | `feat/fase-6-conversiones`  | en diseño: cast, normalize_null_tokens, deduplicate, csv-quality-v2         |
+| 6A   | 0.8 | `feat/fase-6-conversiones`  | tablas tipadas, cast, normalize_null_tokens, deduplicate; migración 0007    |
+| 6B   | 0.9 | `feat/fase-6-conversiones`  | en diseño: csv-quality-v2 y reglas por proyecto (migración 0008, ADR-017)   |
 
-Pendientes conocidos: E2E de requisito semántico (phase-4.md); `PolarsPreview` de ingesta usa
-`pl.col(nombre)` (riesgo con regex, phase-5.md); deuda de nombre `dataset_import_bindings` (ADR-015).
+Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
+resultados de las tablas de texto: no regenerar sus referencias para hacer pasar una prueba.
+Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015); Fase 6B.
 
 ## Forma de trabajo
 

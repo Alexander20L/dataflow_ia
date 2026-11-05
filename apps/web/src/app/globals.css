@@ -342,6 +342,45 @@
   display: grid;
   gap: 14px;
 }
+.cast-options {
+  display: grid;
+  gap: 6px;
+  min-width: 150px;
+}
+.cast-options label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+}
+.scale-input {
+  width: 64px;
+}
+.identifier-guard {
+  align-items: flex-start;
+  max-width: 260px;
+  color: #ac8744;
+}
+.dedupe-options {
+  display: grid;
+  gap: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px 14px;
+  min-width: 0;
+}
+.dedupe-options legend {
+  padding: 0 6px;
+}
+.chip-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.failure-list {
+  display: grid;
+  gap: 10px;
+}
 .effect-preview .warning-banner,
 .effect-preview .success-banner,
 .cleaning-stage .info-banner {

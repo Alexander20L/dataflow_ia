@@ -12,6 +12,7 @@ import { errorMessage } from "@/lib/api";
 import { ApprovalDialog } from "./approval-dialog";
 import { BeforeAfter } from "./before-after";
 import {
+  cell,
   useApply,
   useCleaningPreview,
   useRevoke,
@@ -56,6 +57,8 @@ export function EffectPreview({
         <p>La vista previa no crea versiones ni modifica tus datos.</p>
       </div>
     );
+  if (data.state === "failed" && data.failure)
+    return <Failure preview={data} onRepeat={onRepeat} />;
   if (data.state !== "succeeded" || !data.manifest)
     return (
       <div className="empty-state compact">
@@ -75,6 +78,82 @@ export function EffectPreview({
       onRepeat={onRepeat}
       onShowDerived={onShowDerived}
     />
+  );
+}
+
+const REASONS: Record<string, string> = {
+  whitespace: "Espacios en los bordes",
+  exponent: "Notación exponencial",
+  leading_zero: "Ceros a la izquierda",
+  invalid_format: "Formato no válido",
+  out_of_range: "Fuera de rango (int64)",
+  precision_exceeded: "Más de 38 dígitos",
+  invalid_date: "Fecha inexistente",
+  invalid_boolean: "No es true/false",
+  null_key: "Clave nula",
+};
+
+/** Política estricta: un solo valor que no convierte impide publicar. Se listan todos los
+ * motivos con el conteo exacto y hasta 50 casos. */
+function Failure({
+  preview,
+  onRepeat,
+}: {
+  preview: CleaningPreview;
+  onRepeat: () => void;
+}) {
+  const failure = preview.failure!;
+  const title =
+    failure.code === "NULL_KEY_REJECTED"
+      ? `${failure.total} registro(s) tienen nulos en la clave de deduplicación`
+      : `${failure.total} valor(es) no se pueden convertir`;
+  return (
+    <section
+      className="effect-preview failure-list"
+      aria-label="Valores que impiden la limpieza"
+    >
+      <div className="warning-banner" role="alert">
+        <AlertTriangle size={16} />
+        <span>
+          <strong>{title}.</strong> No se publica ninguna versión ni se puede
+          aprobar este efecto. Corrige el plan (por ejemplo, añade «Recortar
+          espacios» o cambia el formato) o los datos y genera otra vista previa.
+        </span>
+      </div>
+      <div className="table-scroll bordered">
+        <table aria-label="Valores que no convierten">
+          <thead>
+            <tr>
+              <th>Columna</th>
+              <th>Registro</th>
+              <th>Valor</th>
+              <th>Motivo</th>
+            </tr>
+          </thead>
+          <tbody>
+            {failure.samples.map((sample) => (
+              <tr key={`${sample.column_id}-${sample.source_row}`}>
+                <td>{sample.column}</td>
+                <td>{sample.source_row}</td>
+                <td className="csv-value">{cell(sample.value)}</td>
+                <td title={sample.message}>
+                  {REASONS[sample.reason] ?? sample.reason}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="fine-print muted" data-testid="failure-total">
+        Se muestran {failure.samples.length} de {failure.total}. Los conteos
+        salen del dataset completo.
+      </p>
+      <div className="form-footer">
+        <Button variant="outline" onClick={onRepeat}>
+          <RotateCcw size={15} /> Repetir vista previa
+        </Button>
+      </div>
+    </section>
   );
 }
 
@@ -100,6 +179,14 @@ function Effect({
       (column) => [column.id, column.name],
     ),
   );
+  const rounded = preview.manifest!.rounded_cells ?? 0;
+  const converted = (
+    preview.manifest!.output.columns as {
+      name: string;
+      technical_type?: string;
+      type_parameters?: { scale?: number };
+    }[]
+  ).filter((column) => (column.technical_type ?? "string") !== "string");
   const approval = preview.approval;
   const applied = preview.apply;
   const affected = counts.modified_rows + counts.excluded_rows;
@@ -126,7 +213,35 @@ function Effect({
           <small>Nulos creados</small>
           <strong data-testid="created-nulls">{counts.created_nulls}</strong>
         </div>
+        <div className={rounded ? "attention" : undefined}>
+          <small>Redondeadas</small>
+          <strong data-testid="rounded-cells">{rounded}</strong>
+        </div>
       </div>
+      {converted.length > 0 && (
+        <p className="fine-print" data-testid="output-types">
+          Tipos de la nueva versión:{" "}
+          {converted
+            .map(
+              (column) =>
+                `${column.name} → ${column.technical_type}${
+                  column.type_parameters?.scale !== undefined
+                    ? ` (${column.type_parameters.scale} decimales)`
+                    : ""
+                }`,
+            )
+            .join(" · ")}
+        </p>
+      )}
+      {rounded > 0 && (
+        <div className="warning-banner" role="status">
+          <AlertTriangle size={16} />
+          <span>
+            {rounded} valor(es) se redondean a la escala elegida (mitad al par).
+            Revisa los ejemplos antes de aprobar.
+          </span>
+        </div>
+      )}
       {counts.created_nulls > 0 && (
         <div className="warning-banner" role="status">
           <AlertTriangle size={16} />

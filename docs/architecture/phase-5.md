@@ -55,5 +55,5 @@ Operaciones: nulos, celdas sólo de espacios, ceros iniciales, Unicode (NBSP con
 
 ## Observaciones y pendiente
 
-- `PolarsPreview` de la ingesta (Fase 2) usa `pl.col(nombre)` con encabezados del usuario: un nombre como `^id$` se interpretaría como expresión regular. Cleaning ya opera con alias neutros; corregir la vista previa de ingesta queda pendiente.
-- Elegir la versión predeterminada, exportar CSV derivado (Fase 9) y nuevas operaciones (`deduplicate`, `cast`) quedan fuera de esta fase.
+- `PolarsPreview` de la ingesta (Fase 2) usaba `pl.col(nombre)` con encabezados del usuario: un nombre como `^id$` se interpretaría como expresión regular. Resuelto en [Fase 6](phase-6.md) con alias neutros.
+- Elegir la versión predeterminada, exportar CSV derivado (Fase 9) y nuevas operaciones (`deduplicate`, `cast`) quedan fuera de esta fase; las conversiones y la deduplicación llegan en [Fase 6](phase-6.md).

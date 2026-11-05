@@ -656,9 +656,11 @@ function RealResults({
           <div className="info-banner">
             <ShieldCheck size={18} />
             <span>
-              Los valores se conservan como texto en Parquet. Los tipos
-              sugeridos son heurísticas deterministas, no decisiones aprobadas
-              ni sugerencias de IA.
+              {profile.columns.some((c) => c.technical_type !== "string")
+                ? "Esta versión tiene columnas convertidas por una limpieza aprobada (tipo técnico distinto de texto); el resto se conserva como texto. "
+                : "Los valores se conservan como texto en Parquet. "}
+              Los tipos sugeridos son heurísticas deterministas, no decisiones
+              aprobadas ni sugerencias de IA.
             </span>
           </div>
           <div className="table-scroll bordered">
