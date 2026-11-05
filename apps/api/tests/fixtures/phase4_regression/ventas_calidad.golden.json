@@ -1,0 +1,316 @@
+{
+  "csv_import": {
+    "profile": {
+      "column_count": 5,
+      "columns": [
+        {
+          "examples": [
+            "001",
+            "002",
+            "003"
+          ],
+          "name": "id",
+          "null_count": 0,
+          "numeric": null,
+          "suggested_type": "string",
+          "technical_type": "string",
+          "unique_count": 5
+        },
+        {
+          "examples": [
+            "2026-01-01",
+            "2026-01-02",
+            "2026-01-03"
+          ],
+          "name": "fecha",
+          "null_count": 0,
+          "numeric": null,
+          "suggested_type": "date",
+          "technical_type": "string",
+          "unique_count": 5
+        },
+        {
+          "examples": [
+            "Norte",
+            "Sur",
+            "Oeste"
+          ],
+          "name": "region",
+          "null_count": 0,
+          "numeric": null,
+          "suggested_type": "string",
+          "technical_type": "string",
+          "unique_count": 4
+        },
+        {
+          "examples": [
+            "100.50",
+            "80.00",
+            " "
+          ],
+          "name": "importe",
+          "null_count": 1,
+          "numeric": null,
+          "suggested_type": "string",
+          "technical_type": "string",
+          "unique_count": 4
+        },
+        {
+          "examples": [
+            "2",
+            "1",
+            "3"
+          ],
+          "name": "unidades",
+          "null_count": 0,
+          "numeric": {
+            "count": 6,
+            "maximum": "3",
+            "mean": "1.8333333333333333333333333333333333333333333333333",
+            "minimum": "1",
+            "total": "11"
+          },
+          "suggested_type": "integer",
+          "technical_type": "string",
+          "unique_count": 3
+        }
+      ],
+      "encoding": "utf-8-sig",
+      "engine_version": "csv-ingestion-1",
+      "polars_version": "1.44.2",
+      "row_count": 6,
+      "schema_version": 1,
+      "separator": ",",
+      "source_sha256": "b90480dec4be4d148df1ff3d43e865a55070246330b4085fb300c3284a53d678"
+    },
+    "quality": {
+      "cell_count": 30,
+      "completeness_percent": 96.67,
+      "duplicate_rows": 1,
+      "issues": [
+        {
+          "affected_rows": 1,
+          "column": "importe",
+          "description": "Campo vacío (nulo).",
+          "id": "Q-001-3",
+          "proposed_action": "Revisar la fuente antes de imputar o excluir.",
+          "rule": "Q-001",
+          "sample_row_numbers": [
+            2
+          ],
+          "severity": "medium"
+        },
+        {
+          "affected_rows": 1,
+          "column": "importe",
+          "description": "Valor compuesto sólo de espacios.",
+          "id": "Q-003-3",
+          "proposed_action": "Revisar si el espacio es significativo antes de normalizar.",
+          "rule": "Q-003",
+          "sample_row_numbers": [
+            5
+          ],
+          "severity": "low"
+        },
+        {
+          "affected_rows": 1,
+          "column": null,
+          "description": "Fila idéntica a una anterior, considerando todas las columnas.",
+          "id": "Q-002",
+          "proposed_action": "Confirmar si es una repetición válida antes de eliminarla.",
+          "rule": "Q-002",
+          "sample_row_numbers": [
+            4
+          ],
+          "severity": "medium"
+        }
+      ],
+      "missing_cells": 1,
+      "row_count": 6,
+      "rule_version": "csv-quality-v1",
+      "whitespace_cells": 1
+    }
+  },
+  "requested_separator": "auto",
+  "table_profile_quality": {
+    "profile": {
+      "column_count": 5,
+      "columns": [
+        {
+          "examples": [
+            "001",
+            "002",
+            "003"
+          ],
+          "name": "id",
+          "null_count": 0,
+          "numeric": null,
+          "suggested_type": "string",
+          "technical_type": "string",
+          "unique_count": 5
+        },
+        {
+          "examples": [
+            "2026-01-01",
+            "2026-01-02",
+            "2026-01-03"
+          ],
+          "name": "fecha",
+          "null_count": 0,
+          "numeric": null,
+          "suggested_type": "date",
+          "technical_type": "string",
+          "unique_count": 5
+        },
+        {
+          "examples": [
+            "Norte",
+            "Sur",
+            "Oeste"
+          ],
+          "name": "region",
+          "null_count": 0,
+          "numeric": null,
+          "suggested_type": "string",
+          "technical_type": "string",
+          "unique_count": 4
+        },
+        {
+          "examples": [
+            "100.50",
+            "80.00",
+            " "
+          ],
+          "name": "importe",
+          "null_count": 1,
+          "numeric": null,
+          "suggested_type": "string",
+          "technical_type": "string",
+          "unique_count": 4
+        },
+        {
+          "examples": [
+            "2",
+            "1",
+            "3"
+          ],
+          "name": "unidades",
+          "null_count": 0,
+          "numeric": {
+            "count": 6,
+            "maximum": "3",
+            "mean": "1.8333333333333333333333333333333333333333333333333",
+            "minimum": "1",
+            "total": "11"
+          },
+          "suggested_type": "integer",
+          "technical_type": "string",
+          "unique_count": 3
+        }
+      ],
+      "encoding": "utf-8-sig",
+      "engine_version": "csv-ingestion-1",
+      "polars_version": "1.44.2",
+      "row_count": 6,
+      "schema_version": 1,
+      "separator": ",",
+      "source_sha256": "b90480dec4be4d148df1ff3d43e865a55070246330b4085fb300c3284a53d678"
+    },
+    "quality": {
+      "cell_count": 30,
+      "completeness_percent": 96.67,
+      "duplicate_rows": 1,
+      "issues": [
+        {
+          "affected_rows": 1,
+          "column": "importe",
+          "description": "Campo vacío (nulo).",
+          "id": "Q-001-3",
+          "proposed_action": "Revisar la fuente antes de imputar o excluir.",
+          "rule": "Q-001",
+          "sample_row_numbers": [
+            2
+          ],
+          "severity": "medium"
+        },
+        {
+          "affected_rows": 1,
+          "column": "importe",
+          "description": "Valor compuesto sólo de espacios.",
+          "id": "Q-003-3",
+          "proposed_action": "Revisar si el espacio es significativo antes de normalizar.",
+          "rule": "Q-003",
+          "sample_row_numbers": [
+            5
+          ],
+          "severity": "low"
+        },
+        {
+          "affected_rows": 1,
+          "column": null,
+          "description": "Fila idéntica a una anterior, considerando todas las columnas.",
+          "id": "Q-002",
+          "proposed_action": "Confirmar si es una repetición válida antes de eliminarla.",
+          "rule": "Q-002",
+          "sample_row_numbers": [
+            4
+          ],
+          "severity": "medium"
+        }
+      ],
+      "missing_cells": 1,
+      "row_count": 6,
+      "rule_version": "csv-quality-v1",
+      "whitespace_cells": 1
+    }
+  },
+  "table_quality_only": {
+    "quality": {
+      "cell_count": 30,
+      "completeness_percent": 96.67,
+      "duplicate_rows": 1,
+      "issues": [
+        {
+          "affected_rows": 1,
+          "column": "importe",
+          "description": "Campo vacío (nulo).",
+          "id": "Q-001-3",
+          "proposed_action": "Revisar la fuente antes de imputar o excluir.",
+          "rule": "Q-001",
+          "sample_row_numbers": [
+            2
+          ],
+          "severity": "medium"
+        },
+        {
+          "affected_rows": 1,
+          "column": "importe",
+          "description": "Valor compuesto sólo de espacios.",
+          "id": "Q-003-3",
+          "proposed_action": "Revisar si el espacio es significativo antes de normalizar.",
+          "rule": "Q-003",
+          "sample_row_numbers": [
+            5
+          ],
+          "severity": "low"
+        },
+        {
+          "affected_rows": 1,
+          "column": null,
+          "description": "Fila idéntica a una anterior, considerando todas las columnas.",
+          "id": "Q-002",
+          "proposed_action": "Confirmar si es una repetición válida antes de eliminarla.",
+          "rule": "Q-002",
+          "sample_row_numbers": [
+            4
+          ],
+          "severity": "medium"
+        }
+      ],
+      "missing_cells": 1,
+      "row_count": 6,
+      "rule_version": "csv-quality-v1",
+      "whitespace_cells": 1
+    }
+  }
+}

@@ -333,7 +333,7 @@ export function Overview({ path }: { path: string }) {
               variant="ghost"
               onClick={() =>
                 notify(
-                  "Versión 0.5 · revisión semántica e historial persistidos. Consulta README.md para el alcance y los próximos incrementos.",
+                  "Versión 0.6 · planes versionados con catálogo de operaciones. Consulta README.md para el alcance y los próximos incrementos.",
                 )
               }
             >

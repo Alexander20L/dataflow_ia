@@ -233,7 +233,7 @@ export function Application() {
             respaldado por datos.
           </span>
           <span>
-            <span className="status-dot" /> DataFlow v0.5 · contexto semántico
+            <span className="status-dot" /> DataFlow v0.6 · planificación
           </span>
         </footer>
       </div>

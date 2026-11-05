@@ -1,30 +1,36 @@
 import io
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4, uuid5
 
 import polars as pl
 
+from dataflow.modules.datasets.contracts import StoredObject
 from dataflow.modules.datasets.public import Datasets, ObjectStore
-from dataflow.modules.executions.public import ArtifactOutput, Executions, Lease, PreparedWork
+from dataflow.modules.executions.public import (
+    ArtifactKind,
+    ArtifactOutput,
+    Executions,
+    Lease,
+    PlanStepSpec,
+    StepInput,
+    StepResult,
+)
 from dataflow.modules.ingestion.application import Analyzer, ProjectAccess
+from dataflow.modules.ingestion.contracts import ReadCsvParameters
+from dataflow.modules.quality.contracts import QualityParameters
+from dataflow.modules.understanding.contracts import ProfileParameters
 from dataflow.modules.understanding.public import SemanticReference, SemanticService, TableReference
 from dataflow.platform.canonical import digest
 from dataflow.platform.errors import ApplicationError
 
 
-class CsvExecutor:
-    def __init__(
-        self,
-        datasets: Datasets,
-        executions: Executions,
-        objects: ObjectStore,
-        analyzer: Analyzer,
-        projects: ProjectAccess,
-    ) -> None:
-        self.datasets, self.executions, self.objects = datasets, executions, objects
-        self.analyzer, self.projects = analyzer, projects
+class SourceInputResolver:
+    """Input `source`: el original de la versión fijada en el plan."""
 
-    def prepare(self, lease: Lease) -> PreparedWork:
+    def __init__(self, datasets: Datasets, projects: ProjectAccess) -> None:
+        self.datasets, self.projects = datasets, projects
+
+    def prepare(self, lease: Lease) -> StepInput:
         run = lease.execution
         assert run.plan
         version = self.datasets.get(run.owner_id, run.version_id)
@@ -35,58 +41,23 @@ class CsvExecutor:
             or input_ref["version_content_sha256"] != version.content.sha256
         ):
             raise ApplicationError("INPUT_MISMATCH", "La versión fijada no coincide.", 409)
-        read = run.plan.content["steps"][0]
-        return PreparedWork(
-            version.content,
-            version.content.sha256,
-            run.plan.config,
-            read["parameters"]["separator"],
-        )
-
-    def compute(self, lease: Lease, work: PreparedWork) -> list[ArtifactOutput]:
-        result = self.analyzer.analyze(
-            self.objects.read(work.reference), work.separator, work.config
-        )
-        assert result.profile
-        if result.profile.source_sha256 != work.source_sha256:
-            raise ApplicationError("INTEGRITY_ERROR", "La salida no corresponde al original.", 409)
-        prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}"
-        table = self.objects.put(f"{prefix}/data.parquet", result.parquet)
-        columns, logical_hash = table_metadata(lease.version_id, result.parquet)
-        outputs = [
-            ArtifactOutput(
-                uuid4(),
-                "read",
-                "table",
-                "table",
-                table,
-                "application/vnd.apache.parquet",
-                result.profile.row_count,
-                result.profile.column_count,
-                columns,
-                logical_hash,
-            )
-        ]
-        outputs.extend(
-            diagnostic_outputs(lease, result.profile, result.quality, self.objects, prefix)
-        )
-        return outputs
+        return StepInput("source", version.content, version.content.sha256)
 
 
-class TableExecutor(CsvExecutor):
+class TableInputResolver:
+    """Input `table`: representación publicada exacta y, si existe, su revisión semántica."""
+
     def __init__(
         self,
         datasets: Datasets,
         executions: Executions,
-        objects: ObjectStore,
-        analyzer: Analyzer,
         projects: ProjectAccess,
         semantics: SemanticService | None = None,
     ) -> None:
-        super().__init__(datasets, executions, objects, analyzer, projects)
-        self.semantics = semantics
+        self.datasets, self.executions = datasets, executions
+        self.projects, self.semantics = projects, semantics
 
-    def prepare(self, lease: Lease) -> PreparedWork:
+    def prepare(self, lease: Lease) -> StepInput:
         run = lease.execution
         assert run.plan and run.input_artifact_id
         version = self.datasets.get(run.owner_id, run.version_id)
@@ -121,28 +92,125 @@ class TableExecutor(CsvExecutor):
                     artifact_sha256=artifact.content.sha256,
                 ),
             )
-        quality_only = not any(
-            step["operation"] == "understanding.profile" for step in run.plan.content["steps"]
+        # Las tablas publicadas conservan "," como separador de procedencia (contrato 0.4/0.5).
+        return StepInput("table", artifact.content, version.content.sha256)
+
+
+class AnalyzerStep:
+    output_kind: ArtifactKind
+
+    def __init__(self, objects: ObjectStore, analyzer: Analyzer) -> None:
+        self.objects, self.analyzer = objects, analyzer
+
+    def require(self, source: StepInput, kind: Literal["source", "table"]) -> None:
+        if source.kind != kind:
+            raise ApplicationError(
+                "INPUT_KIND_MISMATCH", f"La operación requiere una entrada «{kind}».", 409
+            )
+
+    def put(self, lease: Lease, step: PlanStepSpec, name: str, content: bytes) -> StoredObject:
+        prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
+        return self.objects.put(f"{prefix}/{name}", content)
+
+
+class ReadCsvStep(AnalyzerStep):
+    """ingestion.read_csv@1: fuente → tabla."""
+
+    output_kind: ArtifactKind = "table"
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        self.require(source, "source")
+        assert lease.execution.plan
+        parameters = ReadCsvParameters.model_validate(step.parameters)
+        result = self.analyzer.read(
+            self.objects.read(source.content),
+            parameters.separator,
+            lease.execution.plan.config,
+            timeout,
         )
-        return PreparedWork(
-            artifact.content, version.content.sha256, run.plan.config, ",", quality_only
+        if result.source_sha256 != source.source_sha256:
+            raise ApplicationError("INTEGRITY_ERROR", "La salida no corresponde al original.", 409)
+        table = self.put(lease, step, "data.parquet", result.parquet)
+        columns, logical_hash = table_metadata(lease.version_id, result.parquet)
+        output = ArtifactOutput(
+            uuid4(),
+            step.id,
+            "table",
+            "table",
+            table,
+            "application/vnd.apache.parquet",
+            result.row_count,
+            result.column_count,
+            columns,
+            logical_hash,
+        )
+        return StepResult(
+            [output], StepInput("table", table, source.source_sha256, result.separator)
         )
 
-    def compute(self, lease: Lease, work: PreparedWork) -> list[ArtifactOutput]:
-        result = self.analyzer.analyze(
-            self.objects.read(work.reference),
-            work.separator,
-            work.config,
-            work.source_sha256,
-            work.quality_only,
+
+class ProfileStep(AnalyzerStep):
+    """understanding.profile@1: tabla → perfil."""
+
+    output_kind: ArtifactKind = "profile"
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        self.require(source, "table")
+        assert lease.execution.plan
+        ProfileParameters.model_validate(step.parameters)
+        profile = self.analyzer.profile(
+            self.objects.read(source.content),
+            source.separator,
+            source.source_sha256,
+            lease.execution.plan.config,
+            timeout,
         )
-        return diagnostic_outputs(
-            lease,
-            result.profile,
-            result.quality,
-            self.objects,
-            f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}",
+        if profile.source_sha256 != source.source_sha256:
+            raise ApplicationError("INTEGRITY_ERROR", "La salida no corresponde al original.", 409)
+        content = self.put(lease, step, "profile.json", profile.model_dump_json().encode())
+        output = ArtifactOutput(
+            uuid4(),
+            step.id,
+            "profile",
+            "profile",
+            content,
+            "application/json",
+            profile.row_count,
+            profile.column_count,
         )
+        return StepResult([output])
+
+
+class QualityStep(AnalyzerStep):
+    """quality.evaluate@1: tabla → calidad."""
+
+    output_kind: ArtifactKind = "quality"
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        self.require(source, "table")
+        assert lease.execution.plan
+        QualityParameters.model_validate(step.parameters)
+        quality = self.analyzer.quality(
+            self.objects.read(source.content), lease.execution.plan.config, timeout
+        )
+        content = self.put(lease, step, "quality.json", quality.model_dump_json().encode())
+        output = ArtifactOutput(
+            uuid4(),
+            step.id,
+            "quality",
+            "quality",
+            content,
+            "application/json",
+            quality.row_count,
+            quality.cell_count // quality.row_count,
+        )
+        return StepResult([output])
 
 
 def table_metadata(version_id: UUID, content: bytes) -> tuple[list[dict[str, Any]], str]:
@@ -161,41 +229,3 @@ def table_metadata(version_id: UUID, content: bytes) -> tuple[list[dict[str, Any
     return columns, digest(
         "table", {"columns": columns, "rows": [list(row) for row in frame.iter_rows()]}
     )
-
-
-def diagnostic_outputs(
-    lease: Lease, profile: Any, quality: Any, objects: ObjectStore, prefix: str
-) -> list[ArtifactOutput]:
-    outputs = []
-    for kind, value in [("profile", profile), ("quality", quality)]:
-        if value is not None:
-            content = objects.put(f"{prefix}/{kind}.json", value.model_dump_json().encode())
-            rows = profile.row_count if profile else quality.row_count
-            columns = profile.column_count if profile else quality.cell_count // quality.row_count
-            if kind == "profile":
-                outputs.append(
-                    ArtifactOutput(
-                        uuid4(),
-                        "profile",
-                        "profile",
-                        "profile",
-                        content,
-                        "application/json",
-                        rows,
-                        columns,
-                    )
-                )
-            else:
-                outputs.append(
-                    ArtifactOutput(
-                        uuid4(),
-                        "quality",
-                        "quality",
-                        "quality",
-                        content,
-                        "application/json",
-                        rows,
-                        columns,
-                    )
-                )
-    return outputs

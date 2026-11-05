@@ -8,6 +8,7 @@ from sqlalchemy import (
     DateTime,
     ForeignKey,
     Index,
+    Select,
     String,
     UniqueConstraint,
     Uuid,
@@ -26,9 +27,11 @@ from dataflow.modules.executions.contracts import (
     ArtifactOutput,
     Execution,
     Lease,
+    PlanBinding,
     PlanRevision,
     RunKind,
     RunState,
+    UserPlan,
 )
 from dataflow.modules.executions.domain import failure_state
 from dataflow.platform.canonical import digest
@@ -46,6 +49,22 @@ class PlanRecord(Base):
     content_sha256: Mapped[str] = mapped_column(String(64))
     created_by: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id"))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class PlanBindingRecord(Base):
+    """Vínculo 1:1 de un plan de usuario con su proyecto y entrada exacta.
+
+    Tabla aparte para que los planes de sistema y el código 0.5 no dependan de columnas nuevas.
+    """
+
+    __tablename__ = "execution_plan_bindings"
+    plan_revision_id: Mapped[UUID] = mapped_column(
+        ForeignKey("execution_plan_revisions.id"), primary_key=True
+    )
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    input_artifact_id: Mapped[UUID] = mapped_column(ForeignKey("execution_artifacts.id"))
+    input_artifact_sha256: Mapped[str] = mapped_column(String(64))
+    semantic_revision_id: Mapped[UUID | None] = mapped_column(ForeignKey("semantic_revisions.id"))
 
 
 class ExecutionRecord(Base):
@@ -121,25 +140,25 @@ class ArtifactRecord(Base):
     logical_content_sha256: Mapped[str | None] = mapped_column(String(64))
 
 
+def plan_view(plan: PlanRecord) -> PlanRevision:
+    return PlanRevision(
+        plan.id,
+        plan.family_id,
+        plan.revision,
+        deepcopy(plan.content),
+        plan.content_sha256,
+        plan.created_by,
+        plan.created_at,
+    )
+
+
 class SQLExecutionRepository:
     def __init__(self, db: Session, objects: Datasets) -> None:
         self.db, self.objects = db, objects
 
     def view(self, record: ExecutionRecord) -> Execution:
         plan = self.db.get(PlanRecord, record.plan_id) if record.plan_id else None
-        snapshot = (
-            PlanRevision(
-                plan.id,
-                plan.family_id,
-                plan.revision,
-                deepcopy(plan.content),
-                plan.content_sha256,
-                plan.created_by,
-                plan.created_at,
-            )
-            if plan
-            else None
-        )
+        snapshot = plan_view(plan) if plan else None
         return Execution(
             record.id,
             record.project_id,
@@ -218,6 +237,46 @@ class SQLExecutionRepository:
         input_artifact: UUID | None = None,
         input_sha256: str | None = None,
     ) -> Execution:
+        self.add_plan(plan)
+        return self.queue(
+            owner,
+            project,
+            version,
+            kind,
+            key,
+            fingerprint,
+            plan.id,
+            correlation,
+            input_artifact,
+            input_sha256,
+        )
+
+    def enqueue_existing_plan(
+        self,
+        owner: UUID,
+        project: UUID,
+        version: UUID,
+        key: UUID,
+        fingerprint: str,
+        plan: UUID,
+        correlation: str,
+        input_artifact: UUID,
+        input_sha256: str,
+    ) -> Execution:
+        return self.queue(
+            owner,
+            project,
+            version,
+            "plan",
+            key,
+            fingerprint,
+            plan,
+            correlation,
+            input_artifact,
+            input_sha256,
+        )
+
+    def add_plan(self, plan: PlanRevision) -> None:
         self.db.add(
             PlanRecord(
                 id=plan.id,
@@ -230,13 +289,112 @@ class SQLExecutionRepository:
             )
         )
         self.db.flush()
+
+    def save_plan_revision(self, plan: PlanRevision, binding: PlanBinding) -> None:
+        self.add_plan(plan)
+        self.db.add(
+            PlanBindingRecord(
+                plan_revision_id=plan.id,
+                project_id=binding.project_id,
+                input_artifact_id=binding.input_artifact_id,
+                input_artifact_sha256=binding.input_artifact_sha256,
+                semantic_revision_id=binding.semantic_revision_id,
+            )
+        )
+        self.db.flush()
+
+    def user_plans(self, owner: UUID) -> Select[PlanRecord, PlanBindingRecord]:
+        return (
+            select(PlanRecord, PlanBindingRecord)
+            .join(PlanBindingRecord, PlanBindingRecord.plan_revision_id == PlanRecord.id)
+            .where(PlanRecord.created_by == owner)
+        )
+
+    def user_plan(self, plan: PlanRecord, binding: PlanBindingRecord) -> UserPlan:
+        head = self.db.scalar(
+            select(func.max(PlanRecord.revision)).where(PlanRecord.family_id == plan.family_id)
+        )
+        return UserPlan(
+            plan_view(plan),
+            PlanBinding(
+                binding.project_id,
+                binding.input_artifact_id,
+                binding.input_artifact_sha256,
+                binding.semantic_revision_id,
+            ),
+            int(head or plan.revision),
+        )
+
+    def plan_revision(self, owner: UUID, revision: UUID) -> UserPlan:
+        row = self.db.execute(self.user_plans(owner).where(PlanRecord.id == revision)).first()
+        if not row:
+            raise ApplicationError("PLAN_NOT_FOUND", "Plan no encontrado.", 404)
+        return self.user_plan(row[0], row[1])
+
+    def lock_plan_family(self, owner: UUID, family: UUID) -> UserPlan:
+        # Se bloquea siempre la revisión 1 (fila estable de la familia) y después se lee la
+        # cabeza: dos guardados concurrentes se serializan y el segundo ve la cabeza nueva.
+        root = self.db.scalar(
+            self.user_plans(owner)
+            .where(PlanRecord.family_id == family, PlanRecord.revision == 1)
+            .with_for_update(of=PlanRecord)
+        )
+        if not root:
+            raise ApplicationError("PLAN_NOT_FOUND", "Plan no encontrado.", 404)
+        row = self.db.execute(
+            self.user_plans(owner)
+            .where(PlanRecord.family_id == family)
+            .order_by(PlanRecord.revision.desc())
+            .limit(1)
+        ).one()
+        return self.user_plan(row[0], row[1])
+
+    def plans_for_project(
+        self, owner: UUID, project: UUID, limit: int, offset: int
+    ) -> tuple[list[UserPlan], int]:
+        heads = (
+            select(PlanRecord.family_id, func.max(PlanRecord.revision).label("revision"))
+            .join(PlanBindingRecord, PlanBindingRecord.plan_revision_id == PlanRecord.id)
+            .where(PlanRecord.created_by == owner, PlanBindingRecord.project_id == project)
+            .group_by(PlanRecord.family_id)
+            .subquery()
+        )
+        total = int(self.db.scalar(select(func.count()).select_from(heads)) or 0)
+        rows = self.db.execute(
+            self.user_plans(owner)
+            .join(
+                heads,
+                and_(
+                    heads.c.family_id == PlanRecord.family_id,
+                    heads.c.revision == PlanRecord.revision,
+                ),
+            )
+            .order_by(PlanRecord.created_at.desc(), PlanRecord.id)
+            .limit(limit)
+            .offset(offset)
+        ).all()
+        return [self.user_plan(row[0], row[1]) for row in rows], total
+
+    def queue(
+        self,
+        owner: UUID,
+        project: UUID,
+        version: UUID,
+        kind: RunKind,
+        key: UUID,
+        fingerprint: str,
+        plan: UUID,
+        correlation: str,
+        input_artifact: UUID | None,
+        input_sha256: str | None,
+    ) -> Execution:
         now = datetime.now(UTC)
         record = ExecutionRecord(
             id=uuid4(),
             version_id=version,
             project_id=project,
             owner_id=owner,
-            plan_id=plan.id,
+            plan_id=plan,
             kind=kind,
             request_key=key,
             request_fingerprint=fingerprint,

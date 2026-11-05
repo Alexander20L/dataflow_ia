@@ -11,6 +11,7 @@ from dataflow.modules.datasets.infrastructure import (
 from dataflow.modules.executions.infrastructure import (
     ArtifactRecord,
     ExecutionRecord,
+    PlanBindingRecord,
     PlanRecord,
 )
 from dataflow.modules.executions.infrastructure import (
@@ -21,6 +22,10 @@ from dataflow.modules.ingestion.legacy_records import (
     LegacyArtifactRecord,
     LegacyExecutionRecord,
     LegacyVersionRecord,
+)
+from dataflow.modules.planning.infrastructure import (
+    PlanningCreateRequest,
+    PlanningValidationRecord,
 )
 from dataflow.modules.projects.infrastructure import ProjectRecord
 from dataflow.modules.understanding.semantic_repository import (
@@ -44,7 +49,10 @@ __all__ = [
     "ImportBindingRecord",
     "ObjectRecord",
     "ExecutionAttemptRecord",
+    "PlanBindingRecord",
     "PlanRecord",
+    "PlanningCreateRequest",
+    "PlanningValidationRecord",
     "LegacyArtifactRecord",
     "LegacyExecutionRecord",
     "LegacyVersionRecord",

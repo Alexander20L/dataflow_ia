@@ -9,7 +9,6 @@ from pathlib import Path
 
 import polars as pl
 
-from dataflow.modules.ingestion.contracts import Diagnostic
 from dataflow.modules.ingestion.domain import ENGINE_VERSION
 from dataflow.modules.quality.public import evaluate_quality
 from dataflow.modules.understanding.contracts import DatasetProfile
@@ -87,75 +86,95 @@ def parse_csv(
     return headers, rows, separator
 
 
-def process(
+def load_table(
+    source: Path, max_rows: int, max_columns: int
+) -> tuple[list[str], list[list[str | None]]]:
+    frame = pl.read_parquet(source)
+    if frame.height > max_rows or frame.width > max_columns:
+        raise ApplicationError(
+            "TABLE_LIMIT", "La tabla supera los límites fijados en el plan.", 422
+        )
+    if any(dtype != pl.String for dtype in frame.dtypes):
+        raise ApplicationError(
+            "UNSUPPORTED_TABLE_TYPE", "Esta versión del motor sólo perfila texto nullable.", 422
+        )
+    return frame.columns, [list(row) for row in frame.iter_rows()]
+
+
+def read(source: Path, output: Path, separator: str, max_rows: int, max_columns: int) -> None:
+    """ingestion.read_csv@1: CSV original → Parquet de texto nullable."""
+    content = source.read_bytes()
+    headers, rows, actual_separator = parse_csv(content, separator, max_rows, max_columns)
+    frame = pl.DataFrame(rows, schema={name: pl.String for name in headers}, orient="row")
+    frame.write_parquet(output / "data.parquet", compression="zstd", statistics=True)
+    (output / "read.json").write_text(
+        json.dumps(
+            {
+                "separator": actual_separator,
+                "source_sha256": hashlib.sha256(content).hexdigest(),
+                "row_count": len(rows),
+                "column_count": len(headers),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def profile(
     source: Path,
     output: Path,
     separator: str,
+    source_sha256: str,
     max_rows: int,
     max_columns: int,
-    table_source_sha256: str | None = None,
-    quality_only: bool = False,
 ) -> None:
-    content = source.read_bytes()
-    if table_source_sha256 is None:
-        headers, rows, actual_separator = parse_csv(content, separator, max_rows, max_columns)
-        frame = pl.DataFrame(rows, schema={name: pl.String for name in headers}, orient="row")
-        frame.write_parquet(output / "data.parquet", compression="zstd", statistics=True)
-    else:
-        frame = pl.read_parquet(source)
-        if frame.height > max_rows or frame.width > max_columns:
-            raise ApplicationError(
-                "TABLE_LIMIT", "La tabla supera los límites fijados en el plan.", 422
-            )
-        if any(dtype != pl.String for dtype in frame.dtypes):
-            raise ApplicationError(
-                "UNSUPPORTED_TABLE_TYPE", "Esta versión del motor sólo perfila texto nullable.", 422
-            )
-        headers, rows, actual_separator = (
-            frame.columns,
-            [list(row) for row in frame.iter_rows()],
-            separator,
-        )
-    quality = evaluate_quality(headers, rows)
-    (output / "quality.json").write_text(quality.model_dump_json(), encoding="utf-8")
-    if quality_only:
-        return
-    result = Diagnostic(
-        profile=DatasetProfile(
-            engine_version=ENGINE_VERSION,
-            polars_version=pl.__version__,
-            source_sha256=table_source_sha256 or hashlib.sha256(content).hexdigest(),
-            separator=actual_separator,
-            row_count=len(rows),
-            column_count=len(headers),
-            columns=profile_rows(headers, rows),
-        ),
-        quality=quality,
+    """understanding.profile@1 sobre una tabla; separador y hash son procedencia del original."""
+    headers, rows = load_table(source, max_rows, max_columns)
+    result = DatasetProfile(
+        engine_version=ENGINE_VERSION,
+        polars_version=pl.__version__,
+        source_sha256=source_sha256,
+        separator=separator,
+        row_count=len(rows),
+        column_count=len(headers),
+        columns=profile_rows(headers, rows),
     )
-    (output / "profile.json").write_text(result.profile.model_dump_json(), encoding="utf-8")
-    (output / "diagnostic.json").write_text(result.model_dump_json(), encoding="utf-8")
+    (output / "profile.json").write_text(result.model_dump_json(), encoding="utf-8")
+
+
+def quality(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
+    """quality.evaluate@1 sobre una tabla."""
+    headers, rows = load_table(source, max_rows, max_columns)
+    report = evaluate_quality(headers, rows)
+    (output / "quality.json").write_text(report.model_dump_json(), encoding="utf-8")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser()
+    parser.add_argument("--mode", choices=["read", "profile", "quality"], required=True)
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
-    parser.add_argument("--separator", required=True)
     parser.add_argument("--max-rows", type=int, required=True)
     parser.add_argument("--max-columns", type=int, required=True)
-    parser.add_argument("--table-source-sha256")
-    parser.add_argument("--quality-only", action="store_true")
+    parser.add_argument("--separator", default=",")
+    parser.add_argument("--source-sha256")
     args = parser.parse_args()
     try:
-        process(
-            args.input,
-            args.output,
-            args.separator,
-            args.max_rows,
-            args.max_columns,
-            args.table_source_sha256,
-            args.quality_only,
-        )
+        if args.mode == "read":
+            read(args.input, args.output, args.separator, args.max_rows, args.max_columns)
+        elif args.mode == "profile":
+            if not args.source_sha256:
+                raise ApplicationError("PROCESSING_ERROR", "Falta el hash de procedencia.", 422)
+            profile(
+                args.input,
+                args.output,
+                args.separator,
+                args.source_sha256,
+                args.max_rows,
+                args.max_columns,
+            )
+        else:
+            quality(args.input, args.output, args.max_rows, args.max_columns)
     except ApplicationError as exc:
         (args.output / "error.json").write_text(
             json.dumps({"code": exc.code, "message": exc.message}), encoding="utf-8"

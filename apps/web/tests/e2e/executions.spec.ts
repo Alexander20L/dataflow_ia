@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("dos análisis de una tabla conservan el baseline y sus resultados independientes", async ({
+test("dos revisiones de un plan sobre una tabla conservan el baseline y sus resultados independientes", async ({
   page,
 }) => {
   const registered = await page.request.post("/api/v1/auth/register", {
@@ -37,12 +37,22 @@ test("dos análisis de una tabla conservan el baseline y sus resultados independ
   const select = panel.getByLabel("Ejecución", { exact: true });
   await expect(select).not.toHaveValue("");
   const baselineRun = await select.inputValue();
+  // Revisión 1: sólo calidad.
   await panel
-    .getByLabel("Análisis", { exact: true })
-    .selectOption("quality_only");
-  await panel
-    .getByRole("button", { name: "Ejecutar análisis", exact: true })
+    .getByRole("button", { name: "Añadir Evaluar calidad", exact: true })
     .click();
+  await panel
+    .getByRole("button", { name: "Guardar plan", exact: true })
+    .click();
+  const summary = panel.getByRole("region", { name: "Resumen del plan" });
+  await expect(summary.getByTestId("plan-status")).toHaveText(
+    "Válido · listo para ejecutar",
+  );
+  const execute = panel.getByRole("button", {
+    name: "Ejecutar plan",
+    exact: true,
+  });
+  await execute.click();
   await expect(select).not.toHaveValue(baselineRun);
   const qualityRun = await select.inputValue();
   await expect
@@ -60,12 +70,17 @@ test("dos análisis de una tabla conservan el baseline y sus resultados independ
   await expect(
     panel.getByRole("heading", { name: "Calidad de esta ejecución" }),
   ).toBeVisible();
+  // Revisión 2: perfil y calidad, sin alterar la ejecución anterior.
   await panel
-    .getByLabel("Análisis", { exact: true })
-    .selectOption("profile_quality");
-  await panel
-    .getByRole("button", { name: "Ejecutar análisis", exact: true })
+    .getByRole("button", { name: "Añadir Perfil de columnas", exact: true })
     .click();
+  await panel
+    .getByRole("button", { name: "Guardar plan", exact: true })
+    .click();
+  await expect(
+    summary.getByRole("heading", { name: "Revisión 2" }),
+  ).toBeVisible();
+  await execute.click();
   await expect(select).not.toHaveValue(qualityRun);
   const profileRun = await select.inputValue();
   await expect

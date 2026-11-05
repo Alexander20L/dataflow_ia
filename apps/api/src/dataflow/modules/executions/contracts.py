@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataflow.modules.datasets.contracts import StoredObject
 
-RunKind = Literal["csv_import", "table_analysis"]
+RunKind = Literal["csv_import", "table_analysis", "plan"]
 RunState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 ArtifactKind = Literal["table", "profile", "quality", "legacy_diagnostic"]
 
@@ -40,6 +40,23 @@ class PlanRevision:
     @property
     def config(self) -> ProcessingConfig:
         return ProcessingConfig.model_validate(self.content["config"])
+
+
+@dataclass(frozen=True)
+class PlanBinding:
+    """Vínculo de un plan de usuario con su proyecto, tabla exacta y revisión semántica."""
+
+    project_id: UUID
+    input_artifact_id: UUID
+    input_artifact_sha256: str
+    semantic_revision_id: UUID | None
+
+
+@dataclass(frozen=True)
+class UserPlan:
+    revision: PlanRevision
+    binding: PlanBinding
+    head_revision: int
 
 
 @dataclass(frozen=True)
@@ -113,18 +130,120 @@ class Artifact:
     logical_content_sha256: str | None
 
 
+InputKind = Literal["source", "table"]
+
+
 @dataclass(frozen=True)
-class PreparedWork:
-    reference: StoredObject
+class StepInput:
+    """Entrada de un paso: el input fijado del plan o la tabla producida por un paso anterior."""
+
+    kind: InputKind
+    content: StoredObject
+    # Procedencia que conservan los diagnósticos: hash del original y separador efectivo.
     source_sha256: str
-    config: ProcessingConfig
-    separator: str
-    quality_only: bool = False
+    separator: str = ","
 
 
-class Executor(Protocol):
-    def prepare(self, lease: Lease) -> PreparedWork: ...
-    def compute(self, lease: Lease, work: PreparedWork) -> list[ArtifactOutput]: ...
+@dataclass(frozen=True)
+class PlanStepSpec:
+    id: str
+    operation: str
+    version: int
+    input_step: str | None  # None: consume el input del plan.
+    parameters: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class StepResult:
+    outputs: list[ArtifactOutput]
+    table: StepInput | None = None
+
+
+class InputResolver(Protocol):
+    """Verifica autorización y hashes del input fijado; único punto con acceso a metadatos."""
+
+    def prepare(self, lease: Lease) -> StepInput: ...
+
+
+class StepExecutor(Protocol):
+    """Calcula un paso sin acceso a la base de datos dentro de `timeout` segundos."""
+
+    @property
+    def output_kind(self) -> ArtifactKind: ...
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult: ...
+
+
+class StepRegistry(Protocol):
+    def executor(self, operation: str, version: int) -> StepExecutor | None: ...
+
+
+class PlanResponse(BaseModel):
+    schema_version: Literal[1] = 1
+    id: UUID
+    family_id: UUID
+    revision: int
+    previous_revision_id: UUID | None = None
+    content: dict[str, Any]
+    content_sha256: str
+    created_by: UUID
+    created_at: datetime
+
+
+# DTO HTTP compartido por rutas de ejecuciones, ingesta y planificación (sin docstring: cambiaría
+# la descripción del esquema OpenAPI).
+class ExecutionResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    version_id: UUID
+    kind: RunKind
+    state: RunState
+    attempts: int
+    plan: PlanResponse | None
+    input_artifact_id: UUID | None
+    input_artifact_sha256: str | None
+    row_count: int | None
+    column_count: int | None
+    error_code: str | None
+    error_message: str | None
+    reproducibility: Literal["complete", "legacy_partial"]
+    created_at: datetime
+    finished_at: datetime | None
+
+
+def execution_response(run: Execution) -> ExecutionResponse:
+    plan = (
+        PlanResponse(
+            id=run.plan.id,
+            family_id=run.plan.family_id,
+            revision=run.plan.revision,
+            content=run.plan.content,
+            content_sha256=run.plan.content_sha256,
+            created_by=run.plan.created_by,
+            created_at=run.plan.created_at,
+        )
+        if run.plan
+        else None
+    )
+    return ExecutionResponse(
+        id=run.id,
+        project_id=run.project_id,
+        version_id=run.version_id,
+        kind=run.kind,
+        state=run.state,
+        attempts=run.attempts,
+        plan=plan,
+        input_artifact_id=run.input_artifact_id,
+        input_artifact_sha256=run.input_artifact_sha256,
+        row_count=run.row_count,
+        column_count=run.column_count,
+        error_code=run.error_code,
+        error_message=run.error_message,
+        reproducibility=run.reproducibility,
+        created_at=run.created_at,
+        finished_at=run.finished_at,
+    )
 
 
 class PublicationHook(Protocol):
@@ -152,6 +271,24 @@ class ExecutionRepository(Protocol):
         input_artifact: UUID | None = None,
         input_sha256: str | None = None,
     ) -> Execution: ...
+    def enqueue_existing_plan(
+        self,
+        owner: UUID,
+        project: UUID,
+        version: UUID,
+        key: UUID,
+        fingerprint: str,
+        plan: UUID,
+        correlation: str,
+        input_artifact: UUID,
+        input_sha256: str,
+    ) -> Execution: ...
+    def save_plan_revision(self, plan: PlanRevision, binding: PlanBinding) -> None: ...
+    def plan_revision(self, owner: UUID, revision: UUID) -> UserPlan: ...
+    def lock_plan_family(self, owner: UUID, family: UUID) -> UserPlan: ...
+    def plans_for_project(
+        self, owner: UUID, project: UUID, limit: int, offset: int
+    ) -> tuple[list[UserPlan], int]: ...
     def get(self, owner: UUID, execution: UUID) -> Execution: ...
     def for_version(self, owner: UUID, version: UUID) -> list[Execution]: ...
     def representations(self, owner: UUID, version: UUID) -> list[Artifact]: ...

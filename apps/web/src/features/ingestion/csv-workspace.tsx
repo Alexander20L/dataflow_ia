@@ -52,6 +52,8 @@ export function CsvWorkspace({
   const [cancelling, setCancelling] = useState(false);
   const [semanticDirty, setSemanticDirty] = useState(false);
   const [semanticEpoch, setSemanticEpoch] = useState(0);
+  const [planDirty, setPlanDirty] = useState(false);
+  const [planEpoch, setPlanEpoch] = useState(0);
   const [pendingChange, setPendingChange] = useState<{
     kind: "stage" | "version" | "offset" | "upload";
     value?: string | number;
@@ -65,7 +67,9 @@ export function CsvWorkspace({
     } else setUploading(true);
   }
   function requestChange(change: NonNullable<typeof pendingChange>) {
-    if (semanticDirty) setPendingChange(change);
+    // El editor de planes no depende de la etapa: sólo versión/página/carga lo descartan.
+    if (semanticDirty || (planDirty && change.kind !== "stage"))
+      setPendingChange(change);
     else applyChange(change);
   }
   const cancel = useCancelImport(projectId);
@@ -294,9 +298,14 @@ export function CsvWorkspace({
           </div>
           {version.state === "succeeded" && (
             <ExecutionPanel
-              key={version.id}
+              key={`${version.id}-${planEpoch}`}
+              projectId={projectId}
               versionId={version.id}
               archived={archived}
+              onDirtyChange={setPlanDirty}
+              onOpenUnderstanding={() =>
+                requestChange({ kind: "stage", value: 1 })
+              }
             />
           )}
         </>
@@ -318,7 +327,11 @@ export function CsvWorkspace({
       )}
       {pendingChange && (
         <Dialog
-          title="Hay cambios semánticos sin guardar"
+          title={
+            semanticDirty
+              ? "Hay cambios semánticos sin guardar"
+              : "Hay cambios sin guardar en el plan"
+          }
           onClose={() => setPendingChange(null)}
         >
           <p className="dialog-copy">
@@ -331,8 +344,14 @@ export function CsvWorkspace({
             </Button>
             <Button
               onClick={() => {
-                setSemanticDirty(false);
-                setSemanticEpoch((epoch) => epoch + 1);
+                if (semanticDirty) {
+                  setSemanticDirty(false);
+                  setSemanticEpoch((epoch) => epoch + 1);
+                }
+                if (planDirty && pendingChange.kind !== "stage") {
+                  setPlanDirty(false);
+                  setPlanEpoch((epoch) => epoch + 1);
+                }
                 applyChange(pendingChange);
                 setPendingChange(null);
               }}

@@ -14,3 +14,4 @@ apps/api/.pytest_cache
 apps/api/src/*.egg-info
 contracts/analysis/v1/schema.json
 contracts/analysis/v1/examples.json
+apps/api/tests/fixtures

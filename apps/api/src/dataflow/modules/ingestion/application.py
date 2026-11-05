@@ -32,15 +32,30 @@ class AnalysisOutput:
         return Diagnostic(profile=self.profile, quality=self.quality)
 
 
+@dataclass(frozen=True)
+class ReadOutput:
+    parquet: bytes
+    separator: str
+    source_sha256: str
+    row_count: int
+    column_count: int
+
+
 class Analyzer(Protocol):
-    def analyze(
+    """Motor aislado por paso; cada llamada respeta el plazo restante del plan."""
+
+    def read(
+        self, content: bytes, separator: str, config: ProcessingConfig, timeout: float
+    ) -> ReadOutput: ...
+    def profile(
         self,
-        content: bytes,
+        table: bytes,
         separator: str,
-        config: ProcessingConfig | None = None,
-        table_source_sha256: str | None = None,
-        quality_only: bool = False,
-    ) -> AnalysisOutput: ...
+        source_sha256: str,
+        config: ProcessingConfig,
+        timeout: float,
+    ) -> DatasetProfile: ...
+    def quality(self, table: bytes, config: ProcessingConfig, timeout: float) -> QualityReport: ...
 
 
 class PreviewReader(Protocol):

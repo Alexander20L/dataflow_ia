@@ -1,6 +1,6 @@
 # DataFlow AI
 
-Plataforma de análisis de datos supervisado. **API 0.5 / Fase 3:** contexto semántico persistido, revisiones e historial, confirmaciones y contexto fijado a ejecuciones. CSV, originales, perfilado y calidad reales. Limpieza y etapas posteriores continúan como demostración independiente.
+Plataforma de análisis de datos supervisado. **API 0.6 / Fase 4:** planes versionados con operaciones de catálogo, validación con requisitos pendientes y ejecución sobre la tabla exacta. Incluye el contexto semántico de Fase 3 y CSV, originales, perfilado y calidad reales. Limpieza y etapas posteriores continúan como demostración independiente.
 
 ## Ejecutar
 
@@ -57,7 +57,7 @@ apps/api/.venv/Scripts/python.exe apps/api/scripts/prepare_e2e_db.py
 npm run test:e2e
 ```
 
-Playwright requiere una compilación previa (`npm run build`), inicia su propia API en 8001 y frontend en 3100. Usa `dataflow_e2e`, aplica migraciones y no vacía la base del usuario. Para CI o Python fuera de `.venv`: `DATAFLOW_PYTHON`; conexión específica: `DATAFLOW_E2E_DATABASE_URL` (nombre terminado en `_e2e`).
+Playwright requiere una compilación previa (`npm run build`), inicia su propia API en 8001 y frontend en 3100. Las pruebas se ejecutan en serie (`workers: 1` en `playwright.config.ts`): comparten esa API y un único worker de cola, y en paralelo sólo competirían por él y agotarían sus esperas, también en CI. Usa `dataflow_e2e`, aplica migraciones y no vacía la base del usuario. Para CI o Python fuera de `.venv`: `DATAFLOW_PYTHON`; conexión específica: `DATAFLOW_E2E_DATABASE_URL` (nombre terminado en `_e2e`).
 
 ### Actualizar contrato
 
@@ -66,7 +66,7 @@ apps/api/.venv/Scripts/python.exe apps/api/scripts/export_openapi.py
 npm run api:generate
 ```
 
-No editar `contracts/openapi/dataflow.json` ni `packages/api-client/src/schema.ts` manualmente.
+No editar `contracts/openapi/dataflow.json` ni `packages/api-client/src/schema.ts` manualmente. Exportar con Python 3.12 (como CI): desde 3.13 cambian frases HTTP y el contrato difiere.
 
 ## Recorrido
 
@@ -90,9 +90,9 @@ El fixture contiene 240 ventas y 8 importes nulos. Su limpieza demostrativa crea
 
 Las cargas se confirman con metadatos y trabajo en una transacción PostgreSQL. El worker usa leases, fencing, máximo tres intentos y subproceso con timeout. Un intento antiguo o cancelado no publica artefactos. Puedes cerrar el navegador durante el procesamiento.
 
-En cada CSV procesado, **Ejecuciones independientes** permite lanzar perfil/calidad o sólo calidad sobre una representación identificada por su hash. Cada ejecución conserva su plan, resultados e historial. El diagnóstico baseline permanece fijo; ejecutar análisis no crea otra versión del archivo.
+En cada CSV procesado, **Planes y ejecuciones** permite armar un plan con operaciones del catálogo (perfil, calidad), guardarlo como revisión inmutable sobre una tabla identificada por su hash y ejecutarlo. Un plan incompleto muestra qué le falta y no se ejecuta. Cambiar la versión predeterminada no altera la entrada de un plan. Cada ejecución conserva su plan, resultados e historial. El diagnóstico baseline permanece fijo; ejecutar análisis no crea otra versión del archivo. [Documentación Fase 4](docs/architecture/phase-4.md).
 
-En **Entendimiento → Revisión semántica** declara filas, roles, interpretación, claves, unidades/moneda y nulos. Guarda revisiones parciales y consulta su historial. No convierte ni limpia valores. Al ejecutar puedes elegir una revisión exacta o continuar sin contrato para análisis técnicos. [Documentación Fase 3](docs/architecture/phase-3.md).
+En **Entendimiento → Revisión semántica** declara filas, roles, interpretación, claves, unidades/moneda y nulos. Guarda revisiones parciales y consulta su historial. No convierte ni limpia valores. Un plan puede fijar una revisión exacta o continuar sin contrato para análisis técnicos. [Documentación Fase 3](docs/architecture/phase-3.md).
 
 Sólo el tema y la limpieza del ejemplo se conservan en localStorage (`dataflow-ui-v2`). Restablecer la demo no elimina proyectos de la cuenta. El almacenamiento legado `dataflow-demo-v1` se conserva sin importar sus proyectos automáticamente: no se atribuyen datos locales a una cuenta sin una migración explícita.
 
@@ -118,11 +118,13 @@ Consultar `docs/architecture/implementation-plan.md` para fases y verificación 
 
 ### Diseño del siguiente incremento — Fase 1
 
-Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación de datasets/ejecuciones: [Fase 2](docs/architecture/phase-2.md). Revisión semántica persistida: [Fase 3](docs/architecture/phase-3.md). Planificación libre, aprobaciones y derivadas se incorporarán en fases posteriores.
+Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación de datasets/ejecuciones: [Fase 2](docs/architecture/phase-2.md). Revisión semántica persistida: [Fase 3](docs/architecture/phase-3.md). Planes y catálogo de operaciones: [Fase 4](docs/architecture/phase-4.md). Limpieza, aprobaciones y derivadas se incorporarán en fases posteriores.
 
 `npm run contracts:check` verifica sus esquemas, ejemplos y casos negativos sin API ni PostgreSQL. Para regenerar exclusivamente los artefactos de diseño: `npm run contracts:examples`. El contrato HTTP vigente continúa en `contracts/openapi/dataflow.json`.
 
 ## Contenedor y CI
+
+**Actualizar desde 0.5 / esquema 0004:** 0005 es aditiva (tablas nuevas, sin backfill) y no modifica planes ni ejecuciones existentes. Esperar a que terminen los trabajos en curso y desplegar API y worker juntos: un worker 0.5 no reclama ejecuciones `plan`, pero no debe convivir con planes de usuario. Detalles en [Fase 4](docs/architecture/phase-4.md).
 
 **Actualizar desde 0.4 / esquema 0003:** usar el respaldo y ensayo de restauración de [Fase 3](docs/architecture/phase-3.md). 0004 es aditiva, conserva los CSV/resultados existentes y no confirma ni crea contratos semánticos automáticamente.
 

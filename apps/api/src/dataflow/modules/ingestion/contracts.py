@@ -1,3 +1,5 @@
+from typing import Literal
+
 from pydantic import BaseModel, ConfigDict
 
 from dataflow.modules.quality.contracts import QualityReport
@@ -29,3 +31,15 @@ class IngestionSummary(BaseModel):
     processed: int
     pending: int
     failed: int
+
+
+class ReadCsvParameters(BaseModel):
+    """Parámetros de ingestion.read_csv@1, tal como los fija el plan de importación."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    requested_separator: Literal["auto", ",", ";", "\t"] | None = None
+    separator: Literal[",", ";", "\t"]
+    encoding: Literal["utf-8-sig"] = "utf-8-sig"
+    strict: Literal[True] = True
+    empty_cells: Literal["null"] = "null"
+    blank_lines: Literal["skip"] = "skip"
