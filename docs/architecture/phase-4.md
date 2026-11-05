@@ -84,8 +84,8 @@ Las ejecuciones 0.5 (`csv_import`, `table_analysis`) se ejecutan con el mismo ad
 
 Dominio: caso positivo y negativo por código, incluido el requisito semántico que se resuelve al fijar una revisión. Migración 0005 desde datos 0.5 reales (ida y vuelta, `compare_metadata`, inmutabilidad, downgrade bloqueado). Worker: regresión byte a byte, worker sin `plan`, operación desconocida, plazo compartido, registro coherente. Integración: guardar → recargar → ejecutar, cambio de versión predeterminada sin alterar la entrada, problemas, idempotencia, accesos cruzados, CSRF/Origin, archivado, semántica fijada y falsificada, compatibilidad 0.5 y revisiones concurrentes. Navegador: `planning.spec.ts` (plan vacío → `EMPTY_PLAN` → catálogo → corregir → aviso de cambios → guardar → ejecutar → recargar → nueva versión predeterminada → ejecutar sobre la tabla fijada); `executions.spec.ts` y `semantics.spec.ts` ejecutan desde planes guardados.
 
-En equipos con poca CPU, `npm run test:e2e` en paralelo agota las esperas de 20 s también en `main` (el worker atiende las cargas de todas las pruebas). Usar `npx playwright test --workers=1` desde `apps/web`.
+Las pruebas de navegador comparten una API y un único worker de cola: en paralelo agotan las esperas de 20 s, también en `main`. Por eso `playwright.config.ts` fija `workers: 1`.
 
 ### Verificación local — 2026-11-05
 
-Python 3.12.10 (como CI y Docker; con 3.13+ el contrato exportado difiere en dos frases HTTP). Backend: 81 pruebas, Ruff y mypy strict sin errores; `export_openapi.py --check` correcto. Web: typecheck, lint y build correctos. E2E con `--workers=1`: 11/11; `main` en las mismas condiciones: 10/10. Con 3 workers fallan 7/10 de `main` y 8/11 de esta rama por saturación de CPU.
+Python 3.12.10 (como CI y Docker; con 3.13+ el contrato exportado difiere en dos frases HTTP). Backend: 81 pruebas, Ruff y mypy strict sin errores; `export_openapi.py --check` correcto. Web: typecheck, lint y build correctos. E2E en serie: 11/11; `main` en las mismas condiciones: 10/10. Con 3 workers fallan 7/10 de `main` y 8/11 de esta rama por saturación de CPU.

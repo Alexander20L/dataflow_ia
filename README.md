@@ -57,7 +57,7 @@ apps/api/.venv/Scripts/python.exe apps/api/scripts/prepare_e2e_db.py
 npm run test:e2e
 ```
 
-Playwright requiere una compilación previa (`npm run build`), inicia su propia API en 8001 y frontend en 3100. En equipos con poca CPU, ejecutar en serie desde `apps/web`: `npx playwright test --workers=1`. Usa `dataflow_e2e`, aplica migraciones y no vacía la base del usuario. Para CI o Python fuera de `.venv`: `DATAFLOW_PYTHON`; conexión específica: `DATAFLOW_E2E_DATABASE_URL` (nombre terminado en `_e2e`).
+Playwright requiere una compilación previa (`npm run build`), inicia su propia API en 8001 y frontend en 3100. Las pruebas se ejecutan en serie (`workers: 1` en `playwright.config.ts`): comparten esa API y un único worker de cola, y en paralelo sólo competirían por él y agotarían sus esperas, también en CI. Usa `dataflow_e2e`, aplica migraciones y no vacía la base del usuario. Para CI o Python fuera de `.venv`: `DATAFLOW_PYTHON`; conexión específica: `DATAFLOW_E2E_DATABASE_URL` (nombre terminado en `_e2e`).
 
 ### Actualizar contrato
 

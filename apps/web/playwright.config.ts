@@ -18,7 +18,11 @@ if (!new URL(e2eDatabase).pathname.endsWith("_e2e"))
 
 export default defineConfig({
   testDir: "./tests/e2e",
-  fullyParallel: true,
+  // En serie: todas las pruebas comparten una API y un único worker de cola. En paralelo
+  // sólo compiten por él (también en CI, donde Playwright usaría la mitad de los núcleos)
+  // y agotan sus esperas de procesamiento.
+  fullyParallel: false,
+  workers: 1,
   retries: 0,
   reporter: "list",
   use: { baseURL: "http://127.0.0.1:3100", trace: "retain-on-failure" },
