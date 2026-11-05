@@ -1,11 +1,13 @@
 """Registro explícito de modelos exclusivamente en el límite de composición."""
 
 from dataflow.modules.audit.infrastructure import AuditRecord
+from dataflow.modules.cleaning.repository import CleaningApprovalRecord
 from dataflow.modules.datasets.infrastructure import (
     DatasetDefaultRecord,
     DatasetRecord,
     ImportBindingRecord,
     ObjectRecord,
+    VersionLineageRecord,
     VersionRecord,
 )
 from dataflow.modules.executions.infrastructure import (
@@ -37,6 +39,8 @@ from dataflow.platform.runtime import RuntimeTransition
 
 __all__ = [
     "AuditRecord",
+    "CleaningApprovalRecord",
+    "VersionLineageRecord",
     "AttemptRecord",
     "SessionRecord",
     "UserRecord",

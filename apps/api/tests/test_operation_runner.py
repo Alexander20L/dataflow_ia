@@ -19,6 +19,7 @@ from dataflow.bootstrap.services import (
     make_runner,
     processing_config,
 )
+from dataflow.modules.cleaning.engine import IsolatedCleaner
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.executions.application import ExecutionRunner
 from dataflow.modules.executions.contracts import PlanRevision, PlanStepSpec, StepResult
@@ -107,7 +108,7 @@ def test_step_runner_reproduces_single_process_outputs(
     assert published(db, objects, owner, runs["quality_only"]) == expected(
         golden["table_quality_only"]
     )
-    # Adaptador: los planes 0.5 existentes son planes válidos del catálogo analysis-v1.
+    # Adaptador: los planes 0.5 existentes siguen siendo válidos en el catálogo vigente.
     for run in make_executions(db).for_version(owner, UUID(version["id"])):
         assert run.state == "succeeded" and run.plan
         content = run.plan.content
@@ -177,7 +178,7 @@ def test_unknown_operation_fails_without_publishing(
         [
             {
                 "id": "trim",
-                "operation": "cleaning.trim_whitespace",
+                "operation": "cleaning.deduplicate",
                 "version": 1,
                 "input": {"kind": "input", "alias": "source"},
                 "parameters": {},
@@ -221,10 +222,10 @@ def test_steps_share_one_deadline(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_registry_pairs_every_descriptor_with_a_matching_executor(tmp_path: Path) -> None:
     analyzer = IsolatedAnalyzer(tmp_path, 5, 10, 10)
-    registry = make_operations(LocalObjects(tmp_path), analyzer)
+    registry = make_operations(LocalObjects(tmp_path), analyzer, IsolatedCleaner(tmp_path))
     assert [d.key for d in registry.descriptors()] == [d.key for d in DESCRIPTORS]
     assert all(registry.executor(d.name, d.version) for d in DESCRIPTORS)
-    assert registry.executor("cleaning.trim_whitespace", 1) is None
+    assert registry.executor("cleaning.deduplicate", 1) is None
     executors = dict(registry.executors)
     with pytest.raises(ValueError, match="incompleto"):
         OperationRegistry({k: v for k, v in executors.items() if k != "quality.evaluate@1"})

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from dataflow.modules.executions.contracts import (
     Artifact,
+    ArtifactKind,
     ArtifactOutput,
     Execution,
     ExecutionRepository,
@@ -11,6 +12,7 @@ from dataflow.modules.executions.contracts import (
     InputResolver,
     Lease,
     PlanBinding,
+    PlanFinalizer,
     PlanRevision,
     PlanStepSpec,
     PublicationHook,
@@ -74,12 +76,13 @@ class Executions:
         fingerprint: str,
         plan: UserPlan,
         correlation: str,
+        kind: RunKind = "plan",
     ) -> Execution:
         """Encola una revisión de usuario ya guardada; no inserta ni copia el plan."""
         if digest("plan", plan.revision.content) != plan.revision.content_sha256:
             raise ApplicationError("PLAN_HASH_MISMATCH", "El plan no coincide con su hash.", 409)
         _ = plan.revision.config
-        self.ensure_capacity(owner, project, "plan")
+        self.ensure_capacity(owner, project, kind)
         return self.repository.enqueue_existing_plan(
             owner,
             project,
@@ -90,6 +93,37 @@ class Executions:
             correlation,
             plan.binding.input_artifact_id,
             plan.binding.input_artifact_sha256,
+            kind,
+        )
+
+    def enqueue_followup(
+        self,
+        owner: UUID,
+        project: UUID,
+        version: UUID,
+        key: UUID,
+        fingerprint: str,
+        plan: PlanRevision,
+        correlation: str,
+        input_artifact: UUID,
+        input_sha256: str,
+    ) -> Execution:
+        """Análisis de sistema encolado dentro de la publicación de otra ejecución (misma
+        transacción). No aplica el límite de trabajos activos: la ejecución que publica aún
+        cuenta como activa y la publicación no debe fallar por ello."""
+        if digest("plan", plan.content) != plan.content_sha256:
+            raise ApplicationError("PLAN_HASH_MISMATCH", "El plan no coincide con su hash.", 409)
+        return self.repository.enqueue(
+            owner,
+            project,
+            version,
+            "table_analysis",
+            key,
+            fingerprint,
+            plan,
+            correlation,
+            input_artifact,
+            input_sha256,
         )
 
     def save_plan_revision(self, plan: PlanRevision, binding: PlanBinding) -> None:
@@ -158,11 +192,13 @@ class ExecutionRunner:
         operations: StepRegistry,
         publisher: PublicationHook,
         environment: dict[str, Any],
+        finalizers: dict[RunKind, PlanFinalizer] | None = None,
     ) -> None:
         # `kinds` es explícito: un worker sólo reclama tipos de ejecución que sabe atender.
         self.repository, self.uow, self.kinds = repository, uow, kinds
         self.inputs, self.operations = inputs, operations
         self.publisher, self.environment = publisher, environment
+        self.finalizers = finalizers or {}
 
     def run_once(self) -> bool:
         try:
@@ -178,9 +214,29 @@ class ExecutionRunner:
             content = lease.execution.plan.content
             steps = self.resolve(plan_steps(content))
             source = self.inputs[plan_input_kind(content)].prepare(lease)
+            finalizer = self.finalizers.get(lease.execution.kind)
+            if not finalizer and any(executor.transforms_data for _, executor in steps):
+                # Una transformación sólo se ejecuta con vista previa y aprobación.
+                raise ApplicationError(
+                    "APPROVAL_REQUIRED", "La limpieza requiere vista previa y aprobación.", 409
+                )
+            context = finalizer.prepare(lease) if finalizer else None
             self.uow.rollback()  # Cierra la lectura de metadatos antes de los subprocesos.
-            outputs = self.compute(lease, steps, source)
-            self.validate_outputs(steps, outputs)
+            deadline = self.deadline(lease)
+            outputs, final = self.compute(lease, steps, source, deadline)
+            if finalizer:
+                if outputs or final is None:
+                    raise ApplicationError(
+                        "OUTPUT_MANIFEST_INVALID", "La limpieza debe terminar en una tabla.", 409
+                    )
+                outputs = finalizer.finalize(
+                    lease, context, source, final, self.remaining(deadline)
+                )
+                self.validate(finalizer.expected, outputs)
+            else:
+                self.validate_outputs(steps, outputs)
+            # Misma transacción que stage/succeed: si el fencing falla, todo se revierte.
+            self.publisher.prepare(lease, outputs)
             staged = self.repository.stage(lease, outputs)
             if staged is None:
                 self.uow.rollback()
@@ -229,21 +285,37 @@ class ExecutionRunner:
         return resolved
 
     @staticmethod
-    def compute(
-        lease: Lease, steps: list[tuple[PlanStepSpec, StepExecutor]], source: StepInput
-    ) -> list[ArtifactOutput]:
-        # Plazo total compartido: la suma de pasos no supera timeout_seconds, de modo que la
-        # lease (120 s) sigue cubriendo cálculo + margen de publicación.
+    def deadline(lease: Lease) -> float:
+        # Plazo total compartido: la suma de pasos (y del finalizador) no supera
+        # timeout_seconds, de modo que la lease (120 s) cubre cálculo + margen de publicación.
         assert lease.execution.plan
-        deadline = time.monotonic() + lease.execution.plan.config.timeout_seconds
+        return time.monotonic() + lease.execution.plan.config.timeout_seconds
+
+    @staticmethod
+    def remaining(deadline: float) -> float:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise ApplicationError(
+                "PROCESSING_TIMEOUT", "El procesamiento excedió el tiempo permitido.", 422
+            )
+        return remaining
+
+    @classmethod
+    def compute(
+        cls,
+        lease: Lease,
+        steps: list[tuple[PlanStepSpec, StepExecutor]],
+        source: StepInput,
+        deadline: float | None = None,
+    ) -> tuple[list[ArtifactOutput], StepInput | None]:
+        """Ejecuta los pasos en orden; devuelve las salidas publicables y la tabla del último
+        paso (None si el último no produce tabla)."""
+        deadline = cls.deadline(lease) if deadline is None else deadline
         tables: dict[str, StepInput] = {}
         outputs: list[ArtifactOutput] = []
+        final: StepInput | None = None
         for step, executor in steps:
-            remaining = deadline - time.monotonic()
-            if remaining <= 0:
-                raise ApplicationError(
-                    "PROCESSING_TIMEOUT", "El procesamiento excedió el tiempo permitido.", 422
-                )
+            remaining = cls.remaining(deadline)
             if step.input_step is None:
                 step_source = source
             elif step.input_step in tables:
@@ -254,15 +326,21 @@ class ExecutionRunner:
                 )
             result = executor.compute(lease, step, step_source, remaining)
             outputs.extend(result.outputs)
+            final = result.table
             if result.table is not None:
                 tables[step.id] = result.table
-        return outputs
+        return outputs, final
 
     @staticmethod
     def validate_outputs(
         steps: list[tuple[PlanStepSpec, StepExecutor]], outputs: list[ArtifactOutput]
     ) -> None:
-        expected = {(step.id, executor.output_kind) for step, executor in steps}
+        ExecutionRunner.validate(
+            {(step.id, executor.output_kind) for step, executor in steps}, outputs
+        )
+
+    @staticmethod
+    def validate(expected: set[tuple[str, ArtifactKind]], outputs: list[ArtifactOutput]) -> None:
         actual = [(output.step_id, output.slot) for output in outputs]
         if (
             len(actual) != len(set(actual))

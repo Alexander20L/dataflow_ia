@@ -84,16 +84,24 @@ def test_catalog_and_applicable_operations(
 ) -> None:
     _, _, _, table = prepared(client, db, objects)
     catalog = client.get("/api/v1/operations").json()
-    assert catalog["catalog_version"] == "analysis-v1"
+    assert catalog["catalog_version"] == "analysis-v2"
     operations = {op["key"]: op for op in catalog["operations"]}
     assert set(operations) == {
         "ingestion.read_csv@1",
         "understanding.profile@1",
         "quality.evaluate@1",
+        "cleaning.trim_whitespace@1",
+        "cleaning.filter_rows@1",
     }
     assert operations["ingestion.read_csv@1"]["input_kind"] == "source"
     assert operations["quality.evaluate@1"]["output_kind"] == "quality"
-    assert not any(op["transforms_data"] or op["requirements"] for op in operations.values())
+    assert {key for key, op in operations.items() if op["transforms_data"]} == {
+        "cleaning.trim_whitespace@1",
+        "cleaning.filter_rows@1",
+    }
+    assert not any(op["requirements"] for op in operations.values())
+    trim_schema = operations["cleaning.trim_whitespace@1"]["parameters_schema"]
+    assert trim_schema["properties"]["column_ids"]["x-dataflow-column-ref"] is True
     assert operations["understanding.profile@1"]["parameters_schema"]["properties"]["algorithm"]
     applicable = {
         item["key"]: item
@@ -210,7 +218,7 @@ def test_problems_are_reported_not_raised(
             },
             {
                 "id": "trim",
-                "operation": "cleaning.trim_whitespace",
+                "operation": "cleaning.deduplicate",
                 "version": 1,
                 "input": {"kind": "input"},
             },

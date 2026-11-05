@@ -1,10 +1,6 @@
 import io
 import json
-import os
-import subprocess
-import sys
 from pathlib import Path
-from tempfile import TemporaryDirectory
 
 import polars as pl
 
@@ -13,7 +9,7 @@ from dataflow.modules.ingestion.application import AnalysisOutput, ReadOutput
 from dataflow.modules.ingestion.contracts import PreviewPage, PreviewRow
 from dataflow.modules.quality.contracts import WHITESPACE_CHARS, QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
-from dataflow.platform.errors import ApplicationError
+from dataflow.platform.isolation import run_isolated
 
 
 class IsolatedAnalyzer:
@@ -40,49 +36,24 @@ class IsolatedAnalyzer:
         extra: list[str] | None = None,
     ) -> dict[str, bytes]:
         """Un subproceso acotado por paso; `timeout` es lo que queda del plazo del plan."""
-        scratch = self.root / ".work"
-        scratch.mkdir(parents=True, exist_ok=True)
-        with TemporaryDirectory(dir=scratch) as temporary:
-            directory = Path(temporary)
-            source = directory / "input.bin"
-            source.write_bytes(content)
-            try:
-                result = subprocess.run(
-                    [
-                        sys.executable,
-                        "-m",
-                        "dataflow.modules.ingestion.processor",
-                        "--mode",
-                        mode,
-                        "--input",
-                        str(source),
-                        "--output",
-                        str(directory),
-                        "--max-rows",
-                        str(config.max_rows),
-                        "--max-columns",
-                        str(config.max_columns),
-                        *(extra or []),
-                    ],
-                    timeout=min(timeout, config.timeout_seconds),
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    env={**os.environ, "POLARS_MAX_THREADS": "2"},
-                    check=False,
-                )
-            except subprocess.TimeoutExpired as exc:
-                raise ApplicationError(
-                    "PROCESSING_TIMEOUT", "El procesamiento excedió el tiempo permitido.", 422
-                ) from exc
-            if result.returncode:
-                error_path = directory / "error.json"
-                if error_path.exists():
-                    error = json.loads(error_path.read_text(encoding="utf-8"))
-                    raise ApplicationError(str(error["code"]), str(error["message"]), 422)
-                raise ApplicationError(
-                    "PROCESSING_ERROR", "El proceso analítico terminó sin resultado.", 422
-                )
-            return {name: (directory / name).read_bytes() for name in outputs}
+        return run_isolated(
+            self.root,
+            "dataflow.modules.ingestion.processor",
+            {"input.bin": content},
+            [
+                "--mode",
+                mode,
+                "--input",
+                "{dir}/input.bin",
+                "--max-rows",
+                str(config.max_rows),
+                "--max-columns",
+                str(config.max_columns),
+                *(extra or []),
+            ],
+            outputs,
+            min(timeout, config.timeout_seconds),
+        )
 
     def read(
         self, content: bytes, separator: str, config: ProcessingConfig, timeout: float

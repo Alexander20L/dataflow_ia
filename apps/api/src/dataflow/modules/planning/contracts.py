@@ -7,7 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataflow.modules.understanding.public import SemanticReference
 
-CATALOG_VERSION = "analysis-v1"
+CATALOG_VERSION = "analysis-v2"
 MAX_STEPS = 16
 # Marca en el esquema de parámetros: el campo contiene IDs de columna de la tabla fijada.
 COLUMN_REF = "x-dataflow-column-ref"
