@@ -148,6 +148,30 @@ test("limpiar espacios en una columna: vista previa, aprobación y versión deri
   const blocked = await page.request.get(`/api/v1/versions/${v2}/original`);
   expect(blocked.status()).toBe(409);
 
+  // 6. Con más de 20 versiones el origen puede estar en otra página del selector: se simula
+  // quitando v1 del listado (total 21) y «Ver v1» la carga por ID con la API real.
+  const listing = /\/api\/v1\/projects\/[^/]+\/versions(\?|$)/;
+  await page.route(listing, async (route) => {
+    const response = await route.fetch();
+    const body = await response.json();
+    body.items = body.items.filter((v: { id: string }) => v.id !== v1);
+    body.total = 21;
+    await route.fulfill({ response, json: body });
+  });
+  await page.reload();
+  await expect(lineage).toContainText("Estás viendo v2", { timeout: 20000 });
+  await expect(versionSelect.locator(`option[value="${v1}"]`)).toHaveCount(0);
+  await lineage.getByRole("button", { name: "Ver v1" }).click();
+  await expect(versionSelect).toHaveValue(v1);
+  await expect(versionSelect.locator("option:checked")).toContainText(
+    "fuera de esta página",
+  );
+  await expect(lineage).toContainText("Estás viendo v1, importada");
+  await expect(completeness.getByText("96,67 %", { exact: true })).toBeVisible({
+    timeout: 20000,
+  });
+  await page.unroute(listing);
+
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(

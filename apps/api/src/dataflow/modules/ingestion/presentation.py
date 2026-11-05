@@ -120,6 +120,11 @@ def list_versions(
     )
 
 
+@router.get("/versions/{version_id}", response_model=VersionResponse, operation_id="getVersion")
+def get_version(version_id: UUID, identity: CurrentIdentity, service: Ingestion) -> VersionResponse:
+    return VersionResponse.model_validate(service.version(identity.user.id, version_id))
+
+
 @router.get(
     "/versions/{version_id}/diagnostic", response_model=Diagnostic, operation_id="getDiagnostic"
 )

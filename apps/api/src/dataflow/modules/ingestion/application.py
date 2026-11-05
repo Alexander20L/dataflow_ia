@@ -178,17 +178,20 @@ class IngestionService:
     ) -> tuple[list[Version], int]:
         self.projects.require(owner, project)
         versions, total = self.datasets.versions(owner, project, limit, offset)
-        return [
-            legacy_view(
-                version,
-                self.executions.get(owner, self.datasets.binding(owner, version.id).execution_id),
-                lineage.parent_version_id
-                if version.kind == "derived"
-                and (lineage := self.datasets.lineage(owner, version.id))
-                else None,
-            )
-            for version in versions
-        ], total
+        return [self._view(owner, version) for version in versions], total
+
+    def version(self, owner: UUID, version_id: UUID) -> Version:
+        """Una versión por ID, aunque no esté en la página que muestra el selector."""
+        return self._view(owner, self.datasets.get(owner, version_id))
+
+    def _view(self, owner: UUID, version: DatasetVersion) -> Version:
+        return legacy_view(
+            version,
+            self.executions.get(owner, self.datasets.binding(owner, version.id).execution_id),
+            lineage.parent_version_id
+            if version.kind == "derived" and (lineage := self.datasets.lineage(owner, version.id))
+            else None,
+        )
 
     def summary(self, owner: UUID) -> IngestionSummary:
         states = self.executions.counts(owner)

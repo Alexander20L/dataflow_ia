@@ -124,6 +124,10 @@ def test_preview_approve_apply_and_lineage(flow: Flow) -> None:
     v2, v1 = versions
     assert (v2["number"], v2["kind"], v2["parent_version_id"]) == (2, "derived", v1["id"])
     assert (v1["kind"], v1["parent_version_id"]) == ("imported", None)
+    # Una versión por ID devuelve lo mismo que el listado (el selector la carga fuera de página).
+    for item in versions:
+        single = client.get(f"/api/v1/versions/{item['id']}")
+        assert single.status_code == 200 and single.json() == item
     flow.work()  # perfil y calidad de v2
     diagnostic = client.get(f"/api/v1/versions/{v2['id']}/diagnostic").json()
     assert diagnostic["quality"]["completeness_percent"] == 93.33
@@ -224,5 +228,7 @@ def test_cleaning_routes_enforce_ownership_and_csrf(flow: Flow) -> None:
         client.post(f"/api/v1/approvals/{approval['id']}/revoke", headers=intruder),
         client.post(f"/api/v1/approvals/{approval['id']}/apply", headers=intruder),
         client.get(f"/api/v1/versions/{flow.version['id']}/lineage"),
+        client.get(f"/api/v1/versions/{flow.version['id']}"),
+        client.get(f"/api/v1/versions/{uuid4()}"),
     ]:
         assert response.status_code == 404, response.text

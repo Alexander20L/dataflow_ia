@@ -32,6 +32,7 @@ Columnas por ID (validación genérica de Fase 4). NBSP y otros espacios Unicode
 | POST `/api/v1/approvals/{id}/revoke`             | Revoca (cancela la aplicación en cola); 409 si está en curso o ya aplicada                     |
 | POST `/api/v1/approvals/{id}/apply`              | Encola la aplicación; idempotente por aprobación; 409 `APPROVAL_REVOKED`                       |
 | GET `/api/v1/versions/{id}/lineage`              | Versión de origen, ejecución productora, efecto y operaciones                                  |
+| GET `/api/v1/versions/{id}`                      | Una versión por ID (el selector carga así un origen que no está en la página actual)           |
 
 Además: `VersionResponse` añade `kind` y `parent_version_id`; `/versions/{id}/original` de una derivada responde 409 `DERIVED_HAS_NO_ORIGINAL` («Esta versión es derivada; descarga el original de la versión de origen»); `/plans/{id}/executions` rechaza planes que transforman datos (409 `APPROVAL_REQUIRED`). Sesión y propietario en todas las rutas; Origin y CSRF en mutaciones; ajeno: 404. Cambios de contrato aditivos: 6 operaciones nuevas y valores nuevos en `RunKind` (`cleaning_preview`, `cleaning_apply`) y `ArtifactKind` (`effect`, `effect_samples`, `row_lineage`).
 

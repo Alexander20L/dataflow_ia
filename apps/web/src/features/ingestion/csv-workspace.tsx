@@ -25,6 +25,7 @@ import {
   useDiagnostic,
   usePreview,
   useUploadCsv,
+  useVersion,
   useVersions,
   type DatasetVersion,
   type Diagnostic,
@@ -82,13 +83,34 @@ export function CsvWorkspace({
   }
   const cancel = useCancelImport(projectId);
   const items = versions.data?.items ?? [];
-  const version = items.find((v) => v.id === selected) ?? items[0];
-  const parent = version?.parent_version_id
-    ? items.find((v) => v.id === version.parent_version_id)
-    : undefined;
+  // La versión elegida puede no estar en la página cargada (p. ej. «Ver v1» con más de 20
+  // versiones): se carga por ID y se añade al selector.
+  const selectedInPage = items.find((v) => v.id === selected);
+  const outside = useVersion(
+    selected && !selectedInPage && versions.isSuccess ? selected : undefined,
+  );
+  const outsideVersion =
+    outside.data?.id === selected ? outside.data : undefined;
+  const loadingOutside = Boolean(
+    selected && !selectedInPage && versions.isSuccess && outside.isPending,
+  );
+  const version = selectedInPage ?? outsideVersion ?? items[0];
+  const parentId = version?.parent_version_id ?? undefined;
+  const parentInPage = items.find((v) => v.id === parentId);
+  const parentLookup = useVersion(
+    parentId && !parentInPage ? parentId : undefined,
+  );
+  const parent =
+    parentInPage ??
+    (parentLookup.data?.id === parentId ? parentLookup.data : undefined);
+  const options =
+    version && !items.some((v) => v.id === version.id)
+      ? [version, ...items]
+      : items;
   const label = (v: DatasetVersion) => {
     const origin = v.parent_version_id
-      ? items.find((item) => item.id === v.parent_version_id)
+      ? (items.find((item) => item.id === v.parent_version_id) ??
+        (parent?.id === v.parent_version_id ? parent : undefined))
       : undefined;
     return v.kind === "derived"
       ? `v${v.number} · derivada de ${origin ? `v${origin.number}` : "otra versión"}`
@@ -103,7 +125,7 @@ export function CsvWorkspace({
     if (derived) requestChange({ kind: "version", value: derived.id });
   }
   const diagnostic = useDiagnostic(version);
-  if (versions.isPending)
+  if (versions.isPending || loadingOutside)
     return (
       <div className="loading-screen" aria-label="Cargando versiones">
         <div className="skeleton" />
@@ -170,9 +192,10 @@ export function CsvWorkspace({
                 requestChange({ kind: "version", value: e.target.value })
               }
             >
-              {items.map((v) => (
+              {options.map((v) => (
                 <option key={v.id} value={v.id}>
                   {label(v)} · {states[v.state]}
+                  {items.includes(v) ? "" : " · fuera de esta página"}
                 </option>
               ))}
             </select>

@@ -35,6 +35,24 @@ export function useVersions(projectId: string, offset = 0) {
         : false,
   });
 }
+/** Una versión por ID: para seleccionar o nombrar versiones que no están en la página cargada. */
+export function useVersion(versionId?: string) {
+  return useQuery({
+    queryKey: ["version", versionId],
+    enabled: Boolean(versionId),
+    queryFn: async ({ signal }) =>
+      requireData(
+        await api.GET("/api/v1/versions/{version_id}", {
+          signal,
+          params: { path: { version_id: versionId! } },
+        }),
+      ),
+    refetchInterval: (query) =>
+      ["queued", "processing"].includes(query.state.data?.state ?? "")
+        ? 1000
+        : false,
+  });
+}
 export function useUploadCsv(projectId = "") {
   const client = useQueryClient();
   const keys = useRef(new WeakMap<File, Map<Separator, string>>());
