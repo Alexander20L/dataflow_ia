@@ -225,6 +225,11 @@ class ExecutionRunner:
                     "APPROVAL_REQUIRED", "La limpieza requiere vista previa y aprobación.", 409
                 )
             context = finalizer.prepare(lease) if finalizer else None
+            for step, executor in steps:
+                # Un paso puede leer metadatos inmutables (p. ej. reglas) antes del cómputo.
+                prepare = getattr(executor, "prepare", None)
+                if prepare is not None:
+                    prepare(lease, step)
             self.uow.rollback()  # Cierra la lectura de metadatos antes de los subprocesos.
             deadline = self.deadline(lease)
             outputs, final = self.compute(lease, steps, source, deadline)

@@ -1,6 +1,6 @@
 # DataFlow AI
 
-Plataforma de análisis de datos supervisado. **API 0.8 / Fase 6A:** limpieza supervisada de CSV propios con conversiones de tipo (entero, decimal, fecha, booleano), marcadores de nulo, deduplicación, recorte de espacios y exclusión de registros: vista previa sobre todo el dataset, aprobación del efecto exacto y versión derivada con columnas tipadas y diagnóstico nuevo; el original no cambia. Si un valor no convierte, no se publica nada y se listan los valores y el motivo. Incluye los planes versionados de Fase 4, el contexto semántico de Fase 3 y CSV, originales, perfilado y calidad reales. Exploración y etapas posteriores continúan como demostración independiente.
+Plataforma de análisis de datos supervisado. **API 0.9 / Fase 6:** limpieza supervisada de CSV propios con conversiones de tipo (entero, decimal, fecha, booleano), marcadores de nulo, deduplicación, recorte de espacios y exclusión de registros: vista previa sobre todo el dataset, aprobación del efecto exacto y versión derivada con columnas tipadas y diagnóstico nuevo; el original no cambia. Si un valor no convierte, no se publica nada y se listan los valores y el motivo. Además, reglas de calidad configurables (obligatoriedad, clave única, rango, catálogo de valores, formato convertible) que se evalúan aparte de la completitud técnica. Incluye los planes versionados de Fase 4, el contexto semántico de Fase 3 y CSV, originales, perfilado y calidad reales. Exploración y etapas posteriores continúan como demostración independiente.
 
 ## Ejecutar
 
@@ -96,6 +96,8 @@ En la etapa **Limpieza** de un CSV propio, la propuesta se arma desde el diagnó
 
 Desde la Fase 6A la propuesta también convierte tipos con formatos exactos (sin recortar ni aceptar formatos regionales), convierte marcadores como «NA» en nulos y elimina duplicados conservando la primera aparición. Una columna confirmada como identificador en la revisión semántica exige confirmar su conversión a número, y un código con ceros a la izquierda («007») nunca se convierte. [Documentación Fase 6](docs/architecture/phase-6.md).
 
+En **Calidad → Reglas de calidad del proyecto** se definen reglas de negocio por columna (csv-quality-v2), se guardan como revisiones inmutables y se evalúan como un plan: el informe separa la calidad técnica (Q-001 a Q-003, completitud) de las reglas del usuario. Las reglas sirven para la tabla y sus versiones derivadas.
+
 En **Entendimiento → Revisión semántica** declara filas, roles, interpretación, claves, unidades/moneda y nulos. Guarda revisiones parciales y consulta su historial. No convierte ni limpia valores. Un plan puede fijar una revisión exacta o continuar sin contrato para análisis técnicos. [Documentación Fase 3](docs/architecture/phase-3.md).
 
 Sólo el tema y la limpieza del ejemplo se conservan en localStorage (`dataflow-ui-v2`). Restablecer la demo no elimina proyectos de la cuenta. El almacenamiento legado `dataflow-demo-v1` se conserva sin importar sus proyectos automáticamente: no se atribuyen datos locales a una cuenta sin una migración explícita.
@@ -127,6 +129,8 @@ Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación d
 `npm run contracts:check` verifica sus esquemas, ejemplos y casos negativos sin API ni PostgreSQL. Para regenerar exclusivamente los artefactos de diseño: `npm run contracts:examples`. El contrato HTTP vigente continúa en `contracts/openapi/dataflow.json`.
 
 ## Contenedor y CI
+
+**Actualizar desde 0.8 / esquema 0007:** 0008 es aditiva (conjuntos de reglas de calidad, sin backfill). Desplegar API y worker juntos: el catálogo pasa a `analysis-v4` con `quality.evaluate@2`; los diagnósticos existentes no cambian. Detalles en [Fase 6](docs/architecture/phase-6.md).
 
 **Actualizar desde 0.7 / esquema 0006:** 0007 es aditiva (detalle de errores de ejecución, sin backfill). Desplegar API y worker juntos: el catálogo pasa a `analysis-v3`, los planes guardados conservan su versión y su hash, y las versiones, diagnósticos y hashes existentes no cambian. Detalles en [Fase 6](docs/architecture/phase-6.md).
 

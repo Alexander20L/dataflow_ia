@@ -181,7 +181,12 @@ def test_0006_is_additive_and_protects_approvals_and_lineage(
         admin.dispose()
 
 
-LATER_TABLES = {"execution_error_details"}
+LATER_TABLES = {
+    "execution_error_details",
+    "quality_ruleset_families",
+    "quality_ruleset_revisions",
+    "quality_ruleset_save_requests",
+}
 
 
 def exists_at_0006(

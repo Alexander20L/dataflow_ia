@@ -27,6 +27,7 @@ export const problemLabels: Record<Problem["code"], string> = {
   COLUMN_TYPE_MISMATCH: "Tipo de columna incompatible",
   IDENTIFIER_CONVERSION_UNCONFIRMED:
     "Conversión de identificador sin confirmar",
+  QUALITY_RULESET_MISMATCH: "Reglas de calidad no válidas",
 };
 
 /** Clave idempotente estable por contenido: un reintento reutiliza la misma solicitud. */

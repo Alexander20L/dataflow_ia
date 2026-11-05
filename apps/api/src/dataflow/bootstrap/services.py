@@ -6,6 +6,7 @@ from dataflow.bootstrap.cleaning_access import CleaningPlanAccess
 from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry
 from dataflow.bootstrap.planning_access import PlanningTableAccess
 from dataflow.bootstrap.provenance import environment_snapshot
+from dataflow.bootstrap.quality_access import QualityTableAccess
 from dataflow.bootstrap.semantic_access import SemanticRepresentationAccess
 from dataflow.modules.audit.public import record_event
 from dataflow.modules.cleaning.application import CleaningService
@@ -41,8 +42,10 @@ from dataflow.modules.ingestion.analytical import IsolatedAnalyzer, PolarsPrevie
 from dataflow.modules.ingestion.application import AnalysisService, Analyzer, IngestionService
 from dataflow.modules.ingestion.executor import (
     ProfileStep,
+    QualityRulesStep,
     QualityStep,
     ReadCsvStep,
+    RulesetSource,
     SourceInputResolver,
     TableInputResolver,
 )
@@ -50,6 +53,8 @@ from dataflow.modules.ingestion.plans import analysis_fingerprint, build_plan
 from dataflow.modules.planning.application import PlanningService
 from dataflow.modules.planning.infrastructure import SQLPlanningRepository
 from dataflow.modules.projects.public import ProjectPermissions
+from dataflow.modules.quality.application import RulesetService
+from dataflow.modules.quality.infrastructure import SQLRulesetRepository
 from dataflow.modules.understanding.application import SemanticService
 from dataflow.modules.understanding.semantic_repository import SQLSemanticRepository
 from dataflow.platform.config import get_settings
@@ -102,6 +107,14 @@ def make_analysis(db: Session, objects: LocalObjects) -> AnalysisService:
         processing_config(),
         make_semantics(db, objects),
     )
+
+
+def make_rulesets(db: Session, objects: LocalObjects) -> RulesetService:
+    require_ready(db)
+    access = QualityTableAccess(
+        make_datasets(db), make_executions(db), ProjectPermissions(db), objects
+    )
+    return RulesetService(SQLRulesetRepository(db), access, SQLUnitOfWork(db))
 
 
 def make_semantics(db: Session, objects: LocalObjects) -> SemanticService:
@@ -194,13 +207,17 @@ WORKER_KINDS: set[RunKind] = {
 
 
 def make_operations(
-    objects: LocalObjects, analyzer: Analyzer, cleaner: IsolatedCleaner
+    objects: LocalObjects,
+    analyzer: Analyzer,
+    cleaner: IsolatedCleaner,
+    rulesets: RulesetSource | None = None,
 ) -> OperationRegistry:
     return OperationRegistry(
         {
             "ingestion.read_csv@1": ReadCsvStep(objects, analyzer),
             "understanding.profile@1": ProfileStep(objects, analyzer),
             "quality.evaluate@1": QualityStep(objects, analyzer),
+            "quality.evaluate@2": QualityRulesStep(objects, analyzer, rulesets),
             "cleaning.trim_whitespace@1": TrimWhitespaceStep(objects, cleaner),
             "cleaning.filter_rows@1": FilterRowsStep(objects, cleaner),
             "cleaning.normalize_null_tokens@1": NormalizeNullTokensStep(objects, cleaner),
@@ -235,7 +252,7 @@ def make_runner(
                 datasets, executions, projects, make_semantics(db, objects)
             ),
         },
-        make_operations(objects, engine, cleaner),
+        make_operations(objects, engine, cleaner, make_rulesets(db, objects)),
         DatasetPublication(db, datasets, executions, approvals, config),
         environment_snapshot(),
         {
@@ -251,7 +268,11 @@ def make_planning(db: Session, objects: LocalObjects) -> PlanningService:
     return PlanningService(
         executions,
         PlanningTableAccess(
-            datasets, executions, ProjectPermissions(db), make_semantics(db, objects)
+            datasets,
+            executions,
+            ProjectPermissions(db),
+            make_semantics(db, objects),
+            make_rulesets(db, objects),
         ),
         SQLPlanningRepository(db),
         OperationCatalog(),

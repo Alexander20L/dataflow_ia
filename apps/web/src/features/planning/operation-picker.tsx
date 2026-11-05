@@ -4,7 +4,12 @@ import { Button } from "@/components/ui/button";
 import { roles } from "@/features/understanding/api";
 import type { ApplicableOperation, Operation } from "./api";
 
-const outputs = { table: "Tabla", profile: "Perfil", quality: "Calidad" };
+const outputs = {
+  table: "Tabla",
+  profile: "Perfil",
+  quality: "Calidad",
+  quality_rules: "Reglas de calidad",
+};
 
 export function requirementLabel(
   requirement: NonNullable<ApplicableOperation["missing_requirements"]>[number],

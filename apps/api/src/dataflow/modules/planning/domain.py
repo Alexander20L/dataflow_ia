@@ -18,6 +18,7 @@ from dataflow.modules.planning.contracts import (
     PlanStatus,
     PlanStep,
     Problem,
+    ProblemCode,
     Schema,
     SemanticRevisionRequirement,
 )
@@ -229,7 +230,61 @@ def step_parameter_problems(
                     )
     if parameters is not None:
         problems.extend(type_problems(step, descriptor, parameters, facts, schema))
+        problems.extend(ruleset_problems(step, descriptor, parameters, facts, schema))
     return problems, parameters
+
+
+def ruleset_problems(
+    step: PlanStep,
+    descriptor: OperationDescriptor,
+    parameters: BaseModel,
+    facts: PlanningFacts,
+    schema: Schema | None,
+) -> list[Problem]:
+    """La revisión exacta de reglas debe existir, coincidir con su hash y ser aplicable a la
+    tabla que llega al paso (columnas existentes y tipos admitidos)."""
+    if descriptor.ruleset_reference is None:
+        return []
+    id_parameter, sha_parameter = descriptor.ruleset_reference
+    revision = getattr(parameters, id_parameter)
+    requirement = facts.quality_rulesets.get(revision)
+
+    def problem(code: ProblemCode, message: str) -> Problem:
+        return Problem(
+            code=code,
+            message=message,
+            resolve_in="plan_steps",
+            step_id=step.id,
+            parameter=id_parameter,
+        )
+
+    if requirement is None or requirement.content_sha256 != getattr(parameters, sha_parameter):
+        return [
+            problem(
+                "QUALITY_RULESET_MISMATCH",
+                f"La revisión de reglas {revision} no existe, no es accesible o su hash no "
+                "coincide.",
+            )
+        ]
+    known = schema if schema is not None else None
+    problems: list[Problem] = []
+    for column, allowed in requirement.column_types.items():
+        if column not in facts.column_ids:
+            problems.append(
+                problem(
+                    "QUALITY_RULESET_MISMATCH",
+                    f"Una regla usa la columna {column}, que no existe en la tabla fijada.",
+                )
+            )
+        elif known is not None and (actual := known.get(column)) and actual not in allowed:
+            problems.append(
+                problem(
+                    "COLUMN_TYPE_MISMATCH",
+                    f"Las reglas no admiten la columna {column} de tipo «{actual}»; admiten: "
+                    f"{', '.join(sorted(allowed))}.",
+                )
+            )
+    return problems
 
 
 def type_problems(

@@ -1,6 +1,6 @@
 # Fase 6 — Conversiones de tipo y calidad configurable
 
-Se entrega en dos partes: **6A** (API 0.8, esta entrega) añade tipos reales, conversiones, marcadores de nulo y deduplicación al ciclo supervisado de Fase 5; **6B** (API 0.9, pendiente) añadirá reglas de calidad configurables (`csv-quality-v2`). [ADR-016](../adr/016-typed-tables-and-conversions.md).
+Se entrega en dos partes: **6A** (API 0.8) añade tipos reales, conversiones, marcadores de nulo y deduplicación al ciclo supervisado de Fase 5 ([ADR-016](../adr/016-typed-tables-and-conversions.md)); **6B** (API 0.9) añade reglas de calidad configurables por el usuario, `csv-quality-v2` ([ADR-017](../adr/017-configurable-quality-rules.md)).
 
 Es la primera vez que una tabla deja de ser sólo texto. Todo reutiliza el ciclo de Fase 5: propuesta → vista previa sobre todo el dataset → aprobación del efecto exacto → versión derivada. El original y la versión de origen no cambian.
 
@@ -86,10 +86,66 @@ Migración **0007**, sólo aditiva: `execution_error_details` (executions) guard
 - Tipos (`test_tabular_types.py`), validación (`test_planning_domain.py`), ejecutor (`test_cleaning_types_runner.py`: derivada tipada, fallo sin publicación), API (`test_cleaning_api.py`: salvaguarda y segunda línea de defensa), migración 0007.
 - Navegador: `cleaning-cast.spec.ts` — conversión inválida que bloquea la publicación y, corregida, crea v2 tipada; **requisito semántico** de punta a punta (identificador confirmado en Entendimiento → confirmación exigida en Limpieza → `"001"` no convierte). Es el E2E de requisito semántico pendiente desde [Fase 4](phase-4.md), con la salvaguarda de identificadores como primer requisito real.
 
-### Verificación local — 2026-11-05
+### Verificación local de 6A — 2026-11-05
 
 Python 3.12.10. Backend: 244 pruebas, Ruff y mypy strict sin errores, contrato exportado sin diferencias. Web: typecheck, lint, format y build correctos. E2E en serie: 14/14.
 
-## 6B · Pendiente
+## 6B · Reglas de calidad configurables (API 0.9)
 
-Catálogo `csv-quality-v2` (obligatoriedad, unicidad de clave, rango, valores de catálogo, formato convertible) con `origin: technical | user`, conjuntos de reglas por proyecto con revisiones inmutables (migración 0008), `quality.evaluate@2` con referencia exacta a la revisión de reglas como parámetro del paso, API 0.9 y ADR-017.
+### Recorrido
+
+CSV procesado → **Calidad** → «Reglas de calidad del proyecto» → añadir reglas → «Guardar reglas» (revisión inmutable) → «Evaluar reglas» → informe con la calidad técnica y las reglas de negocio por separado. La evaluación crea un plan con `quality.evaluate@2` y una ejecución que queda en **Planes y ejecuciones** con su revisión exacta.
+
+- El formulario sólo ofrece las columnas cuyo tipo admite la regla (p. ej. un rango no aparece sobre texto) y genera el identificador de la regla.
+- «Activar unicidad de la clave declarada» aparece sólo si la revisión semántica tiene la clave confirmada; la regla registra su procedencia (`source: semantic_key` y la revisión exacta).
+- Cambios sin guardar: insignia, aviso al recargar o navegar y confirmación al cambiar de etapa, versión o carga. «Evaluar reglas» exige la revisión guardada.
+- Una versión derivada lista los conjuntos de otras versiones del proyecto e indica si son aplicables; si lo son, se pueden evaluar sobre ella.
+
+### Catálogo `csv-quality-v2`
+
+| Regla            | Parámetros                                             | Columnas admitidas      | Infracción                                                   |
+| ---------------- | ------------------------------------------------------ | ----------------------- | ------------------------------------------------------------ |
+| `required`       | `column_id`                                            | cualquier tipo          | celda nula                                                   |
+| `unique_key`     | `column_ids` (1–16), `source`, `semantic_ref` opcional | cualquier tipo          | clave repetida (desde la segunda aparición) o con algún nulo |
+| `range`          | `column_id`, `minimum` y/o `maximum` (inclusivos)      | entero, decimal, fecha  | valor fuera del rango; los nulos no cuentan                  |
+| `allowed_values` | `column_id`, `values` (1–200, exactos)                 | texto, entero, booleano | cadena canónica fuera del catálogo; los nulos no cuentan     |
+| `convertible`    | `column_id`, `type`, `scale` (sólo decimal)            | texto                   | el texto no cumple la gramática de `cleaning.cast@1`         |
+
+Todas llevan `id` (`^[a-z][a-z0-9_]{0,39}$`, único en el conjunto), `severity` (`low`, `medium`, `high`) y descripción opcional. Hasta 50 reglas por revisión. Los límites de un rango se escriben como decimal con punto o fecha `AAAA-MM-DD` y deben cumplir mínimo ≤ máximo.
+
+### Diagnóstico
+
+`QualityRulesReport` (`rule_version: csv-quality-v2`) cita la revisión exacta (`id`, `revision`, `content_sha256`) y separa:
+
+- `technical`: completitud, celdas vacías, duplicados y celdas de espacios de **csv-quality-v1**, con sus incidencias Q-001 a Q-003 marcadas `origin: technical`. Es idéntico al diagnóstico técnico de la misma tabla.
+- `user`: reglas evaluadas y con incidencias, e incidencias `origin: user` con regla, columnas, registros afectados, gravedad y hasta 5 números de registro.
+
+Ninguna puntuación combina ambos orígenes.
+
+### Conjuntos de reglas
+
+Una familia por tabla base del proyecto, con revisiones inmutables como las semánticas. Las reglas referencian columnas por ID; una versión derivada conserva esos IDs y puede usar las reglas de su origen si los tipos siguen siendo compatibles (tras convertir `importe` a decimal, una regla `convertible` sobre `importe` deja de ser aplicable y un `range` pasa a serlo). Una importación nueva tiene otros IDs; copiar reglas entre importaciones queda pendiente.
+
+### API 0.9
+
+| Ruta                                                         | Función                                                                                   |
+| ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| GET `/api/v1/representations/{id}/quality-rulesets`          | Conjunto anclado a la tabla y los demás del proyecto, con aplicabilidad y problemas       |
+| POST `/api/v1/representations/{id}/quality-rulesets`         | Nueva revisión con `expected_revision` e `Idempotency-Key`; 422 `QUALITY_RULESET_INVALID` |
+| GET `/api/v1/quality-rulesets/{revision_id}`                 | Revisión exacta                                                                           |
+| GET `/api/v1/quality-ruleset-families/{family_id}/revisions` | Historial de revisiones                                                                   |
+| GET `/api/v1/executions/{id}/quality-rules`                  | Informe csv-quality-v2 de una ejecución                                                   |
+
+Sesión y propietario en todas (ajeno: 404); Origin y CSRF en la mutación. Errores: `QUALITY_RULESET_CONFLICT` (409, la cabeza cambió), `IDEMPOTENCY_CONFLICT`, `INPUT_MISMATCH`. Operación nueva `quality.evaluate@2` (`analysis-v4`) con `ruleset_revision_id` y `ruleset_sha256`; problema de validación nuevo `QUALITY_RULESET_MISMATCH`; artefacto y salida `quality_rules`. Cambios aditivos: 21 esquemas y 4 rutas nuevos; ningún esquema ni ruta eliminados.
+
+### Persistencia
+
+Migración **0008**, sólo aditiva: `quality_ruleset_families` (tabla base, cabeza), `quality_ruleset_revisions` y `quality_ruleset_save_requests` (inmutables por trigger). Downgrade bloqueado si hay conjuntos. **Actualizar desde 0.8 / esquema 0007**: desplegar API y worker juntos; un worker anterior no tiene ejecutor para `quality.evaluate@2`.
+
+### Pruebas
+
+Dominio (`test_quality_rules.py`): cada tipo de regla con nulos, tipos y valores canónicos, separación técnica/usuario idéntica a csv-quality-v1, validación contra el esquema e intersección de tipos. Integración (`test_quality_rulesets.py`): revisiones inmutables, conflicto, idempotencia, sin cambios no hay revisión, regla inválida, plan con referencia exacta (hash falsificado o revisión ajena → `QUALITY_RULESET_MISMATCH`), informe v2 de punta a punta, aislamiento por propietario y CSRF, y reglas heredadas por una derivada tipada. Migración 0008. Navegador: `quality-rules.spec.ts` (restricción de tipos en el formulario, aviso de cambios, revisión 1, evaluación con incidencias de usuario y completitud técnica intacta, sin desbordamiento a 390 px).
+
+### Verificación local de 6B — 2026-11-05
+
+Python 3.12.10. Backend: 261 pruebas, Ruff y mypy strict sin errores, contrato exportado sin diferencias. Web: typecheck, lint, format y build correctos. E2E en serie: 15/15.

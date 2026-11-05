@@ -1,5 +1,5 @@
 import io
-from typing import Any, Literal
+from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4, uuid5
 
 import polars as pl
@@ -18,6 +18,12 @@ from dataflow.modules.executions.public import (
 from dataflow.modules.ingestion.application import Analyzer, ProjectAccess
 from dataflow.modules.ingestion.contracts import ReadCsvParameters
 from dataflow.modules.quality.contracts import QualityParameters
+from dataflow.modules.quality.public import (
+    QualityRulesParameters,
+    QualityRulesReport,
+    RulesetReference,
+    RulesetRevision,
+)
 from dataflow.modules.understanding.contracts import ProfileParameters
 from dataflow.modules.understanding.public import SemanticReference, SemanticService, TableReference
 from dataflow.platform.errors import ApplicationError
@@ -212,6 +218,69 @@ class QualityStep(AnalyzerStep):
             "application/json",
             quality.row_count,
             quality.cell_count // quality.row_count,
+        )
+        return StepResult([output])
+
+
+class RulesetSource(Protocol):
+    """Revisiones de reglas (inmutables) del propietario; implementado por quality."""
+
+    def revision(self, owner: UUID, revision: UUID) -> RulesetRevision: ...
+
+
+class QualityRulesStep(AnalyzerStep):
+    """quality.evaluate@2: tabla → informe csv-quality-v2 con la revisión exacta de reglas."""
+
+    output_kind: ArtifactKind = "quality_rules"
+
+    def __init__(
+        self, objects: ObjectStore, analyzer: Analyzer, rulesets: RulesetSource | None
+    ) -> None:
+        super().__init__(objects, analyzer)
+        self.rulesets = rulesets
+        self.prepared: dict[tuple[UUID, str], RulesetRevision] = {}
+
+    def prepare(self, lease: Lease, step: PlanStepSpec) -> None:
+        """Lee la revisión antes de cerrar la transacción de metadatos (no durante el cálculo)."""
+        if self.rulesets is None:
+            raise ApplicationError("UNSUPPORTED_OPERATION", "Reglas no disponibles.", 409)
+        parameters = QualityRulesParameters.model_validate(step.parameters)
+        revision = self.rulesets.revision(lease.owner_id, parameters.ruleset_revision_id)
+        if revision.content_sha256 != parameters.ruleset_sha256:
+            raise ApplicationError(
+                "QUALITY_RULESET_MISMATCH", "La revisión de reglas no coincide con su hash.", 409
+            )
+        self.prepared[(lease.attempt_id, step.id)] = revision
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        self.require(source, "table")
+        assert lease.execution.plan
+        revision = self.prepared.pop((lease.attempt_id, step.id), None)
+        if revision is None:
+            raise ApplicationError("PROCESSING_ERROR", "Las reglas no se prepararon.", 409)
+        report = self.analyzer.quality_rules(
+            self.objects.read(source.content),
+            source.columns or [],
+            [rule.model_dump(mode="json") for rule in revision.content.rules],
+            RulesetReference(
+                id=revision.id, revision=revision.revision, content_sha256=revision.content_sha256
+            ).model_dump(mode="json"),
+            lease.execution.plan.config,
+            timeout,
+        )
+        parsed = QualityRulesReport.model_validate_json(report)
+        content = self.put(lease, step, "quality_rules.json", report)
+        output = ArtifactOutput(
+            uuid4(),
+            step.id,
+            "quality_rules",
+            "quality_rules",
+            content,
+            "application/json",
+            parsed.row_count,
+            len(source.columns or []),
         )
         return StepResult([output])
 

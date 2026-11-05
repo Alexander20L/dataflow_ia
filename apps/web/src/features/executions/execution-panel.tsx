@@ -12,6 +12,8 @@ import {
   useVersionExecutions,
   type Execution,
 } from "./api";
+import { RulesReport } from "@/features/quality/report";
+import { runHasStep, useQualityRulesReport } from "@/features/quality/api";
 
 const labels = {
   queued: "En cola",
@@ -49,7 +51,15 @@ export function ExecutionPanel({
   const cancel = useCancelExecution(versionId);
   const run = runs.data?.find((run) => run.id === selected) ?? runs.data?.[0];
   const detail = useExecution(run);
-  const quality = useExecutionQuality(run);
+  // Sólo se consulta el resultado que el plan produce: csv-quality-v1 o reglas v2.
+  const quality = useExecutionQuality(
+    run,
+    run?.kind !== "plan" || runHasStep(run, "quality.evaluate@1"),
+  );
+  const rules = useQualityRulesReport(
+    run,
+    runHasStep(run, "quality.evaluate@2"),
+  );
   return (
     <section
       className="execution-panel"
@@ -67,7 +77,7 @@ export function ExecutionPanel({
             de la carga.
           </p>
         </div>
-        <span className="badge neutral">Catálogo analysis-v2</span>
+        <span className="badge neutral">Catálogo analysis-v4</span>
       </div>
       <PlanEditor
         projectId={projectId}
@@ -185,6 +195,7 @@ export function ExecutionPanel({
                   )}
                 </div>
               )}
+              {rules.data && <RulesReport report={rules.data} />}
               {quality.isError && (
                 <p className="auth-error" role="alert">
                   {errorMessage(quality.error)}

@@ -47,10 +47,10 @@ export function useExecution(run?: Execution) {
       ),
   });
 }
-export function useExecutionQuality(run?: Execution) {
+export function useExecutionQuality(run?: Execution, enabled = true) {
   return useQuery({
     queryKey: ["execution-quality", run?.id],
-    enabled: run?.state === "succeeded",
+    enabled: enabled && run?.state === "succeeded",
     queryFn: async ({ signal }) =>
       requireData(
         await api.GET("/api/v1/executions/{execution_id}/quality", {

@@ -1,6 +1,6 @@
 import hashlib
 from dataclasses import dataclass
-from typing import Literal, Protocol, cast
+from typing import Any, Literal, Protocol, cast
 from uuid import UUID, uuid4
 
 from dataflow.modules.datasets.public import Datasets, DatasetVersion, ObjectStore
@@ -43,6 +43,16 @@ class ReadOutput:
 
 class Analyzer(Protocol):
     """Motor aislado por paso; cada llamada respeta el plazo restante del plan."""
+
+    def quality_rules(
+        self,
+        table: bytes,
+        columns: list[dict[str, Any]],
+        rules: list[dict[str, Any]],
+        reference: dict[str, Any],
+        config: ProcessingConfig,
+        timeout: float,
+    ) -> bytes: ...
 
     def read(
         self, content: bytes, separator: str, config: ProcessingConfig, timeout: float

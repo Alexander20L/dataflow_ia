@@ -92,11 +92,12 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 4    | 0.6 | `feat/fase-4-planificacion` | planes versionados, catálogo `analysis-v1`, worker por pasos                |
 | 5    | 0.7 | `feat/fase-5-limpieza`      | trim/filter_rows, vista previa, aprobación, derivada; con commits, sin push |
 | 6A   | 0.8 | `feat/fase-6-conversiones`  | tablas tipadas, cast, normalize_null_tokens, deduplicate; migración 0007    |
-| 6B   | 0.9 | `feat/fase-6-conversiones`  | en diseño: csv-quality-v2 y reglas por proyecto (migración 0008, ADR-017)   |
+| 6B   | 0.9 | `feat/fase-6-conversiones`  | csv-quality-v2, conjuntos de reglas, quality.evaluate@2; migración 0008     |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto: no regenerar sus referencias para hacer pasar una prueba.
-Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015); Fase 6B.
+Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015); copiar reglas de calidad
+entre importaciones (ADR-017).
 
 ## Forma de trabajo
 

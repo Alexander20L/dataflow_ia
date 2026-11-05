@@ -1,6 +1,7 @@
 import io
 import json
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -98,6 +99,32 @@ class IsolatedAnalyzer:
     def quality(self, table: bytes, config: ProcessingConfig, timeout: float) -> QualityReport:
         files = self.run("quality", table, config, timeout, ["quality.json"])
         return QualityReport.model_validate_json(files["quality.json"])
+
+    def quality_rules(
+        self,
+        table: bytes,
+        columns: list[dict[str, Any]],
+        rules: list[dict[str, Any]],
+        reference: dict[str, Any],
+        config: ProcessingConfig,
+        timeout: float,
+    ) -> bytes:
+        """quality.evaluate@2: informe csv-quality-v2 (JSON) sobre la tabla completa."""
+        return self.run(
+            "quality_rules",
+            table,
+            config,
+            timeout,
+            ["quality_rules.json"],
+            [
+                "--columns-json",
+                json.dumps(columns, ensure_ascii=False),
+                "--rules-json",
+                json.dumps(rules, ensure_ascii=False),
+                "--reference-json",
+                json.dumps(reference),
+            ],
+        )["quality_rules.json"]
 
     def analyze(
         self,

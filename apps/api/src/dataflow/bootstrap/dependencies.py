@@ -12,6 +12,7 @@ from dataflow.bootstrap.services import (
     make_executions,
     make_ingestion,
     make_planning,
+    make_rulesets,
     make_semantics,
 )
 from dataflow.modules.cleaning.application import CleaningService
@@ -25,6 +26,7 @@ from dataflow.modules.ingestion.application import AnalysisService, IngestionSer
 from dataflow.modules.planning.application import PlanningService
 from dataflow.modules.projects.application import ProjectService
 from dataflow.modules.projects.infrastructure import SQLProjectRepository
+from dataflow.modules.quality.application import RulesetService
 from dataflow.modules.understanding.public import SemanticService
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import get_db
@@ -113,6 +115,13 @@ def semantic_service(db: Db, objects: Objects) -> SemanticService:
 
 
 Semantics = Annotated[SemanticService, Depends(semantic_service)]
+
+
+def ruleset_service(db: Db, objects: Objects) -> RulesetService:
+    return make_rulesets(db, objects)
+
+
+Rulesets = Annotated[RulesetService, Depends(ruleset_service)]
 
 
 def planning_service(db: Db, objects: Objects) -> PlanningService:

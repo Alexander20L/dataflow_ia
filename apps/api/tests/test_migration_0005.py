@@ -186,7 +186,14 @@ def test_0005_is_additive_keeps_05_executions_and_protects_user_plans(
         admin.dispose()
 
 
-LATER_TABLES = {"cleaning_approvals", "dataset_version_lineage", "execution_error_details"}
+LATER_TABLES = {
+    "cleaning_approvals",
+    "dataset_version_lineage",
+    "execution_error_details",
+    "quality_ruleset_families",
+    "quality_ruleset_revisions",
+    "quality_ruleset_save_requests",
+}
 
 
 def exists_at_0005(

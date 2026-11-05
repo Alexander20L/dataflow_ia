@@ -23,6 +23,7 @@ from dataflow.modules.planning.public import (
     OperationDescriptor,
 )
 from dataflow.modules.quality.contracts import QualityParameters
+from dataflow.modules.quality.public import QualityRulesParameters
 from dataflow.modules.understanding.contracts import ProfileParameters
 from dataflow.platform.data_types import NUMERIC
 
@@ -35,6 +36,15 @@ DESCRIPTORS: tuple[OperationDescriptor, ...] = (
     ),
     OperationDescriptor(
         "quality.evaluate", 1, "Evaluar calidad", "table", "quality", QualityParameters
+    ),
+    OperationDescriptor(
+        "quality.evaluate",
+        2,
+        "Evaluar reglas de calidad",
+        "table",
+        "quality_rules",
+        QualityRulesParameters,
+        ruleset_reference=("ruleset_revision_id", "ruleset_sha256"),
     ),
     OperationDescriptor(
         "cleaning.trim_whitespace",

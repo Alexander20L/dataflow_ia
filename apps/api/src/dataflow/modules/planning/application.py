@@ -26,6 +26,7 @@ from dataflow.modules.planning.contracts import (
     PlanStep,
     PlanValidation,
     PlanView,
+    RulesetRequirement,
     SemanticRevisionRequirement,
     SemanticRole,
     TableInput,
@@ -264,7 +265,9 @@ class PlanningService:
         )
         self.executions.save_plan_revision(revision, binding)
         plan = UserPlan(revision, binding, number)
-        self.repository.save_validation(revision.id, self.check(plan, table, roles))
+        self.repository.save_validation(
+            revision.id, self.check(plan, table, roles, self.rulesets(owner, plan))
+        )
         return plan
 
     def content(self, table: PinnedTable, draft: PlanDraft) -> dict[str, Any]:
@@ -311,10 +314,37 @@ class PlanningService:
         table = self.pinned(owner, plan)
         reference = plan.revision.content.get("semantic_ref")
         semantic_ref = SemanticReference.model_validate(reference) if reference else None
-        return self.check(plan, table, self.roles(owner, semantic_ref, table.input))
+        return self.check(
+            plan,
+            table,
+            self.roles(owner, semantic_ref, table.input),
+            self.rulesets(owner, plan),
+        )
+
+    def rulesets(self, owner: UUID, plan: UserPlan) -> dict[UUID, RulesetRequirement]:
+        """Revisiones de reglas citadas por los pasos (resueltas por el puerto; las
+        inexistentes o ajenas se omiten y la validación lo informa)."""
+        result: dict[UUID, RulesetRequirement] = {}
+        for step in plan.revision.content["steps"]:
+            descriptor = self.catalog.descriptor(step["operation"], step["version"])
+            if descriptor is None or descriptor.ruleset_reference is None:
+                continue
+            raw = step.get("parameters", {}).get(descriptor.ruleset_reference[0])
+            try:
+                revision = UUID(str(raw))
+            except ValueError:
+                continue
+            requirement = self.access.quality_ruleset(owner, revision)
+            if requirement is not None:
+                result[revision] = requirement
+        return result
 
     def check(
-        self, plan: UserPlan, table: PinnedTable, roles: dict[UUID, SemanticRole]
+        self,
+        plan: UserPlan,
+        table: PinnedTable,
+        roles: dict[UUID, SemanticRole],
+        rulesets: dict[UUID, RulesetRequirement] | None = None,
     ) -> PlanValidation:
         content = plan.revision.content
         draft = PlanDraft(semantic_ref=content["semantic_ref"], steps=content["steps"])
@@ -324,6 +354,7 @@ class PlanningService:
             semantic_pinned=draft.semantic_ref is not None,
             confirmed_roles=roles,
             column_types=dict(table.column_types),
+            quality_rulesets=rulesets or {},
         )
         problems = validate_plan(draft, self.catalog, facts)
         return PlanValidation(

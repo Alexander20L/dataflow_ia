@@ -9,13 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.data_types import DataType
 
-CATALOG_VERSION = "analysis-v3"
+CATALOG_VERSION = "analysis-v4"
 MAX_STEPS = 16
 # Marca en el esquema de parámetros: el campo contiene IDs de columna de la tabla fijada.
 COLUMN_REF = "x-dataflow-column-ref"
 
 InputKind = Literal["source", "table"]
-OutputKind = Literal["table", "profile", "quality"]
+OutputKind = Literal["table", "profile", "quality", "quality_rules"]
 SemanticRole = Literal["unknown", "identifier", "dimension", "measure", "business_date"]
 ProblemCode = Literal[
     "EMPTY_PLAN",
@@ -29,6 +29,7 @@ ProblemCode = Literal[
     "SEMANTIC_REQUIREMENT_MISSING",
     "COLUMN_TYPE_MISMATCH",
     "IDENTIFIER_CONVERSION_UNCONFIRMED",
+    "QUALITY_RULESET_MISMATCH",
 ]
 ResolveIn = Literal["plan_steps", "plan_input", "understanding"]
 PlanStatus = Literal["incomplete", "valid"]
@@ -73,6 +74,14 @@ class IdentifierConversionGuard:
 
 
 @dataclass(frozen=True)
+class RulesetRequirement:
+    """Revisión de un conjunto de reglas: hash y tipos que exige a cada columna."""
+
+    content_sha256: str
+    column_types: dict[UUID, frozenset[DataType]]
+
+
+@dataclass(frozen=True)
 class OperationDescriptor:
     name: str
     version: int
@@ -85,6 +94,8 @@ class OperationDescriptor:
     column_types: ColumnTypes | None = None
     output_schema: OutputSchema | None = None
     identifier_guard: IdentifierConversionGuard | None = None
+    # (parámetro con el ID de revisión, parámetro con su hash) de un conjunto de reglas.
+    ruleset_reference: tuple[str, str] | None = None
 
     @property
     def key(self) -> str:
@@ -151,6 +162,8 @@ class PlanningFacts:
     confirmed_roles: dict[UUID, SemanticRole] = field(default_factory=dict)
     # Vacío: tipos desconocidos (p. ej. planes de sistema); no se comprueban tipos.
     column_types: dict[UUID, DataType] = field(default_factory=dict)
+    # Revisiones de reglas referenciadas por los pasos que existen y son del propietario.
+    quality_rulesets: dict[UUID, RulesetRequirement] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -212,6 +225,7 @@ class PlanningAccess(Protocol):
         self, owner: UUID, reference: SemanticReference, table: TableInput
     ) -> dict[UUID, SemanticRole]: ...
     def semantic_reference(self, owner: UUID, revision: UUID) -> SemanticReference: ...
+    def quality_ruleset(self, owner: UUID, revision: UUID) -> RulesetRequirement | None: ...
     def lock_owner(self, owner: UUID) -> None: ...
 
 

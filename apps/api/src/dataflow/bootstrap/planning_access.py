@@ -2,8 +2,14 @@ from uuid import UUID
 
 from dataflow.modules.datasets.public import Datasets
 from dataflow.modules.executions.public import Executions
-from dataflow.modules.planning.contracts import PinnedTable, SemanticRole, TableInput
+from dataflow.modules.planning.contracts import (
+    PinnedTable,
+    RulesetRequirement,
+    SemanticRole,
+    TableInput,
+)
 from dataflow.modules.projects.public import ProjectPermissions
+from dataflow.modules.quality.application import RulesetService
 from dataflow.modules.understanding.public import (
     SemanticReference,
     SemanticService,
@@ -21,9 +27,10 @@ class PlanningTableAccess:
         executions: Executions,
         projects: ProjectPermissions,
         semantics: SemanticService,
+        rulesets: RulesetService,
     ) -> None:
         self.datasets, self.executions = datasets, executions
-        self.projects, self.semantics = projects, semantics
+        self.projects, self.semantics, self.rulesets = projects, semantics, rulesets
 
     def table(self, owner: UUID, artifact: UUID) -> PinnedTable:
         table = self.executions.artifact(owner, artifact)
@@ -77,6 +84,15 @@ class PlanningTableAccess:
         value = self.semantics.get(owner, revision)
         return SemanticReference(
             id=value.id, revision=value.revision, content_sha256=value.content_sha256
+        )
+
+    def quality_ruleset(self, owner: UUID, revision: UUID) -> RulesetRequirement | None:
+        facts = self.rulesets.facts(owner, revision)
+        if facts is None:
+            return None
+        return RulesetRequirement(
+            facts.content_sha256,
+            {column: frozenset(types) for column, types in facts.column_types.items()},
         )
 
     def lock_owner(self, owner: UUID) -> None:
