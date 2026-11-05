@@ -55,6 +55,8 @@ export function CsvWorkspace({
   const [semanticEpoch, setSemanticEpoch] = useState(0);
   const [planDirty, setPlanDirty] = useState(false);
   const [planEpoch, setPlanEpoch] = useState(0);
+  const [cleaningDirty, setCleaningDirty] = useState(false);
+  const [cleaningEpoch, setCleaningEpoch] = useState(0);
   const [pendingChange, setPendingChange] = useState<{
     kind: "stage" | "version" | "offset" | "upload";
     value?: string | number;
@@ -69,7 +71,12 @@ export function CsvWorkspace({
   }
   function requestChange(change: NonNullable<typeof pendingChange>) {
     // El editor de planes no depende de la etapa: sólo versión/página/carga lo descartan.
-    if (semanticDirty || (planDirty && change.kind !== "stage"))
+    // Los borradores semántico y de limpieza viven en su etapa: cualquier cambio los descarta.
+    if (
+      semanticDirty ||
+      cleaningDirty ||
+      (planDirty && change.kind !== "stage")
+    )
       setPendingChange(change);
     else applyChange(change);
   }
@@ -359,12 +366,13 @@ export function CsvWorkspace({
                 />
                 {stage === 3 && (
                   <CleaningStage
-                    key={version.id}
+                    key={`${version.id}-${cleaningEpoch}`}
                     projectId={projectId}
                     version={version}
                     diagnostic={diagnostic.data}
                     archived={archived}
                     onShowDerived={(id) => void showDerived(id)}
+                    onDirtyChange={setCleaningDirty}
                   />
                 )}
                 {stage === 1 && (
@@ -413,7 +421,9 @@ export function CsvWorkspace({
           title={
             semanticDirty
               ? "Hay cambios semánticos sin guardar"
-              : "Hay cambios sin guardar en el plan"
+              : cleaningDirty
+                ? "Hay cambios sin guardar en la propuesta de limpieza"
+                : "Hay cambios sin guardar en el plan"
           }
           onClose={() => setPendingChange(null)}
         >
@@ -430,6 +440,10 @@ export function CsvWorkspace({
                 if (semanticDirty) {
                   setSemanticDirty(false);
                   setSemanticEpoch((epoch) => epoch + 1);
+                }
+                if (cleaningDirty) {
+                  setCleaningDirty(false);
+                  setCleaningEpoch((epoch) => epoch + 1);
                 }
                 if (planDirty && pendingChange.kind !== "stage") {
                   setPlanDirty(false);

@@ -1,8 +1,11 @@
 "use client";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import { Eye, LoaderCircle, Pencil, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
+import { useUnsavedGuard } from "@/lib/use-unsaved-guard";
 import { useRepresentations } from "@/features/executions/api";
 import type { DatasetVersion, Diagnostic } from "@/features/ingestion/api";
 import { useCreatePlan, type PlanStep } from "@/features/planning/api";
@@ -58,12 +61,14 @@ export function CleaningStage({
   diagnostic,
   archived,
   onShowDerived,
+  onDirtyChange,
 }: {
   projectId: string;
   version: DatasetVersion;
   diagnostic: Diagnostic;
   archived: boolean;
   onShowDerived: (parentVersionId: string) => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const tables = useRepresentations(version.id);
   const table = tables.data?.[0];
@@ -91,6 +96,7 @@ export function CleaningStage({
       diagnostic={diagnostic}
       archived={archived}
       onShowDerived={onShowDerived}
+      onDirtyChange={onDirtyChange}
     />
   );
 }
@@ -102,6 +108,7 @@ function Proposal({
   diagnostic,
   archived,
   onShowDerived,
+  onDirtyChange,
 }: {
   projectId: string;
   table: { id: string; sha256: string };
@@ -109,6 +116,7 @@ function Proposal({
   diagnostic: Diagnostic;
   archived: boolean;
   onShowDerived: (parentVersionId: string) => void;
+  onDirtyChange: (dirty: boolean) => void;
 }) {
   const suggested = useMemo(
     () => initialDraft(diagnostic, columns),
@@ -117,6 +125,13 @@ function Proposal({
   const [draft, setDraft] = useState<Draft>(suggested);
   const [planId, setPlanId] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);
+  const router = useRouter();
+  // El borrador sólo existe en memoria hasta guardarse como plan: si difiere de la sugerencia
+  // del diagnóstico, salir de la etapa lo perdería y se recalcularía desde el diagnóstico.
+  const dirty = !planId && JSON.stringify(draft) !== JSON.stringify(suggested);
+  useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
+  const [route, setRoute] = useUnsavedGuard(dirty);
   const createPlan = useCreatePlan(projectId);
   const createPreview = useCreatePreview();
   const steps = draftSteps(draft);
@@ -184,6 +199,7 @@ function Proposal({
             efecto exacto; el original y esta versión se conservan.
           </p>
         </div>
+        {dirty && <span className="badge review">Cambios sin guardar</span>}
       </div>
       <div className="table-scroll bordered">
         <table aria-label="Propuesta por columna">
@@ -289,6 +305,28 @@ function Proposal({
           Generar vista previa
         </Button>
       </div>
+      {route && (
+        <Dialog title="Hay cambios sin guardar" onClose={() => setRoute(null)}>
+          <p className="dialog-copy">
+            Puedes seguir editando o descartar esta propuesta para salir. Los
+            datos, los planes guardados y las versiones se conservan.
+          </p>
+          <div className="form-footer">
+            <Button variant="ghost" onClick={() => setRoute(null)}>
+              Seguir editando
+            </Button>
+            <Button
+              onClick={() => {
+                onDirtyChange(false);
+                router.push(route);
+                setRoute(null);
+              }}
+            >
+              Descartar y salir
+            </Button>
+          </div>
+        </Dialog>
+      )}
     </section>
   );
 }

@@ -55,6 +55,20 @@ test("limpiar espacios en una columna: vista previa, aprobación y versión deri
   await expect(trim).toBeChecked();
   // Q-001 también sugiere excluir nulos; este recorrido sólo recorta.
   await stage.getByLabel("Excluir nulos de importe", { exact: true }).uncheck();
+  // El borrador editado no está guardado: salir de la etapa pide confirmación.
+  await expect(stage.getByText("Cambios sin guardar")).toBeVisible();
+  await page
+    .getByRole("navigation", { name: "Etapas del CSV real" })
+    .getByRole("button", { name: "Calidad", exact: false })
+    .click();
+  const unsaved = page.getByRole("dialog", {
+    name: "Hay cambios sin guardar en la propuesta de limpieza",
+  });
+  await unsaved.getByRole("button", { name: "Seguir editando" }).click();
+  await expect(unsaved).toBeHidden();
+  await expect(
+    stage.getByLabel("Excluir nulos de importe", { exact: true }),
+  ).not.toBeChecked();
   await stage
     .getByRole("button", { name: "Generar vista previa", exact: true })
     .click();
