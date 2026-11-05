@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID
 
 from fastapi import APIRouter
@@ -8,6 +8,7 @@ from pydantic import BaseModel
 from dataflow.bootstrap.dependencies import CurrentIdentity, DatasetAccess, ExecutionAccess
 from dataflow.modules.executions.contracts import (
     Artifact,
+    ArtifactKind,
     ExecutionResponse,
     execution_response,
 )
@@ -38,7 +39,7 @@ class ArtifactResponse(BaseModel):
     attempt_id: UUID | None
     step_id: str
     slot: str
-    kind: Literal["table", "profile", "quality", "legacy_diagnostic"]
+    kind: ArtifactKind
     object_id: UUID
     sha256: str
     byte_size: int

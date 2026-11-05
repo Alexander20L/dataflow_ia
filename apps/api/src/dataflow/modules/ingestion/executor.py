@@ -93,11 +93,14 @@ class TableInputResolver:
                 ),
             )
         # Las tablas publicadas conservan "," como separador de procedencia (contrato 0.4/0.5).
-        return StepInput("table", artifact.content, version.content.sha256)
+        return StepInput(
+            "table", artifact.content, version.content.sha256, columns=artifact.columns
+        )
 
 
 class AnalyzerStep:
     output_kind: ArtifactKind
+    transforms_data = False
 
     def __init__(self, objects: ObjectStore, analyzer: Analyzer) -> None:
         self.objects, self.analyzer = objects, analyzer

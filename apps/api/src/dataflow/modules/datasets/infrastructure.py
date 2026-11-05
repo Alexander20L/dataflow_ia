@@ -6,7 +6,12 @@ from uuid import UUID, uuid4
 from sqlalchemy import DateTime, ForeignKey, String, UniqueConstraint, Uuid, func, select
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from dataflow.modules.datasets.contracts import DatasetVersion, ImportBinding, StoredObject
+from dataflow.modules.datasets.contracts import (
+    DatasetVersion,
+    ImportBinding,
+    StoredObject,
+    VersionLineage,
+)
 from dataflow.platform.database import Base
 from dataflow.platform.errors import ApplicationError
 
@@ -40,6 +45,22 @@ class ObjectRecord(Base):
     sha256: Mapped[str] = mapped_column(String(64))
     byte_size: Mapped[int]
     media_type: Mapped[str] = mapped_column(String(100))
+
+
+class VersionLineageRecord(Base):
+    """Vínculo 1:1 de una versión derivada con su versión de origen y la ejecución que la
+    produjo. Tabla aparte para que el código y los datos 0.5/0.6 no dependan de columnas nuevas."""
+
+    __tablename__ = "dataset_version_lineage"
+    version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("dataset_version_records.id"), primary_key=True
+    )
+    parent_version_id: Mapped[UUID] = mapped_column(
+        ForeignKey("dataset_version_records.id"), index=True
+    )
+    producer_execution_id: Mapped[UUID] = mapped_column(
+        ForeignKey("execution_runs.id"), unique=True
+    )
 
 
 class ImportBindingRecord(Base):
@@ -195,7 +216,7 @@ class SQLDatasetRepository:
             .where(
                 DatasetRecord.owner_id == owner_id,
                 DatasetRecord.project_id == project_id,
-                VersionRecord.kind == "imported",
+                VersionRecord.kind.in_(["imported", "derived"]),
             )
         )
         total = int(self.db.scalar(select(func.count()).select_from(query.subquery())) or 0)
@@ -257,3 +278,84 @@ class SQLDatasetRepository:
             current.version_id, current.table_artifact_id = version_id, artifacts["table"]
             current.revision += 1
         self.db.flush()
+
+    def register_derived(
+        self,
+        parent: DatasetVersion,
+        version_id: UUID,
+        producer_execution_id: UUID,
+        content: StoredObject,
+    ) -> DatasetVersion:
+        dataset = self.db.scalar(
+            select(DatasetRecord).where(DatasetRecord.id == parent.dataset_id).with_for_update()
+        )
+        assert dataset is not None
+        number = (
+            int(
+                self.db.scalar(
+                    select(func.max(VersionRecord.number)).where(
+                        VersionRecord.dataset_id == dataset.id
+                    )
+                )
+                or 0
+            )
+            + 1
+        )
+        self.register_object(dataset.owner_id, content, "application/vnd.apache.parquet")
+        record = VersionRecord(
+            id=version_id,
+            dataset_id=dataset.id,
+            number=number,
+            kind="derived",
+            file_name=f"{parent.file_name} · limpieza",
+            content_object_id=content.object_id,
+            created_at=datetime.now(UTC),
+        )
+        self.db.add(record)
+        self.db.flush()
+        self.db.add(
+            VersionLineageRecord(
+                version_id=version_id,
+                parent_version_id=parent.id,
+                producer_execution_id=producer_execution_id,
+            )
+        )
+        self.db.flush()
+        return self.view(record, dataset)
+
+    def bind_derived(self, version_id: UUID, execution_id: UUID, table_artifact_id: UUID) -> None:
+        # Compatibilidad (ADR-015): las derivadas reutilizan el vínculo "baseline" de las
+        # importaciones; su ejecución de referencia es el perfil/calidad encolado al publicar.
+        self.db.add(
+            ImportBindingRecord(
+                version_id=version_id,
+                execution_id=execution_id,
+                table_artifact_id=table_artifact_id,
+            )
+        )
+        self.db.flush()
+
+    def materialize_derived(
+        self, version_id: UUID, execution_id: UUID, artifacts: dict[str, UUID]
+    ) -> bool:
+        """Completa el diagnóstico de una derivada. No modifica la versión predeterminada."""
+        binding = self.db.get(ImportBindingRecord, version_id)
+        if (
+            not binding
+            or binding.execution_id != execution_id
+            or self.db.get(VersionLineageRecord, version_id) is None
+        ):
+            return False
+        binding.profile_artifact_id = artifacts.get("profile")
+        binding.quality_artifact_id = artifacts.get("quality")
+        self.db.flush()
+        return True
+
+    def lineage(self, owner_id: UUID, version_id: UUID) -> VersionLineage | None:
+        self.get(owner_id, version_id)
+        record = self.db.get(VersionLineageRecord, version_id)
+        if not record:
+            return None
+        return VersionLineage(
+            record.version_id, record.parent_version_id, record.producer_execution_id
+        )

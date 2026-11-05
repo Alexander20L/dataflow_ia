@@ -233,7 +233,7 @@ export function Application() {
             respaldado por datos.
           </span>
           <span>
-            <span className="status-dot" /> DataFlow v0.6 · planificación
+            <span className="status-dot" /> DataFlow v0.7 · limpieza supervisada
           </span>
         </footer>
       </div>

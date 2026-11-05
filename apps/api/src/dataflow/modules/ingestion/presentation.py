@@ -37,6 +37,8 @@ class VersionResponse(BaseModel):
     error_code: str | None
     error_message: str | None
     attempts: int
+    kind: Literal["imported", "derived"]
+    parent_version_id: UUID | None
 
 
 class VersionPage(BaseModel):
@@ -116,6 +118,11 @@ def list_versions(
         limit=limit,
         offset=offset,
     )
+
+
+@router.get("/versions/{version_id}", response_model=VersionResponse, operation_id="getVersion")
+def get_version(version_id: UUID, identity: CurrentIdentity, service: Ingestion) -> VersionResponse:
+    return VersionResponse.model_validate(service.version(identity.user.id, version_id))
 
 
 @router.get(

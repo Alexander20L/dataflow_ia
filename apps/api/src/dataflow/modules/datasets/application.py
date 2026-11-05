@@ -5,6 +5,7 @@ from dataflow.modules.datasets.contracts import (
     DatasetVersion,
     ImportBinding,
     StoredObject,
+    VersionLineage,
 )
 
 
@@ -48,3 +49,20 @@ class Datasets:
 
     def materialized(self, version: UUID, execution: UUID, artifacts: dict[str, UUID]) -> None:
         self.repository.materialized(version, execution, artifacts)
+
+    def register_derived(
+        self, parent: DatasetVersion, version: UUID, producer: UUID, content: StoredObject
+    ) -> DatasetVersion:
+        """Versión derivada (Parquet) con su linaje, dentro de la transacción del llamador."""
+        return self.repository.register_derived(parent, version, producer, content)
+
+    def bind_derived(self, version: UUID, execution: UUID, table_artifact: UUID) -> None:
+        self.repository.bind_derived(version, execution, table_artifact)
+
+    def materialize_derived(
+        self, version: UUID, execution: UUID, artifacts: dict[str, UUID]
+    ) -> bool:
+        return self.repository.materialize_derived(version, execution, artifacts)
+
+    def lineage(self, owner: UUID, version: UUID) -> VersionLineage | None:
+        return self.repository.lineage(owner, version)

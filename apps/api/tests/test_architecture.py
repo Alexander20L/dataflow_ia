@@ -79,3 +79,18 @@ def test_planning_does_not_import_operation_implementations() -> None:
     for file in root.rglob("*.py"):
         for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
             assert not module.startswith(forbidden), (file, module)
+
+
+def test_cleaning_compute_path_has_no_database_access() -> None:
+    # El subproceso de limpieza (y lo que importa) no abre conexiones: sólo Polars y contratos.
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "cleaning"
+    forbidden = (
+        "sqlalchemy",
+        "fastapi",
+        "dataflow.bootstrap",
+        "dataflow.platform.database",
+        "dataflow.modules.cleaning.repository",
+    )
+    for name in ["infrastructure.py", "engine.py", "processor.py", "domain.py", "contracts.py"]:
+        for module in imports(ast.parse((root / name).read_text(encoding="utf-8"))):
+            assert not module.startswith(forbidden), (name, module)

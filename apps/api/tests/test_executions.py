@@ -24,7 +24,7 @@ from dataflow.modules.datasets.infrastructure import (
     VersionRecord,
 )
 from dataflow.modules.datasets.objects import LocalObjects
-from dataflow.modules.executions.contracts import Artifact, Lease
+from dataflow.modules.executions.contracts import Artifact, ArtifactOutput, Lease
 from dataflow.modules.executions.infrastructure import (
     ArtifactRecord,
     ExecutionRecord,
@@ -174,6 +174,9 @@ def test_publication_rollback_includes_baseline_and_objects(
     original = runner.publisher
 
     class FailingHook:
+        def prepare(self, lease: Lease, outputs: list[ArtifactOutput]) -> None:
+            original.prepare(lease, outputs)
+
         def published(self, lease: Lease, artifacts: list[Artifact]) -> None:
             original.published(lease, artifacts)
             raise ApplicationError("PUBLICATION_ABORTED", "Publicación rechazada en prueba.", 409)

@@ -73,7 +73,9 @@ class ProjectAccess(Protocol):
     def require(self, owner_id: UUID, project_id: UUID, writable: bool = False) -> None: ...
 
 
-def legacy_view(version: DatasetVersion, run: Execution) -> Version:
+def legacy_view(
+    version: DatasetVersion, run: Execution, parent_version_id: UUID | None = None
+) -> Version:
     return Version(
         version.id,
         version.dataset_id,
@@ -90,6 +92,8 @@ def legacy_view(version: DatasetVersion, run: Execution) -> Version:
         run.error_code,
         run.error_message,
         run.attempts,
+        version.kind,
+        parent_version_id,
     )
 
 
@@ -174,13 +178,20 @@ class IngestionService:
     ) -> tuple[list[Version], int]:
         self.projects.require(owner, project)
         versions, total = self.datasets.versions(owner, project, limit, offset)
-        return [
-            legacy_view(
-                version,
-                self.executions.get(owner, self.datasets.binding(owner, version.id).execution_id),
-            )
-            for version in versions
-        ], total
+        return [self._view(owner, version) for version in versions], total
+
+    def version(self, owner: UUID, version_id: UUID) -> Version:
+        """Una versión por ID, aunque no esté en la página que muestra el selector."""
+        return self._view(owner, self.datasets.get(owner, version_id))
+
+    def _view(self, owner: UUID, version: DatasetVersion) -> Version:
+        return legacy_view(
+            version,
+            self.executions.get(owner, self.datasets.binding(owner, version.id).execution_id),
+            lineage.parent_version_id
+            if version.kind == "derived" and (lineage := self.datasets.lineage(owner, version.id))
+            else None,
+        )
 
     def summary(self, owner: UUID) -> IngestionSummary:
         states = self.executions.counts(owner)
@@ -252,6 +263,12 @@ class IngestionService:
 
     def original(self, owner: UUID, version_id: UUID) -> tuple[str, bytes]:
         version = self.datasets.get(owner, version_id)
+        if version.kind == "derived":
+            raise ApplicationError(
+                "DERIVED_HAS_NO_ORIGINAL",
+                "Esta versión es derivada; descarga el original de la versión de origen.",
+                409,
+            )
         return version.file_name, self.objects.read(version.content)
 
     def cancel(self, owner: UUID, execution_id: UUID) -> Version:

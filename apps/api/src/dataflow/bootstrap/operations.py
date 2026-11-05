@@ -2,13 +2,15 @@
 
 from collections.abc import Mapping
 
+from dataflow.modules.cleaning.public import FilterRowsParameters, TrimWhitespaceParameters
 from dataflow.modules.executions.public import StepExecutor
 from dataflow.modules.ingestion.contracts import ReadCsvParameters
 from dataflow.modules.planning.public import CATALOG_VERSION, OperationDescriptor
 from dataflow.modules.quality.contracts import QualityParameters
 from dataflow.modules.understanding.contracts import ProfileParameters
 
-# Fase 4: sólo operaciones con ejecutor real; ninguna exige revisión semántica (Fase 3).
+# Sólo operaciones con ejecutor real; ninguna exige revisión semántica (Fase 3). Las de
+# limpieza transforman datos: se ejecutan con vista previa y aprobación, nunca como "plan".
 DESCRIPTORS: tuple[OperationDescriptor, ...] = (
     OperationDescriptor("ingestion.read_csv", 1, "Leer CSV", "source", "table", ReadCsvParameters),
     OperationDescriptor(
@@ -16,6 +18,24 @@ DESCRIPTORS: tuple[OperationDescriptor, ...] = (
     ),
     OperationDescriptor(
         "quality.evaluate", 1, "Evaluar calidad", "table", "quality", QualityParameters
+    ),
+    OperationDescriptor(
+        "cleaning.trim_whitespace",
+        1,
+        "Recortar espacios",
+        "table",
+        "table",
+        TrimWhitespaceParameters,
+        transforms_data=True,
+    ),
+    OperationDescriptor(
+        "cleaning.filter_rows",
+        1,
+        "Excluir registros",
+        "table",
+        "table",
+        FilterRowsParameters,
+        transforms_data=True,
     ),
 )
 

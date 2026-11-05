@@ -177,6 +177,7 @@ class SQLExecutionRepository:
             cast(Literal["complete", "legacy_partial"], record.reproducibility),
             record.created_at,
             record.finished_at,
+            record.request_key,
         )
 
     def find_request(
@@ -262,12 +263,13 @@ class SQLExecutionRepository:
         correlation: str,
         input_artifact: UUID,
         input_sha256: str,
+        kind: RunKind = "plan",
     ) -> Execution:
         return self.queue(
             owner,
             project,
             version,
-            "plan",
+            kind,
             key,
             fingerprint,
             plan,
@@ -660,7 +662,7 @@ class SQLExecutionRepository:
             self.objects.register_object(record.owner_id, output.content, output.media_type)
             artifact = ArtifactRecord(
                 id=output.id,
-                version_id=record.version_id,
+                version_id=output.version_id or record.version_id,
                 execution_id=record.id,
                 attempt_id=lease.attempt_id,
                 step_id=output.step_id,

@@ -19,11 +19,13 @@ import { steps } from "@/lib/demo";
 import { useApp } from "@/lib/providers";
 import { ExecutionPanel } from "@/features/executions/execution-panel";
 import { SemanticUnderstanding } from "@/features/understanding/semantic-editor";
+import { CleaningStage } from "@/features/cleaning/proposal";
 import {
   useCancelImport,
   useDiagnostic,
   usePreview,
   useUploadCsv,
+  useVersion,
   useVersions,
   type DatasetVersion,
   type Diagnostic,
@@ -54,6 +56,8 @@ export function CsvWorkspace({
   const [semanticEpoch, setSemanticEpoch] = useState(0);
   const [planDirty, setPlanDirty] = useState(false);
   const [planEpoch, setPlanEpoch] = useState(0);
+  const [cleaningDirty, setCleaningDirty] = useState(false);
+  const [cleaningEpoch, setCleaningEpoch] = useState(0);
   const [pendingChange, setPendingChange] = useState<{
     kind: "stage" | "version" | "offset" | "upload";
     value?: string | number;
@@ -68,15 +72,60 @@ export function CsvWorkspace({
   }
   function requestChange(change: NonNullable<typeof pendingChange>) {
     // El editor de planes no depende de la etapa: sólo versión/página/carga lo descartan.
-    if (semanticDirty || (planDirty && change.kind !== "stage"))
+    // Los borradores semántico y de limpieza viven en su etapa: cualquier cambio los descarta.
+    if (
+      semanticDirty ||
+      cleaningDirty ||
+      (planDirty && change.kind !== "stage")
+    )
       setPendingChange(change);
     else applyChange(change);
   }
   const cancel = useCancelImport(projectId);
   const items = versions.data?.items ?? [];
-  const version = items.find((v) => v.id === selected) ?? items[0];
+  // La versión elegida puede no estar en la página cargada (p. ej. «Ver v1» con más de 20
+  // versiones): se carga por ID y se añade al selector.
+  const selectedInPage = items.find((v) => v.id === selected);
+  const outside = useVersion(
+    selected && !selectedInPage && versions.isSuccess ? selected : undefined,
+  );
+  const outsideVersion =
+    outside.data?.id === selected ? outside.data : undefined;
+  const loadingOutside = Boolean(
+    selected && !selectedInPage && versions.isSuccess && outside.isPending,
+  );
+  const version = selectedInPage ?? outsideVersion ?? items[0];
+  const parentId = version?.parent_version_id ?? undefined;
+  const parentInPage = items.find((v) => v.id === parentId);
+  const parentLookup = useVersion(
+    parentId && !parentInPage ? parentId : undefined,
+  );
+  const parent =
+    parentInPage ??
+    (parentLookup.data?.id === parentId ? parentLookup.data : undefined);
+  const options =
+    version && !items.some((v) => v.id === version.id)
+      ? [version, ...items]
+      : items;
+  const label = (v: DatasetVersion) => {
+    const origin = v.parent_version_id
+      ? (items.find((item) => item.id === v.parent_version_id) ??
+        (parent?.id === v.parent_version_id ? parent : undefined))
+      : undefined;
+    return v.kind === "derived"
+      ? `v${v.number} · derivada de ${origin ? `v${origin.number}` : "otra versión"}`
+      : `v${v.number} · ${v.file_name}`;
+  };
+  async function showDerived(parentVersionId: string) {
+    // La derivada aparece al terminar la aplicación: se recarga el listado antes de elegirla.
+    const latest = (await versions.refetch()).data?.items ?? items;
+    const derived = latest
+      .filter((v) => v.parent_version_id === parentVersionId)
+      .sort((a, b) => b.number - a.number)[0];
+    if (derived) requestChange({ kind: "version", value: derived.id });
+  }
   const diagnostic = useDiagnostic(version);
-  if (versions.isPending)
+  if (versions.isPending || loadingOutside)
     return (
       <div className="loading-screen" aria-label="Cargando versiones">
         <div className="skeleton" />
@@ -143,9 +192,10 @@ export function CsvWorkspace({
                 requestChange({ kind: "version", value: e.target.value })
               }
             >
-              {items.map((v) => (
+              {options.map((v) => (
                 <option key={v.id} value={v.id}>
-                  v{v.number} · {v.file_name} · {states[v.state]}
+                  {label(v)} · {states[v.state]}
+                  {items.includes(v) ? "" : " · fuera de esta página"}
                 </option>
               ))}
             </select>
@@ -154,13 +204,25 @@ export function CsvWorkspace({
             >
               {states[version.state]}
             </span>
-            <a
-              className="btn btn-outline btn-sm"
-              href={`/api/v1/versions/${version.id}/original`}
-            >
-              <Download size={14} />
-              Descargar original
-            </a>
+            {version.kind === "derived" && version.parent_version_id ? (
+              <a
+                className="btn btn-outline btn-sm"
+                href={`/api/v1/versions/${version.parent_version_id}/original`}
+                title="Una versión derivada no tiene original propio."
+              >
+                <Download size={14} />
+                Descargar original de{" "}
+                {parent ? `v${parent.number}` : "la versión de origen"}
+              </a>
+            ) : (
+              <a
+                className="btn btn-outline btn-sm"
+                href={`/api/v1/versions/${version.id}/original`}
+              >
+                <Download size={14} />
+                Descargar original
+              </a>
+            )}
             {(versions.data?.total ?? 0) > 20 && (
               <div className="pagination">
                 <Button
@@ -186,8 +248,49 @@ export function CsvWorkspace({
               </div>
             )}
           </div>
+          <div
+            className={`version-lineage ${version.kind === "derived" ? "derived" : ""}`}
+            role="status"
+            aria-label="Versión que estás viendo"
+          >
+            <GitBranch size={14} />
+            {version.kind === "derived" ? (
+              <>
+                <span>
+                  Estás viendo <strong>v{version.number}</strong>, versión{" "}
+                  <strong>derivada</strong> por limpieza de{" "}
+                  <strong>
+                    {parent ? `v${parent.number}` : "una versión anterior"}
+                  </strong>
+                  . No es la versión predeterminada.
+                </span>
+                {version.parent_version_id && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() =>
+                      requestChange({
+                        kind: "version",
+                        value: version.parent_version_id!,
+                      })
+                    }
+                  >
+                    Ver {parent ? `v${parent.number}` : "versión de origen"}
+                  </Button>
+                )}
+              </>
+            ) : (
+              <span>
+                Estás viendo <strong>v{version.number}</strong>, importada desde{" "}
+                {version.file_name}.
+              </span>
+            )}
+          </div>
           <div className="original-meta">
-            <span>{number(version.byte_size)} bytes</span>
+            <span>
+              {number(version.byte_size)} bytes
+              {version.kind === "derived" ? " · Parquet" : ""}
+            </span>
             <span className="mono" title={version.sha256}>
               SHA-256 {version.sha256}
             </span>
@@ -197,9 +300,9 @@ export function CsvWorkspace({
               <button
                 key={step}
                 className={`step ${stage === i ? "current" : ""}`}
-                disabled={i > 2}
+                disabled={i > 3}
                 title={
-                  i > 2 ? "Se integrará en el siguiente incremento" : undefined
+                  i > 3 ? "Se integrará en el siguiente incremento" : undefined
                 }
                 onClick={() => {
                   if (i !== stage) requestChange({ kind: "stage", value: i });
@@ -284,6 +387,17 @@ export function CsvWorkspace({
                   diagnostic={diagnostic.data}
                   stage={stage}
                 />
+                {stage === 3 && (
+                  <CleaningStage
+                    key={`${version.id}-${cleaningEpoch}`}
+                    projectId={projectId}
+                    version={version}
+                    diagnostic={diagnostic.data}
+                    archived={archived}
+                    onShowDerived={(id) => void showDerived(id)}
+                    onDirtyChange={setCleaningDirty}
+                  />
+                )}
                 {stage === 1 && (
                   <SemanticUnderstanding
                     key={`${version.id}-${semanticEpoch}`}
@@ -330,7 +444,9 @@ export function CsvWorkspace({
           title={
             semanticDirty
               ? "Hay cambios semánticos sin guardar"
-              : "Hay cambios sin guardar en el plan"
+              : cleaningDirty
+                ? "Hay cambios sin guardar en la propuesta de limpieza"
+                : "Hay cambios sin guardar en el plan"
           }
           onClose={() => setPendingChange(null)}
         >
@@ -347,6 +463,10 @@ export function CsvWorkspace({
                 if (semanticDirty) {
                   setSemanticDirty(false);
                   setSemanticEpoch((epoch) => epoch + 1);
+                }
+                if (cleaningDirty) {
+                  setCleaningDirty(false);
+                  setCleaningEpoch((epoch) => epoch + 1);
                 }
                 if (planDirty && pendingChange.kind !== "stage") {
                   setPlanDirty(false);

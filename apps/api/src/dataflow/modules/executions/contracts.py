@@ -7,14 +7,18 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataflow.modules.datasets.contracts import StoredObject
 
-RunKind = Literal["csv_import", "table_analysis", "plan"]
+RunKind = Literal["csv_import", "table_analysis", "plan", "cleaning_preview", "cleaning_apply"]
 RunState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
-ArtifactKind = Literal["table", "profile", "quality", "legacy_diagnostic"]
+ArtifactKind = Literal[
+    "table", "profile", "quality", "legacy_diagnostic", "effect", "effect_samples", "row_lineage"
+]
 
 
 class ProcessingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    operation_catalog: Literal["analysis-v1"] = "analysis-v1"
+    # analysis-v1: Fase 4 (lectura, perfil, calidad); analysis-v2: añade cleaning.* (Fase 5).
+    # Los planes guardados conservan el valor con el que se crearon (y su hash).
+    operation_catalog: Literal["analysis-v1", "analysis-v2"] = "analysis-v2"
     rule_catalog: Literal["csv-quality-v1"] = "csv-quality-v1"
     max_rows: int = Field(ge=1, le=100000)
     max_columns: int = Field(ge=1, le=128)
@@ -78,6 +82,8 @@ class Execution:
     reproducibility: Literal["complete", "legacy_partial"]
     created_at: datetime
     finished_at: datetime | None
+    # Clave idempotente de la solicitud; en cleaning_apply identifica la aprobación aplicada.
+    request_key: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -112,6 +118,8 @@ class ArtifactOutput:
     column_count: int
     columns: list[dict[str, Any]] | None = None
     logical_content_sha256: str | None = None
+    # Versión a la que pertenece el artefacto; por defecto, la de la ejecución (su entrada).
+    version_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -142,6 +150,9 @@ class StepInput:
     # Procedencia que conservan los diagnósticos: hash del original y separador efectivo.
     source_sha256: str
     separator: str = ","
+    # Esquema publicado (IDs de columna) y si la tabla lleva la columna interna de linaje.
+    columns: list[dict[str, Any]] | None = None
+    lineage: bool = False
 
 
 @dataclass(frozen=True)
@@ -170,6 +181,8 @@ class StepExecutor(Protocol):
 
     @property
     def output_kind(self) -> ArtifactKind: ...
+    @property
+    def transforms_data(self) -> bool: ...
     def compute(
         self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
     ) -> StepResult: ...
@@ -177,6 +190,18 @@ class StepExecutor(Protocol):
 
 class StepRegistry(Protocol):
     def executor(self, operation: str, version: int) -> StepExecutor | None: ...
+
+
+class PlanFinalizer(Protocol):
+    """Salidas de un tipo de ejecución que no se publican paso a paso (limpieza: efecto y tabla
+    final). `prepare` se ejecuta con acceso a metadatos; `finalize`, sin base de datos."""
+
+    @property
+    def expected(self) -> set[tuple[str, ArtifactKind]]: ...
+    def prepare(self, lease: Lease) -> Any: ...
+    def finalize(
+        self, lease: Lease, context: Any, source: StepInput, final: StepInput, timeout: float
+    ) -> list[ArtifactOutput]: ...
 
 
 class PlanResponse(BaseModel):
@@ -247,6 +272,7 @@ def execution_response(run: Execution) -> ExecutionResponse:
 
 
 class PublicationHook(Protocol):
+    def prepare(self, lease: Lease, outputs: list[ArtifactOutput]) -> None: ...
     def published(self, lease: Lease, artifacts: list[Artifact]) -> None: ...
 
 
@@ -282,6 +308,7 @@ class ExecutionRepository(Protocol):
         correlation: str,
         input_artifact: UUID,
         input_sha256: str,
+        kind: RunKind = "plan",
     ) -> Execution: ...
     def save_plan_revision(self, plan: PlanRevision, binding: PlanBinding) -> None: ...
     def plan_revision(self, owner: UUID, revision: UUID) -> UserPlan: ...
