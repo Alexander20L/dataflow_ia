@@ -121,6 +121,18 @@ class AttemptRecord(Base):
     error_message: Mapped[str | None] = mapped_column(String(300))
 
 
+class ErrorDetailRecord(Base):
+    """Detalle estructurado de un intento fallido (p. ej. valores que no convierten). Uno por
+    intento, inmutable. Executions no interpreta su contenido."""
+
+    __tablename__ = "execution_error_details"
+    attempt_id: Mapped[UUID] = mapped_column(ForeignKey("execution_attempts.id"), primary_key=True)
+    execution_id: Mapped[UUID] = mapped_column(ForeignKey("execution_runs.id"), index=True)
+    code: Mapped[str] = mapped_column(String(80))
+    details: Mapped[dict[str, Any]] = mapped_column(JSON)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class ArtifactRecord(Base):
     __tablename__ = "execution_artifacts"
     __table_args__ = (
@@ -493,6 +505,16 @@ class SQLExecutionRepository:
             )
         ]
 
+    def error_details(self, owner: UUID, execution: UUID) -> tuple[str, dict[str, Any]] | None:
+        self.get(owner, execution)  # propietario o 404
+        row = self.db.scalars(
+            select(ErrorDetailRecord)
+            .where(ErrorDetailRecord.execution_id == execution)
+            .order_by(ErrorDetailRecord.created_at.desc())
+            .limit(1)
+        ).first()
+        return (row.code, row.details) if row else None
+
     def attempts(self, owner: UUID, execution: UUID) -> list[dict[str, Any]]:
         self.get(owner, execution)
         return [
@@ -701,13 +723,30 @@ class SQLExecutionRepository:
         self.db.flush()
         return True
 
-    def fail(self, lease: Lease, code: str, message: str, retryable: bool) -> None:
+    def fail(
+        self,
+        lease: Lease,
+        code: str,
+        message: str,
+        retryable: bool,
+        details: dict[str, Any] | None = None,
+    ) -> None:
         current = self.current(lease)
         if not current:
             return
         record, attempt = current
         assert lease.execution.plan
         now = datetime.now(UTC)
+        if details is not None:
+            self.db.add(
+                ErrorDetailRecord(
+                    attempt_id=attempt.id,
+                    execution_id=record.id,
+                    code=code,
+                    details=details,
+                    created_at=now,
+                )
+            )
         attempt.state, attempt.finished_at, attempt.lease_until = "failed", now, None
         attempt.error_code, attempt.error_message = code, message[:300]
         record.state = failure_state(

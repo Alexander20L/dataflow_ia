@@ -172,6 +172,10 @@ class Executions:
     def attempts(self, owner: UUID, execution: UUID) -> list[dict[str, Any]]:
         return self.repository.attempts(owner, execution)
 
+    def error_details(self, owner: UUID, execution: UUID) -> tuple[str, dict[str, Any]] | None:
+        """Detalle estructurado del último intento fallido, si el paso lo aportó."""
+        return self.repository.error_details(owner, execution)
+
     def cancel(self, owner: UUID, execution: UUID) -> Execution:
         try:
             result = self.repository.cancel(owner, execution)
@@ -248,8 +252,9 @@ class ExecutionRunner:
             self.uow.commit()
         except Exception as exc:
             self.uow.rollback()
+            details = None
             if isinstance(exc, ApplicationError):
-                code, message = exc.code, exc.message
+                code, message, details = exc.code, exc.message, exc.details
                 retryable = code in {"PROCESSING_TIMEOUT", "PROCESSING_ERROR"}
             elif isinstance(exc, OSError):
                 code, message, retryable = (
@@ -264,7 +269,7 @@ class ExecutionRunner:
                     True,
                 )
             try:
-                self.repository.fail(lease, code, message, retryable)
+                self.repository.fail(lease, code, message, retryable, details)
                 self.uow.commit()
             except Exception:
                 self.uow.rollback()

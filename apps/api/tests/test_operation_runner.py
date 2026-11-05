@@ -178,7 +178,7 @@ def test_unknown_operation_fails_without_publishing(
         [
             {
                 "id": "trim",
-                "operation": "cleaning.deduplicate",
+                "operation": "cleaning.impute",
                 "version": 1,
                 "input": {"kind": "input", "alias": "source"},
                 "parameters": {},
@@ -225,7 +225,7 @@ def test_registry_pairs_every_descriptor_with_a_matching_executor(tmp_path: Path
     registry = make_operations(LocalObjects(tmp_path), analyzer, IsolatedCleaner(tmp_path))
     assert [d.key for d in registry.descriptors()] == [d.key for d in DESCRIPTORS]
     assert all(registry.executor(d.name, d.version) for d in DESCRIPTORS)
-    assert registry.executor("cleaning.deduplicate", 1) is None
+    assert registry.executor("cleaning.impute", 1) is None
     executors = dict(registry.executors)
     with pytest.raises(ValueError, match="incompleto"):
         OperationRegistry({k: v for k, v in executors.items() if k != "quality.evaluate@1"})

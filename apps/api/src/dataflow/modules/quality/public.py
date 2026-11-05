@@ -1,16 +1,28 @@
+from collections.abc import Sequence
+from typing import Any
+
 from dataflow.modules.quality.contracts import WHITESPACE_CHARS, QualityIssue, QualityReport
 
 
-def evaluate_quality(headers: list[str], rows: list[list[str | None]]) -> QualityReport:
+def evaluate_quality(
+    headers: list[str], rows: Sequence[Sequence[Any]], types: Sequence[str] | None = None
+) -> QualityReport:
+    """csv-quality-v1. Q-003 (sólo espacios) se evalúa únicamente en columnas de texto: una
+    columna tipada no puede contener espacios. Sin tipos, todas las columnas son texto."""
     issues: list[QualityIssue] = []
     missing = whitespace = 0
     for index, name in enumerate(headers):
+        text = types is None or types[index] == "string"
         null_rows = [i + 1 for i, row in enumerate(rows) if row[index] is None]
-        space_rows = [
-            i + 1
-            for i, row in enumerate(rows)
-            if (value := row[index]) is not None and not value.strip(WHITESPACE_CHARS)
-        ]
+        space_rows = (
+            [
+                i + 1
+                for i, row in enumerate(rows)
+                if (value := row[index]) is not None and not value.strip(WHITESPACE_CHARS)
+            ]
+            if text
+            else []
+        )
         missing += len(null_rows)
         whitespace += len(space_rows)
         for rule, affected, description, action in [

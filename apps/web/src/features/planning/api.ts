@@ -24,6 +24,9 @@ export const problemLabels: Record<Problem["code"], string> = {
   INVALID_PARAMETERS: "Parámetros incompletos",
   UNKNOWN_COLUMN: "Columna inexistente",
   SEMANTIC_REQUIREMENT_MISSING: "Requisito semántico pendiente",
+  COLUMN_TYPE_MISMATCH: "Tipo de columna incompatible",
+  IDENTIFIER_CONVERSION_UNCONFIRMED:
+    "Conversión de identificador sin confirmar",
 };
 
 /** Clave idempotente estable por contenido: un reintento reutiliza la misma solicitud. */

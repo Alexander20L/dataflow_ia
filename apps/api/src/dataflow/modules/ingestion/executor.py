@@ -20,8 +20,8 @@ from dataflow.modules.ingestion.contracts import ReadCsvParameters
 from dataflow.modules.quality.contracts import QualityParameters
 from dataflow.modules.understanding.contracts import ProfileParameters
 from dataflow.modules.understanding.public import SemanticReference, SemanticService, TableReference
-from dataflow.platform.canonical import digest
 from dataflow.platform.errors import ApplicationError
+from dataflow.platform.tabular import frame_types, table_logical_sha256
 
 
 class SourceInputResolver:
@@ -223,12 +223,12 @@ def table_metadata(version_id: UUID, content: bytes) -> tuple[list[dict[str, Any
             "id": str(uuid5(version_id, f"{index}/{name}")),
             "name": name,
             "ordinal": index,
-            "technical_type": "string",
-            "type_parameters": {},
+            "technical_type": data_type,
+            "type_parameters": parameters,
             "nullable": True,
         }
-        for index, name in enumerate(frame.columns)
+        for index, (name, (data_type, parameters)) in enumerate(
+            zip(frame.columns, frame_types(frame), strict=True)
+        )
     ]
-    return columns, digest(
-        "table", {"columns": columns, "rows": [list(row) for row in frame.iter_rows()]}
-    )
+    return columns, table_logical_sha256(columns, frame)

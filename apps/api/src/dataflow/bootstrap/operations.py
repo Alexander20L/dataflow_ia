@@ -2,12 +2,29 @@
 
 from collections.abc import Mapping
 
-from dataflow.modules.cleaning.public import FilterRowsParameters, TrimWhitespaceParameters
+from dataflow.modules.cleaning.public import (
+    CastParameters,
+    DeduplicateParameters,
+    FilterRowsParameters,
+    NormalizeNullTokensParameters,
+    TrimWhitespaceParameters,
+    cast_column_types,
+    cast_output_schema,
+    deduplicate_column_types,
+    filter_column_types,
+    tokens_column_types,
+    trim_column_types,
+)
 from dataflow.modules.executions.public import StepExecutor
 from dataflow.modules.ingestion.contracts import ReadCsvParameters
-from dataflow.modules.planning.public import CATALOG_VERSION, OperationDescriptor
+from dataflow.modules.planning.public import (
+    CATALOG_VERSION,
+    IdentifierConversionGuard,
+    OperationDescriptor,
+)
 from dataflow.modules.quality.contracts import QualityParameters
 from dataflow.modules.understanding.contracts import ProfileParameters
+from dataflow.platform.data_types import NUMERIC
 
 # Sólo operaciones con ejecutor real; ninguna exige revisión semántica (Fase 3). Las de
 # limpieza transforman datos: se ejecutan con vista previa y aprobación, nunca como "plan".
@@ -27,6 +44,7 @@ DESCRIPTORS: tuple[OperationDescriptor, ...] = (
         "table",
         TrimWhitespaceParameters,
         transforms_data=True,
+        column_types=trim_column_types,
     ),
     OperationDescriptor(
         "cleaning.filter_rows",
@@ -36,6 +54,41 @@ DESCRIPTORS: tuple[OperationDescriptor, ...] = (
         "table",
         FilterRowsParameters,
         transforms_data=True,
+        column_types=filter_column_types,
+    ),
+    OperationDescriptor(
+        "cleaning.normalize_null_tokens",
+        1,
+        "Convertir marcadores en nulos",
+        "table",
+        "table",
+        NormalizeNullTokensParameters,
+        transforms_data=True,
+        column_types=tokens_column_types,
+    ),
+    OperationDescriptor(
+        "cleaning.cast",
+        1,
+        "Convertir tipo",
+        "table",
+        "table",
+        CastParameters,
+        transforms_data=True,
+        column_types=cast_column_types,
+        output_schema=cast_output_schema,
+        identifier_guard=IdentifierConversionGuard(
+            "column_id", "type", "confirm_identifier_conversion", NUMERIC
+        ),
+    ),
+    OperationDescriptor(
+        "cleaning.deduplicate",
+        1,
+        "Eliminar duplicados",
+        "table",
+        "table",
+        DeduplicateParameters,
+        transforms_data=True,
+        column_types=deduplicate_column_types,
     ),
 )
 

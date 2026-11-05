@@ -942,9 +942,9 @@ export interface components {
             /**
              * Technical Type
              * @default string
-             * @constant
+             * @enum {string}
              */
-            technical_type: "string";
+            technical_type: "string" | "integer" | "decimal" | "date" | "boolean";
             /** Unique Count */
             unique_count: number;
         };
@@ -1094,6 +1094,11 @@ export interface components {
             plan: {
                 [key: string]: unknown;
             };
+            /**
+             * Rounded Cells
+             * @default 0
+             */
+            rounded_cells: number;
             /** Row Lineage Sha256 */
             row_lineage_sha256: string;
             /**
@@ -1259,6 +1264,24 @@ export interface components {
              * Format: uuid
              */
             version_id: string;
+        };
+        /**
+         * FailureSample
+         * @description Un valor que impide completar la limpieza (política estricta).
+         */
+        FailureSample: {
+            /** Column */
+            column: string;
+            /** Column Id */
+            column_id: string;
+            /** Message */
+            message: string;
+            /** Reason */
+            reason: string;
+            /** Source Row */
+            source_row: number;
+            /** Value */
+            value: string | null;
         };
         /** GrainDefinition */
         GrainDefinition: {
@@ -1586,6 +1609,18 @@ export interface components {
             steps: components["schemas"]["PlanStep"][];
             validation: components["schemas"]["PlanValidation"];
         };
+        /**
+         * PreviewFailure
+         * @description Detalle de una vista previa fallida: conteo total exacto y hasta 50 casos.
+         */
+        PreviewFailure: {
+            /** Code */
+            code: string;
+            /** Samples */
+            samples: components["schemas"]["FailureSample"][];
+            /** Total */
+            total: number;
+        };
         /** PreviewPage */
         PreviewPage: {
             /** Columns */
@@ -1623,6 +1658,7 @@ export interface components {
              * Format: uuid
              */
             execution_id: string;
+            failure?: components["schemas"]["PreviewFailure"] | null;
             manifest: components["schemas"]["EffectManifest"] | null;
             /**
              * Plan Revision Id
@@ -1653,7 +1689,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "EMPTY_PLAN" | "TOO_MANY_STEPS" | "DUPLICATE_STEP_ID" | "INVALID_STEP_REFERENCE" | "UNSUPPORTED_OPERATION" | "INPUT_KIND_MISMATCH" | "INVALID_PARAMETERS" | "UNKNOWN_COLUMN" | "SEMANTIC_REQUIREMENT_MISSING";
+            code: "EMPTY_PLAN" | "TOO_MANY_STEPS" | "DUPLICATE_STEP_ID" | "INVALID_STEP_REFERENCE" | "UNSUPPORTED_OPERATION" | "INPUT_KIND_MISMATCH" | "INVALID_PARAMETERS" | "UNKNOWN_COLUMN" | "SEMANTIC_REQUIREMENT_MISSING" | "COLUMN_TYPE_MISMATCH" | "IDENTIFIER_CONVERSION_UNCONFIRMED";
             /** Message */
             message: string;
             /** Parameter */

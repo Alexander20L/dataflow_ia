@@ -323,6 +323,7 @@ class PlanningService:
             column_ids=table.column_ids,
             semantic_pinned=draft.semantic_ref is not None,
             confirmed_roles=roles,
+            column_types=dict(table.column_types),
         )
         problems = validate_plan(draft, self.catalog, facts)
         return PlanValidation(

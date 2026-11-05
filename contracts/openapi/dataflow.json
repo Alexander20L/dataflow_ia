@@ -693,8 +693,14 @@
             "type": "string"
           },
           "technical_type": {
-            "const": "string",
             "default": "string",
+            "enum": [
+              "string",
+              "integer",
+              "decimal",
+              "date",
+              "boolean"
+            ],
             "title": "Technical Type",
             "type": "string"
           },
@@ -1042,6 +1048,12 @@
             "additionalProperties": true,
             "title": "Plan",
             "type": "object"
+          },
+          "rounded_cells": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Rounded Cells",
+            "type": "integer"
           },
           "row_lineage_sha256": {
             "pattern": "^[0-9a-f]{64}$",
@@ -1545,6 +1557,54 @@
           "finished_at"
         ],
         "title": "ExecutionResponse",
+        "type": "object"
+      },
+      "FailureSample": {
+        "additionalProperties": false,
+        "description": "Un valor que impide completar la limpieza (política estricta).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "column_id": {
+            "title": "Column Id",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "source_row": {
+            "minimum": 1.0,
+            "title": "Source Row",
+            "type": "integer"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "column_id",
+          "column",
+          "source_row",
+          "value",
+          "reason",
+          "message"
+        ],
+        "title": "FailureSample",
         "type": "object"
       },
       "GrainDefinition": {
@@ -2331,6 +2391,36 @@
         "title": "PlanView",
         "type": "object"
       },
+      "PreviewFailure": {
+        "additionalProperties": false,
+        "description": "Detalle de una vista previa fallida: conteo total exacto y hasta 50 casos.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/components/schemas/FailureSample"
+            },
+            "maxItems": 50,
+            "title": "Samples",
+            "type": "array"
+          },
+          "total": {
+            "minimum": 1.0,
+            "title": "Total",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "code",
+          "total",
+          "samples"
+        ],
+        "title": "PreviewFailure",
+        "type": "object"
+      },
       "PreviewPage": {
         "properties": {
           "columns": {
@@ -2459,6 +2549,16 @@
             "title": "Execution Id",
             "type": "string"
           },
+          "failure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PreviewFailure"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "manifest": {
             "anyOf": [
               {
@@ -2533,7 +2633,9 @@
               "INPUT_KIND_MISMATCH",
               "INVALID_PARAMETERS",
               "UNKNOWN_COLUMN",
-              "SEMANTIC_REQUIREMENT_MISSING"
+              "SEMANTIC_REQUIREMENT_MISSING",
+              "COLUMN_TYPE_MISMATCH",
+              "IDENTIFIER_CONVERSION_UNCONFIRMED"
             ],
             "title": "Code",
             "type": "string"

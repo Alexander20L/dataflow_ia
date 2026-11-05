@@ -13,7 +13,8 @@ class NumericSummary(BaseModel):
 
 class ColumnProfile(BaseModel):
     name: str
-    technical_type: Literal["string"] = "string"
+    # Tipo físico de la columna publicada (Fase 6: también columnas tipadas del catálogo).
+    technical_type: Literal["string", "integer", "decimal", "date", "boolean"] = "string"
     suggested_type: Literal["string", "integer", "decimal", "date", "boolean"]
     null_count: int
     unique_count: int

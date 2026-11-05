@@ -11,6 +11,7 @@ from dataflow.modules.cleaning.contracts import (
     EffectSample,
     LineageOperation,
     LineageView,
+    PreviewFailure,
     PreviewView,
 )
 from dataflow.modules.datasets.public import Datasets, ObjectStore
@@ -161,7 +162,19 @@ class CleaningService:
             samples=[EffectSample.model_validate(sample) for sample in samples],
             approval=approval,
             apply=self.apply_status(owner, run, approval.id) if approval else None,
+            failure=self.failure(owner, run),
         )
+
+    def failure(self, owner: UUID, run: Execution) -> PreviewFailure | None:
+        """Valores que no convierten o claves nulas rechazadas: nada se publica y la
+        vista previa los muestra para corregir los datos o el plan."""
+        if run.state != "failed":
+            return None
+        detail = self.executions.error_details(owner, run.id)
+        if detail is None:
+            return None
+        code, details = detail
+        return PreviewFailure.model_validate({"code": code, **details})
 
     def approve(
         self, owner: UUID, execution: UUID, effect_sha256: str, correlation: str

@@ -84,7 +84,7 @@ def test_catalog_and_applicable_operations(
 ) -> None:
     _, _, _, table = prepared(client, db, objects)
     catalog = client.get("/api/v1/operations").json()
-    assert catalog["catalog_version"] == "analysis-v2"
+    assert catalog["catalog_version"] == "analysis-v3"
     operations = {op["key"]: op for op in catalog["operations"]}
     assert set(operations) == {
         "ingestion.read_csv@1",
@@ -92,12 +92,14 @@ def test_catalog_and_applicable_operations(
         "quality.evaluate@1",
         "cleaning.trim_whitespace@1",
         "cleaning.filter_rows@1",
+        "cleaning.normalize_null_tokens@1",
+        "cleaning.cast@1",
+        "cleaning.deduplicate@1",
     }
     assert operations["ingestion.read_csv@1"]["input_kind"] == "source"
     assert operations["quality.evaluate@1"]["output_kind"] == "quality"
     assert {key for key, op in operations.items() if op["transforms_data"]} == {
-        "cleaning.trim_whitespace@1",
-        "cleaning.filter_rows@1",
+        key for key in operations if key.startswith("cleaning.")
     }
     assert not any(op["requirements"] for op in operations.values())
     trim_schema = operations["cleaning.trim_whitespace@1"]["parameters_schema"]
@@ -218,7 +220,7 @@ def test_problems_are_reported_not_raised(
             },
             {
                 "id": "trim",
-                "operation": "cleaning.deduplicate",
+                "operation": "cleaning.impute",
                 "version": 1,
                 "input": {"kind": "input"},
             },

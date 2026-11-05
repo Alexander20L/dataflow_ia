@@ -6,6 +6,7 @@ import hashlib
 import io
 import json
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -13,7 +14,9 @@ from dataflow.modules.ingestion.domain import ENGINE_VERSION
 from dataflow.modules.quality.public import evaluate_quality
 from dataflow.modules.understanding.contracts import DatasetProfile
 from dataflow.modules.understanding.public import profile_rows
+from dataflow.platform.data_types import DataType
 from dataflow.platform.errors import ApplicationError
+from dataflow.platform.tabular import Cell, frame_types
 
 
 def parse_csv(
@@ -88,17 +91,16 @@ def parse_csv(
 
 def load_table(
     source: Path, max_rows: int, max_columns: int
-) -> tuple[list[str], list[list[str | None]]]:
+) -> tuple[list[str], list[list[Cell]], list[tuple[DataType, dict[str, Any]]]]:
+    """Tabla publicada: texto nullable o columnas tipadas del catálogo (Fase 6). Un tipo físico
+    fuera del catálogo se rechaza con UNSUPPORTED_COLUMN_TYPE."""
     frame = pl.read_parquet(source)
     if frame.height > max_rows or frame.width > max_columns:
         raise ApplicationError(
             "TABLE_LIMIT", "La tabla supera los límites fijados en el plan.", 422
         )
-    if any(dtype != pl.String for dtype in frame.dtypes):
-        raise ApplicationError(
-            "UNSUPPORTED_TABLE_TYPE", "Esta versión del motor sólo perfila texto nullable.", 422
-        )
-    return frame.columns, [list(row) for row in frame.iter_rows()]
+    types = frame_types(frame)
+    return frame.columns, [list(row) for row in frame.iter_rows()], types
 
 
 def read(source: Path, output: Path, separator: str, max_rows: int, max_columns: int) -> None:
@@ -129,7 +131,7 @@ def profile(
     max_columns: int,
 ) -> None:
     """understanding.profile@1 sobre una tabla; separador y hash son procedencia del original."""
-    headers, rows = load_table(source, max_rows, max_columns)
+    headers, rows, types = load_table(source, max_rows, max_columns)
     result = DatasetProfile(
         engine_version=ENGINE_VERSION,
         polars_version=pl.__version__,
@@ -137,15 +139,15 @@ def profile(
         separator=separator,
         row_count=len(rows),
         column_count=len(headers),
-        columns=profile_rows(headers, rows),
+        columns=profile_rows(headers, rows, types),
     )
     (output / "profile.json").write_text(result.model_dump_json(), encoding="utf-8")
 
 
 def quality(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
     """quality.evaluate@1 sobre una tabla."""
-    headers, rows = load_table(source, max_rows, max_columns)
-    report = evaluate_quality(headers, rows)
+    headers, rows, types = load_table(source, max_rows, max_columns)
+    report = evaluate_quality(headers, rows, [data_type for data_type, _ in types])
     (output / "quality.json").write_text(report.model_dump_json(), encoding="utf-8")
 
 

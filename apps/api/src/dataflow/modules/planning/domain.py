@@ -18,6 +18,7 @@ from dataflow.modules.planning.contracts import (
     PlanStatus,
     PlanStep,
     Problem,
+    Schema,
     SemanticRevisionRequirement,
 )
 
@@ -64,6 +65,8 @@ def validate_plan(
     all_ids = {step.id for step in draft.steps}
     # None: salida de una operación desconocida; no se encadenan errores sobre ella.
     outputs: dict[str, OutputKind | None] = {}
+    # Esquema tipado de cada salida tabular; None si no se conoce (no se comprueban tipos).
+    schemas: dict[str, Schema | None] = {}
     for step in draft.steps:
         if step.id in outputs:
             problems.append(
@@ -99,9 +102,30 @@ def validate_plan(
                         step_id=step.id,
                     )
                 )
-            problems.extend(step_parameter_problems(step, descriptor, facts))
+            schema: Schema | None = (
+                facts.column_types or None
+                if isinstance(step.input, InputRef)
+                else schemas.get(step.input.step_id)
+                if source_kind == "table"
+                else None
+            )
+            step_problems, parameters = step_parameter_problems(step, descriptor, facts, schema)
+            problems.extend(step_problems)
+            if step.id not in schemas:
+                schemas[step.id] = output_schema(descriptor, parameters, schema)
         outputs.setdefault(step.id, descriptor.output_kind if descriptor else None)
     return problems
+
+
+def output_schema(
+    descriptor: OperationDescriptor, parameters: BaseModel | None, schema: Schema | None
+) -> Schema | None:
+    if descriptor.output_kind != "table" or schema is None:
+        return None
+    if descriptor.output_schema is None:
+        return schema
+    # Parámetros inválidos: el esquema de salida es desconocido y no se encadenan errores.
+    return descriptor.output_schema(parameters, schema) if parameters is not None else None
 
 
 def step_input_kind(
@@ -140,8 +164,11 @@ def step_input_kind(
 
 
 def step_parameter_problems(
-    step: PlanStep, descriptor: OperationDescriptor, facts: PlanningFacts
-) -> list[Problem]:
+    step: PlanStep,
+    descriptor: OperationDescriptor,
+    facts: PlanningFacts,
+    schema: Schema | None = None,
+) -> tuple[list[Problem], BaseModel | None]:
     problems: list[Problem] = []
     try:
         parameters = descriptor.parameters.model_validate(step.parameters)
@@ -200,4 +227,54 @@ def step_parameter_problems(
                             parameter=requirement.parameter,
                         )
                     )
+    if parameters is not None:
+        problems.extend(type_problems(step, descriptor, parameters, facts, schema))
+    return problems, parameters
+
+
+def type_problems(
+    step: PlanStep,
+    descriptor: OperationDescriptor,
+    parameters: BaseModel,
+    facts: PlanningFacts,
+    schema: Schema | None,
+) -> list[Problem]:
+    """Tipos de columna admitidos (según el esquema que llega al paso) y salvaguarda de
+    identificadores. Una columna desconocida ya se informa como UNKNOWN_COLUMN."""
+    problems: list[Problem] = []
+    if descriptor.column_types is not None and schema is not None:
+        for name, allowed in descriptor.column_types(parameters).items():
+            for column in referenced_columns(parameters, name):
+                actual = schema.get(column)
+                if actual is not None and actual not in allowed:
+                    problems.append(
+                        Problem(
+                            code="COLUMN_TYPE_MISMATCH",
+                            message=f"{descriptor.key} no admite la columna {column} de tipo "
+                            f"«{actual}» en este paso; admite: {', '.join(sorted(allowed))}.",
+                            resolve_in="plan_steps",
+                            step_id=step.id,
+                            parameter=name,
+                        )
+                    )
+    guard = descriptor.identifier_guard
+    if (
+        guard is not None
+        and facts.semantic_pinned
+        and getattr(parameters, guard.type_parameter) in guard.numeric_types
+        and not getattr(parameters, guard.confirmation_parameter)
+    ):
+        for column in referenced_columns(parameters, guard.column_parameter):
+            if facts.confirmed_roles.get(column) == "identifier":
+                problems.append(
+                    Problem(
+                        code="IDENTIFIER_CONVERSION_UNCONFIRMED",
+                        message=f"La columna {column} está confirmada como identificador en la "
+                        "revisión semántica fijada. Convertirla a número exige confirmarlo "
+                        f"explícitamente ({guard.confirmation_parameter}).",
+                        resolve_in="plan_steps",
+                        step_id=step.id,
+                        parameter=guard.confirmation_parameter,
+                    )
+                )
     return problems

@@ -18,7 +18,10 @@ from dataflow.modules.cleaning.public import (
 from dataflow.modules.cleaning.repository import SQLApprovalRepository, SQLApprovalSource
 from dataflow.modules.cleaning.steps import (
     ApplyFinalizer,
+    CastStep,
+    DeduplicateStep,
     FilterRowsStep,
+    NormalizeNullTokensStep,
     PreviewFinalizer,
     TrimWhitespaceStep,
 )
@@ -200,6 +203,9 @@ def make_operations(
             "quality.evaluate@1": QualityStep(objects, analyzer),
             "cleaning.trim_whitespace@1": TrimWhitespaceStep(objects, cleaner),
             "cleaning.filter_rows@1": FilterRowsStep(objects, cleaner),
+            "cleaning.normalize_null_tokens@1": NormalizeNullTokensStep(objects, cleaner),
+            "cleaning.cast@1": CastStep(objects, cleaner),
+            "cleaning.deduplicate@1": DeduplicateStep(objects, cleaner),
         }
     )
 

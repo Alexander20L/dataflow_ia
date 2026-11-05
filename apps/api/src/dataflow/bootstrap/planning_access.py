@@ -44,6 +44,10 @@ class PlanningTableAccess:
                 artifact_sha256=table.content.sha256,
             ),
             frozenset(UUID(str(column["id"])) for column in table.columns),
+            {
+                UUID(str(column["id"])): column.get("technical_type", "string")
+                for column in table.columns
+            },
         )
 
     def require_project(self, owner: UUID, project: UUID, writable: bool = False) -> None:

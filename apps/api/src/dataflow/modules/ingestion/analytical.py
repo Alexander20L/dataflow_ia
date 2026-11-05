@@ -9,7 +9,9 @@ from dataflow.modules.ingestion.application import AnalysisOutput, ReadOutput
 from dataflow.modules.ingestion.contracts import PreviewPage, PreviewRow
 from dataflow.modules.quality.contracts import WHITESPACE_CHARS, QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
+from dataflow.platform.errors import ApplicationError
 from dataflow.platform.isolation import run_isolated
+from dataflow.platform.tabular import display_cell, frame_types
 
 
 class IsolatedAnalyzer:
@@ -115,6 +117,10 @@ class IsolatedAnalyzer:
 
 
 class PolarsPreview:
+    """Páginas de la tabla publicada. Las columnas se toman como Series por nombre exacto y se
+    operan con alias neutros: un encabezado como «^id$» nunca se interpreta como expresión
+    regular ni selector. Las celdas tipadas se muestran con su cadena canónica."""
+
     def read(
         self,
         content: bytes,
@@ -125,22 +131,40 @@ class PolarsPreview:
     ) -> PreviewPage:
         frame = pl.read_parquet(io.BytesIO(content))
         columns = frame.columns
-        index_name = "__dataflow_row__"
-        while index_name in columns:
-            index_name = "_" + index_name
-        frame = frame.with_row_index(index_name, offset=1)
-        if rule == "Q-001" and column:
-            frame = frame.filter(pl.col(column).is_null())
-        elif rule == "Q-003" and column:
-            frame = frame.filter(
-                pl.col(column).is_not_null()
-                & (pl.col(column).str.strip_chars(WHITESPACE_CHARS) == "")
-            )
+        types = frame_types(frame)
+        mask: pl.Series | None = None
+        if rule in {"Q-001", "Q-003"} and column:
+            if column not in columns:
+                raise ApplicationError("UNKNOWN_COLUMN", "La columna no existe en la tabla.", 422)
+            value = frame.get_column(column).alias("value")
+            if rule == "Q-001":
+                mask = value.is_null()
+            elif value.dtype == pl.String:
+                mask = (
+                    value.is_not_null() & (value.str.strip_chars(WHITESPACE_CHARS) == "")
+                ).fill_null(False)
+            else:
+                mask = pl.Series("value", [False] * frame.height)
         elif rule == "Q-002":
-            frame = frame.filter(~pl.struct(columns).is_first_distinct())
+            neutral = pl.DataFrame(
+                [frame.get_column(name).alias(f"c{index}") for index, name in enumerate(columns)]
+            )
+            mask = ~neutral.select(pl.struct(pl.all()).is_first_distinct()).to_series()
+        numbers = pl.Series("row", range(1, frame.height + 1), dtype=pl.Int64)
+        if mask is not None:
+            frame, numbers = frame.filter(mask), numbers.filter(mask)
+        page = frame.slice(offset, limit)
         rows = [
-            PreviewRow(row_number=row[index_name], values={name: row[name] for name in columns})
-            for row in frame.slice(offset, limit).iter_rows(named=True)
+            PreviewRow(
+                row_number=number,
+                values={
+                    name: display_cell(cell, data_type, parameters)
+                    for name, cell, (data_type, parameters) in zip(columns, row, types, strict=True)
+                },
+            )
+            for number, row in zip(
+                numbers.slice(offset, limit).to_list(), page.iter_rows(), strict=True
+            )
         ]
         return PreviewPage(
             columns=columns, rows=rows, total=frame.height, limit=limit, offset=offset
