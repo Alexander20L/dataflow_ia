@@ -1,0 +1,2 @@
+# Fixtures de regresión: bytes exactos (CRLF/BOM/tabuladores forman parte del caso y de su hash).
+apps/api/tests/fixtures/** -text

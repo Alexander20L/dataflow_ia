@@ -1,3 +1,4 @@
+import time
 from typing import Any
 from uuid import UUID
 
@@ -6,11 +7,20 @@ from dataflow.modules.executions.contracts import (
     ArtifactOutput,
     Execution,
     ExecutionRepository,
-    Executor,
+    InputKind,
+    InputResolver,
+    Lease,
+    PlanBinding,
     PlanRevision,
+    PlanStepSpec,
     PublicationHook,
     RunKind,
+    StepExecutor,
+    StepInput,
+    StepRegistry,
+    UserPlan,
 )
+from dataflow.modules.executions.domain import plan_input_kind, plan_steps
 from dataflow.platform.canonical import digest
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.transactions import UnitOfWork
@@ -54,6 +64,50 @@ class Executions:
             input_artifact,
             input_sha256,
         )
+
+    def enqueue_existing_plan(
+        self,
+        owner: UUID,
+        project: UUID,
+        version: UUID,
+        key: UUID,
+        fingerprint: str,
+        plan: UserPlan,
+        correlation: str,
+    ) -> Execution:
+        """Encola una revisión de usuario ya guardada; no inserta ni copia el plan."""
+        if digest("plan", plan.revision.content) != plan.revision.content_sha256:
+            raise ApplicationError("PLAN_HASH_MISMATCH", "El plan no coincide con su hash.", 409)
+        _ = plan.revision.config
+        self.ensure_capacity(owner, project, "plan")
+        return self.repository.enqueue_existing_plan(
+            owner,
+            project,
+            version,
+            key,
+            fingerprint,
+            plan.revision.id,
+            correlation,
+            plan.binding.input_artifact_id,
+            plan.binding.input_artifact_sha256,
+        )
+
+    def save_plan_revision(self, plan: PlanRevision, binding: PlanBinding) -> None:
+        """Escritura dentro de la transacción del llamador (sin commit)."""
+        if digest("plan", plan.content) != plan.content_sha256:
+            raise ApplicationError("PLAN_HASH_MISMATCH", "El plan no coincide con su hash.", 409)
+        self.repository.save_plan_revision(plan, binding)
+
+    def plan_revision(self, owner: UUID, revision: UUID) -> UserPlan:
+        return self.repository.plan_revision(owner, revision)
+
+    def lock_plan_family(self, owner: UUID, family: UUID) -> UserPlan:
+        return self.repository.lock_plan_family(owner, family)
+
+    def plans_for_project(
+        self, owner: UUID, project: UUID, limit: int, offset: int
+    ) -> tuple[list[UserPlan], int]:
+        return self.repository.plans_for_project(owner, project, limit, offset)
 
     def ensure_capacity(self, owner: UUID, project: UUID, kind: RunKind) -> None:
         if self.repository.active_count(owner) >= 3:
@@ -99,16 +153,20 @@ class ExecutionRunner:
         self,
         repository: ExecutionRepository,
         uow: UnitOfWork,
-        registry: dict[RunKind, Executor],
+        kinds: set[RunKind],
+        inputs: dict[InputKind, InputResolver],
+        operations: StepRegistry,
         publisher: PublicationHook,
         environment: dict[str, Any],
     ) -> None:
-        self.repository, self.uow, self.registry = repository, uow, registry
+        # `kinds` es explícito: un worker sólo reclama tipos de ejecución que sabe atender.
+        self.repository, self.uow, self.kinds = repository, uow, kinds
+        self.inputs, self.operations = inputs, operations
         self.publisher, self.environment = publisher, environment
 
     def run_once(self) -> bool:
         try:
-            lease = self.repository.claim(set(self.registry), self.environment)
+            lease = self.repository.claim(self.kinds, self.environment)
             self.uow.commit()
         except Exception:
             self.uow.rollback()
@@ -116,11 +174,13 @@ class ExecutionRunner:
         if not lease:
             return False
         try:
-            handler = self.registry[lease.execution.kind]
-            prepared = handler.prepare(lease)
-            self.uow.rollback()  # Cierra la lectura de metadatos antes del subproceso.
-            outputs = handler.compute(lease, prepared)
-            self.validate_outputs(lease.execution, outputs)
+            assert lease.execution.plan
+            content = lease.execution.plan.content
+            steps = self.resolve(plan_steps(content))
+            source = self.inputs[plan_input_kind(content)].prepare(lease)
+            self.uow.rollback()  # Cierra la lectura de metadatos antes de los subprocesos.
+            outputs = self.compute(lease, steps, source)
+            self.validate_outputs(steps, outputs)
             staged = self.repository.stage(lease, outputs)
             if staged is None:
                 self.uow.rollback()
@@ -155,19 +215,54 @@ class ExecutionRunner:
                 raise
         return True
 
+    def resolve(self, steps: list[PlanStepSpec]) -> list[tuple[PlanStepSpec, StepExecutor]]:
+        resolved = []
+        for step in steps:
+            executor = self.operations.executor(step.operation, step.version)
+            if executor is None:
+                raise ApplicationError(
+                    "UNSUPPORTED_OPERATION",
+                    f"Operación no disponible: {step.operation}@{step.version}.",
+                    409,
+                )
+            resolved.append((step, executor))
+        return resolved
+
     @staticmethod
-    def validate_outputs(run: Execution, outputs: list[ArtifactOutput]) -> None:
-        assert run.plan
-        expected: set[tuple[str, str]] = set()
-        for step in run.plan.content["steps"]:
-            slot = {
-                "ingestion.read_csv": "table",
-                "understanding.profile": "profile",
-                "quality.evaluate": "quality",
-            }.get(step["operation"])
-            if not slot:
-                raise ApplicationError("UNSUPPORTED_OPERATION", "Operación no disponible.", 409)
-            expected.add((step["id"], slot))
+    def compute(
+        lease: Lease, steps: list[tuple[PlanStepSpec, StepExecutor]], source: StepInput
+    ) -> list[ArtifactOutput]:
+        # Plazo total compartido: la suma de pasos no supera timeout_seconds, de modo que la
+        # lease (120 s) sigue cubriendo cálculo + margen de publicación.
+        assert lease.execution.plan
+        deadline = time.monotonic() + lease.execution.plan.config.timeout_seconds
+        tables: dict[str, StepInput] = {}
+        outputs: list[ArtifactOutput] = []
+        for step, executor in steps:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ApplicationError(
+                    "PROCESSING_TIMEOUT", "El procesamiento excedió el tiempo permitido.", 422
+                )
+            if step.input_step is None:
+                step_source = source
+            elif step.input_step in tables:
+                step_source = tables[step.input_step]
+            else:
+                raise ApplicationError(
+                    "INVALID_STEP_REFERENCE", f"«{step.id}» no recibe una tabla.", 409
+                )
+            result = executor.compute(lease, step, step_source, remaining)
+            outputs.extend(result.outputs)
+            if result.table is not None:
+                tables[step.id] = result.table
+        return outputs
+
+    @staticmethod
+    def validate_outputs(
+        steps: list[tuple[PlanStepSpec, StepExecutor]], outputs: list[ArtifactOutput]
+    ) -> None:
+        expected = {(step.id, executor.output_kind) for step, executor in steps}
         actual = [(output.step_id, output.slot) for output in outputs]
         if (
             len(actual) != len(set(actual))

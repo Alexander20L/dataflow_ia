@@ -10,6 +10,7 @@ from dataflow.bootstrap.services import (
     make_datasets,
     make_executions,
     make_ingestion,
+    make_planning,
     make_semantics,
 )
 from dataflow.modules.datasets.objects import LocalObjects
@@ -19,6 +20,7 @@ from dataflow.modules.identity.application import IdentityService
 from dataflow.modules.identity.contracts import SessionIdentity
 from dataflow.modules.identity.infrastructure import ArgonPasswords, SQLIdentityRepository
 from dataflow.modules.ingestion.application import AnalysisService, IngestionService
+from dataflow.modules.planning.application import PlanningService
 from dataflow.modules.projects.application import ProjectService
 from dataflow.modules.projects.infrastructure import SQLProjectRepository
 from dataflow.modules.understanding.public import SemanticService
@@ -109,3 +111,10 @@ def semantic_service(db: Db, objects: Objects) -> SemanticService:
 
 
 Semantics = Annotated[SemanticService, Depends(semantic_service)]
+
+
+def planning_service(db: Db, objects: Objects) -> PlanningService:
+    return make_planning(db, objects)
+
+
+Planning = Annotated[PlanningService, Depends(planning_service)]

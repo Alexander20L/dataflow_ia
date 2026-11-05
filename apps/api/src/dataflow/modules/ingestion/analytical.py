@@ -9,7 +9,7 @@ from tempfile import TemporaryDirectory
 import polars as pl
 
 from dataflow.modules.executions.public import ProcessingConfig
-from dataflow.modules.ingestion.application import AnalysisOutput
+from dataflow.modules.ingestion.application import AnalysisOutput, ReadOutput
 from dataflow.modules.ingestion.contracts import PreviewPage, PreviewRow
 from dataflow.modules.quality.contracts import WHITESPACE_CHARS, QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
@@ -25,22 +25,26 @@ class IsolatedAnalyzer:
             max_columns,
         )
 
-    def analyze(
-        self,
-        content: bytes,
-        separator: str,
-        config: ProcessingConfig | None = None,
-        table_source_sha256: str | None = None,
-        quality_only: bool = False,
-    ) -> AnalysisOutput:
-        config = config or ProcessingConfig(
+    def config(self, config: ProcessingConfig | None) -> ProcessingConfig:
+        return config or ProcessingConfig(
             max_rows=self.max_rows, max_columns=self.max_columns, timeout_seconds=self.timeout
         )
+
+    def run(
+        self,
+        mode: str,
+        content: bytes,
+        config: ProcessingConfig,
+        timeout: float,
+        outputs: list[str],
+        extra: list[str] | None = None,
+    ) -> dict[str, bytes]:
+        """Un subproceso acotado por paso; `timeout` es lo que queda del plazo del plan."""
         scratch = self.root / ".work"
         scratch.mkdir(parents=True, exist_ok=True)
         with TemporaryDirectory(dir=scratch) as temporary:
             directory = Path(temporary)
-            source = directory / "original.csv"
+            source = directory / "input.bin"
             source.write_bytes(content)
             try:
                 result = subprocess.run(
@@ -48,24 +52,19 @@ class IsolatedAnalyzer:
                         sys.executable,
                         "-m",
                         "dataflow.modules.ingestion.processor",
+                        "--mode",
+                        mode,
                         "--input",
                         str(source),
                         "--output",
                         str(directory),
-                        "--separator",
-                        separator,
                         "--max-rows",
                         str(config.max_rows),
                         "--max-columns",
                         str(config.max_columns),
-                    ]
-                    + (
-                        ["--table-source-sha256", table_source_sha256]
-                        if table_source_sha256
-                        else []
-                    )
-                    + (["--quality-only"] if quality_only else []),
-                    timeout=config.timeout_seconds,
+                        *(extra or []),
+                    ],
+                    timeout=min(timeout, config.timeout_seconds),
                     stdout=subprocess.DEVNULL,
                     stderr=subprocess.DEVNULL,
                     env={**os.environ, "POLARS_MAX_THREADS": "2"},
@@ -83,15 +82,65 @@ class IsolatedAnalyzer:
                 raise ApplicationError(
                     "PROCESSING_ERROR", "El proceso analítico terminó sin resultado.", 422
                 )
-            profile_path = directory / "profile.json"
-            parquet_path = directory / "data.parquet"
-            return AnalysisOutput(
-                DatasetProfile.model_validate_json(profile_path.read_bytes())
-                if profile_path.exists()
-                else None,
-                QualityReport.model_validate_json((directory / "quality.json").read_bytes()),
-                parquet_path.read_bytes() if parquet_path.exists() else b"",
-            )
+            return {name: (directory / name).read_bytes() for name in outputs}
+
+    def read(
+        self, content: bytes, separator: str, config: ProcessingConfig, timeout: float
+    ) -> ReadOutput:
+        files = self.run(
+            "read",
+            content,
+            config,
+            timeout,
+            ["data.parquet", "read.json"],
+            ["--separator", separator],
+        )
+        meta = json.loads(files["read.json"])
+        return ReadOutput(
+            files["data.parquet"],
+            str(meta["separator"]),
+            str(meta["source_sha256"]),
+            int(meta["row_count"]),
+            int(meta["column_count"]),
+        )
+
+    def profile(
+        self,
+        table: bytes,
+        separator: str,
+        source_sha256: str,
+        config: ProcessingConfig,
+        timeout: float,
+    ) -> DatasetProfile:
+        files = self.run(
+            "profile",
+            table,
+            config,
+            timeout,
+            ["profile.json"],
+            ["--separator", separator, "--source-sha256", source_sha256],
+        )
+        return DatasetProfile.model_validate_json(files["profile.json"])
+
+    def quality(self, table: bytes, config: ProcessingConfig, timeout: float) -> QualityReport:
+        files = self.run("quality", table, config, timeout, ["quality.json"])
+        return QualityReport.model_validate_json(files["quality.json"])
+
+    def analyze(
+        self,
+        content: bytes,
+        separator: str,
+        config: ProcessingConfig | None = None,
+    ) -> AnalysisOutput:
+        """Composición read → profile → quality de un CSV; sólo para utilidades/legado."""
+        effective = self.config(config)
+        timeout = float(effective.timeout_seconds)
+        table = self.read(content, separator, effective, timeout)
+        return AnalysisOutput(
+            self.profile(table.parquet, table.separator, table.source_sha256, effective, timeout),
+            self.quality(table.parquet, effective, timeout),
+            table.parquet,
+        )
 
 
 class PolarsPreview:

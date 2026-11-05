@@ -32,3 +32,10 @@ class DatasetProfile(BaseModel):
     row_count: int
     column_count: int
     columns: list[ColumnProfile]
+
+
+class ProfileParameters(BaseModel):
+    """Parámetros de understanding.profile@1."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    algorithm: Literal["column-profile-v1"] = "column-profile-v1"

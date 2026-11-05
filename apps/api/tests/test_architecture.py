@@ -56,3 +56,26 @@ def test_business_module_dependencies_are_acyclic() -> None:
         }
         assert leaves, f"Ciclo entre módulos: {pending}"
         pending = {name: deps for name, deps in pending.items() if name not in leaves}
+
+
+def test_executions_depends_only_on_ports_not_on_operation_modules() -> None:
+    # executions recibe el registro inyectado por bootstrap: no conoce planning ni a los
+    # módulos que implementan operaciones (cleaning, quality, ingestion, understanding).
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "executions"
+    forbidden = tuple(
+        f"dataflow.modules.{name}"
+        for name in ["planning", "cleaning", "quality", "ingestion", "understanding"]
+    )
+    files = list(root.rglob("*.py"))
+    assert files
+    for file in files:
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            assert not module.startswith(forbidden), (file, module)
+
+
+def test_planning_does_not_import_operation_implementations() -> None:
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "planning"
+    forbidden = ("polars", "duckdb", "dataflow.modules.ingestion", "dataflow.modules.quality")
+    for file in root.rglob("*.py"):
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            assert not module.startswith(forbidden), (file, module)
