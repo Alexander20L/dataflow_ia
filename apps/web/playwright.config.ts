@@ -34,6 +34,8 @@ export default defineConfig({
       env: {
         DATAFLOW_DATABASE_URL: e2eDatabase,
         DATAFLOW_STORAGE_PATH: ".data/e2e-objects",
+        // Copiloto con el proveedor falso determinista (Fase 10): sin clave ni red.
+        DATAFLOW_AI_PROVIDER: "fake",
       },
       url: "http://127.0.0.1:8001/health/ready",
       reuseExistingServer: false,

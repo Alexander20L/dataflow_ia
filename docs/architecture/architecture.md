@@ -56,7 +56,7 @@ Registrar versión/hash de dataset y plan, configuración normalizada, versión 
 
 ## IA
 
-Puerto AIProvider y servicios específicos sólo cuando existan consumidores. Respuestas estructuradas Pydantic, prompts versionados, modelo/configuración, timeout, presupuesto y registro redactado. Enviar perfiles y agregados mínimos. Texto del dataset es contenido no confiable, nunca instrucciones. Propuestas usan operaciones de una lista permitida. No ejecutar Python/SQL arbitrario. Si se añade SQL: AST, SELECT permitido, catálogo acotado, permisos de lectura, aislamiento y límites. Validar cifras y referencias antes de mostrar conclusiones; ante evidencia insuficiente, indicarlo. El motor sigue operativo sin IA. Conservar respuestas, sin prometer regeneración idéntica.
+Puerto AIProvider y servicios específicos sólo cuando existan consumidores. Respuestas estructuradas Pydantic, prompts versionados, modelo/configuración, timeout, presupuesto y registro redactado. Enviar perfiles y agregados mínimos. Texto del dataset es contenido no confiable, nunca instrucciones. Propuestas usan operaciones de una lista permitida. No ejecutar Python/SQL arbitrario. Si se añade SQL: AST, SELECT permitido, catálogo acotado, permisos de lectura, aislamiento y límites. Validar cifras y referencias antes de mostrar conclusiones; ante evidencia insuficiente, indicarlo. El motor sigue operativo sin IA. Conservar respuestas, sin prometer regeneración idéntica. Implementado en la [Fase 10](phase-10.md) ([ADR-022](../adr/022-ai-copilot.md)).
 
 ## Datos, seguridad y operación
 

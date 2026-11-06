@@ -9,7 +9,8 @@ Documentación y UI en español.
 
 - **El motor determinista calcula** (Polars, hashes canónicos, conteos exactos sobre todo el dataset).
 - **La persona aprueba** el efecto exacto (`effect_sha256`) antes de publicar cualquier transformación.
-- **La IA sólo propondrá** operaciones del catálogo; nunca autoriza ni ejecuta. Hoy no hay proveedor de IA.
+- **La IA sólo propone** operaciones del catálogo; nunca autoriza ni ejecuta. Copiloto desde la Fase 10
+  (ADR-022): desactivado por defecto; ninguna cifra sale del modelo (sólo `{{evidence:id}}`).
 - El original y las versiones publicadas son inmutables: limpiar crea una versión derivada con linaje.
 
 Referencias obligatorias: `docs/architecture/phase-1/execution-contract.md` (catálogo objetivo, gramáticas
@@ -18,7 +19,9 @@ de conversión §3, hash canónico §6), `docs/architecture/phase-N.md` y `docs/
 ## Arquitectura y reglas de módulos
 
 Módulos en `apps/api/src/dataflow/modules/`: identity, projects, audit, datasets, ingestion, understanding,
-quality, planning, executions, cleaning, analytics, dashboards, reports. Composición en `bootstrap/` (`bootstrap/operations.py` une
+quality, planning, executions, cleaning, analytics, dashboards, reports, copilot. Adaptador de IA en
+`integrations/ai` (puerto `AIProvider`, proveedor falso; sólo `anthropic_provider.py` importa el SDK).
+Composición en `bootstrap/` (`bootstrap/operations.py` une
 descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
 
 - Capas: domain (sin frameworks) → application (dominio + puertos) → infrastructure → presentation (HTTP/DTO).
@@ -27,6 +30,8 @@ descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
 - **executions** no importa planning, cleaning, quality, ingestion, understanding ni analytics: recibe puertos
   (`StepRegistry`, `StepExecutor`, `InputResolver`, finalizadores, ganchos de publicación).
 - planning no importa polars/duckdb ni implementaciones de operaciones (validación pura en `planning/domain.py`).
+- copilot sólo usa sus puertos (`bootstrap/copilot_access.py`), `integrations.ai` y `audit`; propone y valida
+  con planning (`validate_draft`), nunca ejecuta sin un botón de la persona.
 - El cómputo de cleaning (`domain`, `contracts`, `infrastructure`, `engine`, `processor`) no accede a la BD.
 - Todo esto lo verifica `apps/api/tests/test_architecture.py` (AST). No debilitar esas pruebas.
 - Web: comportamiento por funcionalidad en `apps/web/src/features/<f>`; tipos HTTP sólo del cliente generado.
@@ -97,16 +102,20 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 7B   | 0.11 | `feat/fase-7-analisis`      | analytics.query@2: comparaciones, ranking, % del total; `analysis-v6`        |
 | 8    | 0.12 | `feat/fase-8-dashboards`    | dashboards persistidos, «Actualizar» explícito, historial; migración 0010    |
 | 9    | 0.13 | `feat/fase-9-informes`      | informes, PDF en el worker (ReportLab), CSV estándar/Excel; migración 0011   |
+| 10   | 0.14 | `feat/fase-10-copiloto`     | copiloto IA (Anthropic), propuestas validadas, cifras por evidencia; 0012    |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
 no regenerar sus referencias para hacer pasar una prueba.
-Integración: `develop` contiene las Fases 4 a 9 (merge `--no-ff`). Fase 7 completa (7A y 7B): ADR-018 y
+Integración: `develop` contiene las Fases 4 a 10 (merge `--no-ff`). Fase 7 completa (7A y 7B): ADR-018 y
 ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa
 planning, executions ni analytics (puerto en `bootstrap/dashboards_access.py`, prueba AST). Fase 9:
 ADR-021; el PDF es una ejecución `report_render` (entrada `report` y operación interna fuera del
 catálogo, `bootstrap/reports_access.py`). El perfil CSV `standard` (`platform/csv_export.py`) no cambia
 nunca: garantiza la ida y vuelta con la ingesta.
+Fase 10: ADR-022; `tests/ai/` es la suite de evaluación con el proveedor falso (`DATAFLOW_AI_PROVIDER=fake`
+en E2E); `test_ai_live.py` sólo corre con `DATAFLOW_AI_LIVE_TESTS=1` y clave. Cambiar un prompt de
+`copilot/prompts.py` exige subir su versión. Al escribir archivos desde scripts en Windows, forzar LF.
 Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015); copiar reglas de calidad y
 métricas entre importaciones (ADR-017, ADR-018). Al añadir una migración, las pruebas de migraciones
 anteriores excluyen sus tablas nuevas (`LATER_TABLES`).

@@ -131,6 +131,38 @@ def test_dashboards_depend_only_on_their_ports() -> None:
             assert not module.startswith(("polars", "duckdb")), (file, module)
 
 
+def test_copilot_depends_only_on_its_ports_and_the_ai_port() -> None:
+    # El copiloto no planifica, no calcula ni conoce al proveedor: bootstrap le da planes,
+    # métricas y resultados, y el puerto AIProvider le da la salida estructurada.
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "copilot"
+    files = list(root.rglob("*.py"))
+    assert files
+    for file in files:
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            if module.startswith("dataflow.modules.") and not module.startswith(
+                "dataflow.modules.copilot"
+            ):
+                assert module == "dataflow.modules.audit.public", (file, module)
+            assert not module.startswith(
+                ("polars", "duckdb", "anthropic", "dataflow.integrations.ai.anthropic_provider")
+            ), (file, module)
+
+
+def test_ai_provider_sdk_lives_only_in_its_adapter() -> None:
+    src = Path(__file__).resolve().parents[1] / "src" / "dataflow"
+    adapter = src / "integrations" / "ai" / "anthropic_provider.py"
+    for file in src.rglob("*.py"):
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            if module == "anthropic" or module.startswith("anthropic."):
+                assert file == adapter, (file, module)
+    for file in (src / "integrations").rglob("*.py"):
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            assert not module.startswith(("dataflow.modules", "dataflow.bootstrap")), (
+                file,
+                module,
+            )
+
+
 def test_reports_depend_only_on_their_ports_and_render_without_database() -> None:
     root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "reports"
     allowed = {

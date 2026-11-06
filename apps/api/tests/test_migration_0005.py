@@ -203,6 +203,11 @@ LATER_TABLES = {
     "report_revisions",
     "report_save_requests",
     "report_renders",
+    "copilot_conversations",
+    "copilot_ai_calls",
+    "copilot_messages",
+    "copilot_action_links",
+    "copilot_requests",
 }
 
 

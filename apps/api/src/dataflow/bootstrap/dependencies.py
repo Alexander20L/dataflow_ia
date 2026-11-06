@@ -5,9 +5,11 @@ from fastapi import Depends, Header, Request, Security
 from fastapi.security import APIKeyCookie
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.ai import configured
 from dataflow.bootstrap.services import (
     make_analysis,
     make_cleaning,
+    make_copilot,
     make_dashboards,
     make_datasets,
     make_executions,
@@ -18,8 +20,10 @@ from dataflow.bootstrap.services import (
     make_rulesets,
     make_semantics,
 )
+from dataflow.integrations.ai import AIProvider
 from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.cleaning.application import CleaningService
+from dataflow.modules.copilot.application import CopilotConfig, CopilotService
 from dataflow.modules.dashboards.application import DashboardService
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.datasets.public import Datasets
@@ -149,6 +153,21 @@ def report_service(db: Db, objects: Objects) -> ReportService:
 
 
 Reports = Annotated[ReportService, Depends(report_service)]
+
+
+def ai_setup() -> tuple[AIProvider | None, CopilotConfig]:
+    """Proveedor y límites del copiloto; las pruebas lo sustituyen por uno guionizado."""
+    return configured()
+
+
+AISetup = Annotated[tuple[AIProvider | None, CopilotConfig], Depends(ai_setup)]
+
+
+def copilot_service(db: Db, objects: Objects, setup: AISetup) -> CopilotService:
+    return make_copilot(db, objects, *setup)
+
+
+Copilot = Annotated[CopilotService, Depends(copilot_service)]
 
 
 def planning_service(db: Db, objects: Objects) -> PlanningService:

@@ -52,7 +52,8 @@ function AuthScreen() {
           <LockKeyhole size={19} />
           <span>
             Tus proyectos y CSV se guardan en tu cuenta. El perfil y la calidad
-            se calculan con evidencia; la IA sigue en fase de demostración.
+            se calculan con evidencia; el copiloto de IA sólo propone y cada
+            cifra sale de un resultado calculado.
           </span>
         </div>
       </div>

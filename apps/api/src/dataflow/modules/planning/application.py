@@ -157,6 +157,33 @@ class PlanningService:
             self.uow.rollback()
             raise
 
+    def validate_draft(self, owner: UUID, artifact: UUID, draft: PlanDraft) -> PlanValidation:
+        """Valida un borrador sobre una tabla sin guardarlo (Fase 10: propuestas del copiloto).
+        Misma validación que al guardar; no escribe nada ni confirma la transacción."""
+        table = self.access.table(owner, artifact)
+        self.access.require_project(owner, table.project_id)
+        content = self.content(table, draft)
+        plan = UserPlan(
+            PlanRevision(
+                uuid4(), uuid4(), 1, content, digest("plan", content), owner, datetime.now(UTC)
+            ),
+            PlanBinding(
+                table.project_id,
+                table.input.artifact_id,
+                table.input.artifact_sha256,
+                draft.semantic_ref.id if draft.semantic_ref else None,
+            ),
+            1,
+        )
+        return self.check(
+            plan,
+            table,
+            self.roles(owner, draft.semantic_ref, table.input),
+            self.rulesets(owner, plan),
+            self.metrics(owner, plan),
+            self.units(owner, draft.semantic_ref, table.input),
+        )
+
     def get(self, owner: UUID, revision: UUID) -> PlanView:
         plan = self.executions.plan_revision(owner, revision)
         self.access.require_project(owner, plan.binding.project_id)
