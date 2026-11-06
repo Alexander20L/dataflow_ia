@@ -15,6 +15,7 @@ from dataflow.modules.quality.contracts import QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
 from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.config import get_settings
+from dataflow.platform.csv_export import CsvProfile
 from dataflow.platform.errors import ApplicationError
 
 router = APIRouter(prefix="/api/v1", tags=["Datasets"])
@@ -163,6 +164,30 @@ def original(version_id: UUID, identity: CurrentIdentity, service: Ingestion) ->
     return Response(
         content=content,
         media_type="application/octet-stream",
+        headers={"Content-Disposition": "attachment; filename*=UTF-8''" + quote(filename, safe="")},
+    )
+
+
+CSV_RESPONSE = {200: {"content": {"text/csv": {"schema": {"type": "string", "format": "binary"}}}}}
+
+
+@router.get(
+    "/versions/{version_id}/export.csv",
+    response_class=Response,
+    operation_id="exportVersionCsv",
+    responses=CSV_RESPONSE,  # type: ignore[arg-type]
+)
+def export_version(
+    version_id: UUID,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    profile: Annotated[CsvProfile, Query()] = "standard",
+) -> Response:
+    """Tabla de la versión (también derivada) en el perfil `standard` o `excel_regional`."""
+    filename, content = service.export_csv(identity.user.id, version_id, profile)
+    return Response(
+        content=content,
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": "attachment; filename*=UTF-8''" + quote(filename, safe="")},
     )
 

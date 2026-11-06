@@ -16,6 +16,7 @@ from dataflow.modules.ingestion.plans import (
 from dataflow.modules.quality.contracts import QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
 from dataflow.modules.understanding.public import SemanticReference, SemanticService, TableReference
+from dataflow.platform.csv_export import CsvProfile, table_csv
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.transactions import UnitOfWork
 
@@ -280,6 +281,24 @@ class IngestionService:
                 409,
             )
         return version.file_name, self.objects.read(version.content)
+
+    def export_csv(self, owner: UUID, version_id: UUID, profile: CsvProfile) -> tuple[str, bytes]:
+        """Tabla publicada de cualquier versión (también derivada) en un perfil CSV fijo."""
+        version = self.datasets.get(owner, version_id)
+        tables = [
+            t for t in self.executions.representations(owner, version_id) if t.kind == "table"
+        ]
+        if not tables or not tables[0].columns:
+            raise ApplicationError(
+                "TABLE_NOT_READY", "La versión todavía no tiene una tabla publicada.", 409
+            )
+        table = tables[0]
+        stem = version.file_name.rsplit(".", 1)[0] or "datos"
+        suffix = "" if profile == "standard" else "-excel"
+        return (
+            f"{stem}-v{version.number}{suffix}.csv",
+            table_csv(self.objects.read(table.content), table.columns or [], profile),
+        )
 
     def cancel(self, owner: UUID, execution_id: UUID) -> Version:
         run = self.executions.get(owner, execution_id)

@@ -12,6 +12,7 @@ dependencies = [
   "sqlalchemy>=2.0.36,<3", "alembic>=1.14,<2",
   "psycopg[binary]>=3.2,<4", "argon2-cffi>=23.1,<26",
   "polars>=1.30,<2",
+  "reportlab>=5.1,<6",
 ]
 
 [project.optional-dependencies]
@@ -37,3 +38,8 @@ python_version = "3.12"
 strict = true
 plugins = ["pydantic.mypy"]
 files = ["src"]
+
+# ReportLab no publica tipos (Fase 9): se acota su uso a modules/reports/pdf.py.
+[[tool.mypy.overrides]]
+module = ["reportlab.*"]
+ignore_missing_imports = true

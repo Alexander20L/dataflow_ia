@@ -77,7 +77,10 @@ def test_0010_is_additive_and_dashboard_revisions_are_immutable(
 
         with Session(engine, expire_on_commit=False) as db:
             with engine.connect() as connection:
-                diff = compare_metadata(MigrationContext.configure(connection), Base.metadata)
+                context = MigrationContext.configure(
+                    connection, opts={"include_object": exists_at_0010}
+                )
+                diff = compare_metadata(context, Base.metadata)
             assert diff == [], diff
             executions = make_executions(db)
             after = {
@@ -123,3 +126,13 @@ def test_0010_is_additive_and_dashboard_revisions_are_immutable(
         with admin.begin() as connection:
             connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+LATER_TABLES = {"report_families", "report_revisions", "report_save_requests", "report_renders"}
+
+
+def exists_at_0010(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    table = name if type_ == "table" else getattr(getattr(obj, "table", None), "name", None)
+    return table not in LATER_TABLES

@@ -14,9 +14,13 @@ def legacy_state(state: RunState) -> str:
 
 def plan_input_kind(content: dict[str, Any]) -> InputKind:
     kind = content.get("input", {}).get("kind")
-    if kind not in {"source", "table"}:
-        raise ApplicationError("INPUT_MISMATCH", "El plan no declara un input admitido.", 409)
-    return "source" if kind == "source" else "table"
+    if kind == "source":
+        return "source"
+    if kind == "table":
+        return "table"
+    if kind == "report":
+        return "report"
+    raise ApplicationError("INPUT_MISMATCH", "El plan no declara un input admitido.", 409)
 
 
 def plan_steps(content: dict[str, Any]) -> list[PlanStepSpec]:

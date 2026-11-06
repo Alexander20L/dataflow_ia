@@ -58,6 +58,11 @@ class DashboardService:
             result.append(DashboardSummary(family_id=family, head=head, revision_count=count))
         return result
 
+    def head(self, owner: UUID, family: UUID) -> DashboardRevision:
+        value, _ = self.repository.head(owner, family)
+        self.sources.require_project(owner, value.project_id)
+        return value
+
     def revision(self, owner: UUID, revision: UUID) -> DashboardRevision:
         value = self.repository.revision(owner, revision)
         self.sources.require_project(owner, value.project_id)

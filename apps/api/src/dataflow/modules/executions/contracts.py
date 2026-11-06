@@ -7,7 +7,10 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataflow.modules.datasets.contracts import StoredObject
 
-RunKind = Literal["csv_import", "table_analysis", "plan", "cleaning_preview", "cleaning_apply"]
+# report_render (Fase 9): informe exacto a PDF; su entrada es una instantánea del informe.
+RunKind = Literal[
+    "csv_import", "table_analysis", "plan", "cleaning_preview", "cleaning_apply", "report_render"
+]
 RunState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 ArtifactKind = Literal[
     "table",
@@ -19,6 +22,7 @@ ArtifactKind = Literal[
     "row_lineage",
     "quality_rules",
     "analysis_result",
+    "report_pdf",
 ]
 
 
@@ -152,7 +156,7 @@ class Artifact:
     logical_content_sha256: str | None
 
 
-InputKind = Literal["source", "table"]
+InputKind = Literal["source", "table", "report"]
 
 
 @dataclass(frozen=True)
