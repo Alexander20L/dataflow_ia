@@ -1,6 +1,6 @@
 # Fase 7 — Análisis de negocio determinista
 
-Se entrega en dos partes: **7A** (API 0.10, esta entrega) añade métricas definidas por el usuario, consultas estructuradas y evidencia direccionable por cifra; **7B** (pendiente) añadirá comparaciones, ranking y participación. [ADR-018](../adr/018-deterministic-business-analysis.md).
+Se entregó en dos partes: **7A** (API 0.10) añade métricas definidas por el usuario, consultas estructuradas y evidencia direccionable por cifra ([ADR-018](../adr/018-deterministic-business-analysis.md)); **7B** (API 0.11) añade comparaciones entre periodos, ranking y participación sobre el total como `analytics.query@2` ([ADR-019](../adr/019-comparisons-ranking-share.md)).
 
 Objetivo: responder preguntas reales sobre los datasets del usuario con métricas definidas explícitamente y poder rastrear cada cifra hasta su definición, filtros, versión de datos, revisión semántica y filas excluidas. El sistema nunca deduce que una suma son «ingresos»: el nombre de negocio es una etiqueta del usuario sobre una métrica definida.
 
@@ -109,32 +109,72 @@ Migración **0009**, sólo aditiva: `analytics_metric_families`, `analytics_metr
 
 Python 3.12.10. Backend: 292 pruebas, Ruff y mypy strict sin errores, contrato exportado sin diferencias. Web: typecheck, lint, format y build correctos. E2E en serie: 16/16.
 
-## Pendiente: 7B
+## 7B · Comparaciones, ranking y participación (API 0.11)
 
-Traspaso para el chat que implementará la 7B, en esta misma rama (`feat/fase-7-analisis`, sin merge a `develop` hasta terminarla).
+Recorrido: Análisis → elegir métricas, dimensiones y agrupación temporal → «Comparar y ordenar» (periodo anterior, mismo periodo del año anterior, top N por una métrica, % del total) → «Calcular» → columnas de base, variación, variación %, % del total y posición → cualquier cifra abre «De dónde sale este número».
 
-### Decisiones ya aprobadas que le aplican
+### Versión de la operación
 
-- **D7 · participación**: `share_scale` por defecto **2** (porcentaje), HALF_EVEN, fijado en el plan como `avg_scale`. Cada porcentaje se redondea por separado (sin método del mayor resto); la suma puede desviarse hasta **n × 0,005** puntos y esa tolerancia se declara en el resultado.
-- **D9 · evidencia**: `evidence_id` = hash canónico de la dirección completa; dimensiones con la celda canónica de la Fase 6 y `{"missing": true}` para el grupo sin valor. Las cifras nuevas (comparación, participación, posición) deben ser direccionables igual.
-- **Desempate estable**: por todas las dimensiones en el orden declarado, después el periodo, con valores tipados y nulos al final (el orden actual de `run_query`).
-- D1 (Polars + aritmética exacta en Python), D4/D5 (requisitos y unidades), D6 (nulos excluidos, grupo «(sin valor)»), D8 (semanas ISO, fecha de negocio) y D10 (presupuesto) siguen vigentes.
+`analytics.query@2` amplía los parámetros de `@1`; `@1` no cambia (modelo, motor y resultado) y sus planes guardados se ejecutan igual. Catálogo **`analysis-v6`** con los dos descriptores; la interfaz crea siempre `@2`, que sin opciones nuevas calcula las mismas cifras, conteos y `evidence_id` de `value` que `@1`. Una referencia congelada del JSON exacto de `@1`, capturada antes de tocar el motor (`tests/fixtures/phase7_query_v1_golden/`), protege esa equivalencia y no se regenera para hacer pasar una prueba.
 
-### Plan de etapas
+| Parámetro nuevo  | Contenido                                                                                  |
+| ---------------- | ------------------------------------------------------------------------------------------ |
+| `comparisons`    | 0–2 de `previous_period`, `same_period_last_year`; exige `time_grain` y periodo alineado   |
+| `change_scale`   | decimales de la variación % (por defecto 2, 0–12), HALF_EVEN                               |
+| `ranking`        | `metric_revision_id`, `direction` (`desc` o `asc`) y `top_n` (1–1000); exige una dimensión |
+| `share_of_total` | revisiones (de entre las métricas) con % del total; sólo `sum` y `count`                   |
+| `share_scale`    | decimales del % del total (por defecto 2, D7), HALF_EVEN                                   |
 
-| Etapa                           | Contenido                                                                                                                                                                | Archivos                                                                 |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
-| **B1. Comparaciones**           | Periodo anterior y mismo periodo del año anterior, por grupo temporal. Un periodo sin datos da un valor nulo con indicador, no 0. Variación nula si la base es 0 o nula. | `analytics/{contracts,engine}.py`, `tests/test_analytics_comparisons.py` |
-| **B2. Ranking y participación** | Top N con desempate estable por las dimensiones. `share_of_total` dentro de cada grupo temporal (o del total si no hay tiempo) con la escala y la tolerancia declaradas. | `analytics/engine.py`, `tests/test_analytics_ranking.py`                 |
-| **B3. API e interfaz**          | Parámetros nuevos (versión de la operación según el cambio), API 0.11.0, columnas de comparación y participación en la tabla y en el panel de evidencia; E2E.            | `features/analytics/*`, `tests/e2e/analytics-compare.spec.ts`            |
-| **B4. Documentación**           | Esta sección convertida en «7B», ADR-019.                                                                                                                                | —                                                                        |
+### Comparaciones
 
-### Lo descubierto en 7A que afecta a 7B
+- **El periodo consultado se calcula como en `@1`**: `time_range` filtra antes de agrupar y `counts` significa lo mismo.
+- **La base es una segunda pasada sin el filtro de periodo**: aplica los filtros de la consulta que no son de periodo y los de la métrica, y sólo acepta filas de los periodos base que necesita algún grupo (periodo anterior: día −1, semana −7 días, mes, trimestre o año anterior; mismo periodo del año anterior: misma semana ISO del año ISO anterior, mismo mes, trimestre o día).
+- **`base_counts`** por métrica y comparación: `input_rows = excluded_by_filters + outside_base_periods + excluded_by_nulls + included_rows` (las filas sin fecha cuentan como fuera de los periodos base).
+- **Periodo alineado** (decisión 7B-1): con comparaciones, `time_range` empieza el primer día y termina el último día de un periodo de la granularidad; si no, el plan no es válido (`INVALID_PARAMETERS`, «debe empezar el primer día de un mes»). Sin comparaciones, el periodo parcial sigue permitido.
+- **Nunca 0 en lugar de un nulo**: `no_base_data` (el periodo base no tiene filas para la métrica; si el grupo base existe, un conteo vale 0, como en `@1`), `no_counterpart` (29 de febrero, semana 53 o fuera del calendario: no se sustituye por un vecino) y `missing_period` (grupo sin fecha).
+- **Variación** (7B-5): absoluta sobre las cifras mostradas (ya cuantizadas, también la media) y porcentual sobre |base|, en `Decimal` con HALF_EVEN. Con base 0 hay variación absoluta, no porcentual (`base_zero`).
 
-1. **Versión de la operación**: `QueryParameters` usa `extra="forbid"` y los planes guardan los parámetros completos. Añadir `comparison`, `ranking` o `share_of_total` cambia lo que hace la operación: lo coherente con el versionado es `analytics.query@2` (con `analytics.query@1` intacta y sus resultados reproducibles), no ampliar `@1`.
-2. **El periodo filtra antes de agrupar**: `time_range` se convierte en filtros `gte`/`lte` sobre la columna temporal y excluye esas filas (contadas en `excluded_by_filters`). Las comparaciones necesitan filas **fuera** del rango (periodo anterior, año anterior): habrá que calcular la base de comparación sin ese filtro y documentar qué cuenta cada métrica.
-3. **Grupos**: un grupo sólo existe si alguna métrica tiene filas incluidas. Comparar con un periodo que no existe como grupo debe dar nulo con indicador; la participación debe usar el total **antes** de recortar por ranking o por presupuesto.
-4. **Celdas de evidencia**: `EvidenceReference.cell` es hoy `Literal["value"]`. Para comparación y participación conviene añadir valores (`previous_period`, `same_period_last_year`, `change`, `share_of_total`, `rank`) sin cambiar el `evidence_id` de `value`.
-5. **Media en float de Polars**: cualquier cociente (variación, participación) debe hacerse en `Decimal` con la escala del plan.
-6. **Presupuesto**: `RESULT_TOO_LARGE` cuenta todos los grupos antes de cualquier recorte; con ranking, decidir si el límite se aplica antes o después del top N (recomendación: después, y declararlo).
-7. **Interfaz**: el historial de ejecuciones (`execution-panel.tsx`) todavía no muestra resultados `analysis_result`; sólo la etapa Análisis los muestra. Los gráficos siguen en la Fase 8.
+### Ranking y participación
+
+- **Top N** dentro de cada periodo (o de todo el resultado). Posiciones 1, 2, 3 sin empates compartidos: dos valores iguales se ordenan por las dimensiones (desempate estable) y la segunda fila lleva **`tied_with_previous: true`**, que forma parte de la evidencia de su posición. Los grupos sin valor en la métrica del ranking no tienen posición. `RankingSummary` declara por periodo los grupos, los que tienen posición, los visibles y los ocultos. Con ranking, las filas se ordenan por periodo y posición.
+- **Presupuesto** (7B-3): `RESULT_TOO_LARGE` se aplica después del top N; sin ranking, como en `@1`. La evidencia sólo se calcula para las filas visibles.
+- **% del total** (7B-2): sólo `sum` y `count` (planning: `SHARE_NOT_ADDITIVE`; el motor lo comprueba también). El total de cada periodo incluye todos los grupos, **antes** del top N y del presupuesto; cada porcentaje se redondea por separado (D7). `ShareTotal` declara total, grupos, tolerancia (n × media unidad de `share_scale`: 0.025 con 5 grupos a escala 2) y `mixed_signs`. Total 0 o grupo sin valor: nulo (`total_zero`, `value_missing`).
+
+### Evidencia
+
+La dirección de `value` no cambia (misma fórmula que `@1`, sin `detail`). Las cifras derivadas añaden `cell` y su `detail`:
+
+| `cell`                                     | `detail`                                    |
+| ------------------------------------------ | ------------------------------------------- |
+| `previous_period`, `same_period_last_year` | `comparison`, `base_period`                 |
+| `change`                                   | `comparison`, `base_period`                 |
+| `change_pct`                               | `comparison`, `base_period`, `change_scale` |
+| `share_of_total`                           | `share_scale`                               |
+| `rank`                                     | `direction`, `top_n`, `tied_with_previous`  |
+
+`GET /executions/{id}/evidence/{evidence_id}` resuelve cualquier celda y recalcula su dirección con las mismas funciones del motor. `EvidenceView` añade `operation`, `metric_value` y, según la celda, `comparison`, `share`, `share_total`, `rank` y `ranking`.
+
+### API 0.11
+
+Cambios aditivos: `GET /executions/{id}/analysis` devuelve una unión distinguida por `operation` (`AnalysisResult` para `@1`, `AnalysisResultV2` para `@2`); `EvidenceReference` admite `cell` y `detail`; código de problema `SHARE_NOT_ADDITIVE`; `ProcessingConfig.operation_catalog` admite `analysis-v6`. **Sin migración**: todo vive en el artefacto `analysis_result`. **Actualizar desde 0.10 / esquema 0009**: desplegar API y worker juntos (un worker 0.10 no tiene ejecutor para `analytics.query@2`).
+
+### Interfaz
+
+Bloque «Comparar y ordenar» en Análisis. La tabla añade «Posición» (un «=» marca el empate, con la explicación), base, variación, variación % y % del total; con varias métricas, cada columna derivada lleva el nombre de su métrica. Las bases sin valor dicen «sin datos», «sin equivalente» o «sin fecha». Notas bajo la tabla: grupos ocultos por el top N y que el % del total incluye los grupos no visibles, con su tolerancia. El panel de procedencia muestra qué es la cifra, el valor del grupo, el periodo base y sus filas, la fórmula de la variación %, el total y el redondeo de la participación y el ranking con el empate.
+
+### Pruebas de 7B
+
+- Referencia congelada de `@1` (`test_analytics_query_v1_golden.py`): 8 consultas con IDs y ámbito fijos, JSON exacto del artefacto.
+- Comparaciones (`test_analytics_comparisons.py`): `@2` sin opciones igual a `@1` en los 8 casos; base fuera del rango; conteos de la base que suman la entrada; filtros de consulta y de métrica en la base; base sin datos nula y conteo 0 si el grupo base existe; 29 de febrero, semana 53 y grupo sin fecha; trimestres, años y ambas comparaciones; HALF_EVEN, base negativa y media cuantizada; alineación; evidencia y determinismo.
+- Ranking y participación (`test_analytics_ranking.py`): top N global y por periodo, ascendente y descendente; empates con posiciones distintas e indicador también en la evidencia; grupos sin valor ocultos y contados; total antes del recorte, tolerancia, escala y conteos; total cero, negativos y valores ausentes; sólo métricas sumables; presupuesto antes y después del top N; combinación determinista.
+- De punta a punta (`test_analytics_runner.py`) y planning (`test_planning_domain.py`): ranking y participación sobre la v2 tipada con evidencia de cada celda, comparación por día, `SHARE_NOT_ADDITIVE`, periodo no alineado y `@1` que rechaza los parámetros nuevos.
+- Navegador (`analytics-compare.spec.ts`): top 3 con «3 =» y grupo oculto, % del total con su procedencia, periodo no alineado rechazado, comparación por día con las filas de la base y sin desbordamiento a 390 px. Las dos E2E de Limpieza (`cleaning.spec.ts`, `cleaning-cast.spec.ts`) tienen ahora 60 s: rondaban el límite de 30 s en un equipo cargado.
+
+### Verificación local de 7B
+
+2026-11-06, Python 3.12.10. Backend: 352 pruebas (60 nuevas en 7B), Ruff y mypy strict sin errores, contrato exportado sin diferencias y `contracts:check` correcto. Web: typecheck, lint, format y build correctos. E2E en serie: 17/17. En la línea base, recién reiniciado el equipo, las dos E2E de Limpieza agotaban su límite de 30 s mientras el servidor terminaba con éxito segundos después; con 60 s pasan (23,6 s y 19,5 s en esta verificación).
+
+## Pendiente para la Fase 8
+
+- **Historial de ejecuciones**: `execution-panel.tsx` todavía no muestra resultados `analysis_result`; sólo la etapa Análisis los muestra (decisión 7B-6).
+- **Gráficos** de los resultados de análisis.

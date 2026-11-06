@@ -30,4 +30,4 @@ Hasta 0.9 el producto diagnostica, limpia y convierte datos, pero no responde pr
 
 - Una cifra se reproduce con la misma versión de datos, revisión semántica, revisiones de métricas y parámetros; su `evidence_id` es estable para el mismo cálculo y distinto entre ejecuciones (incluye la ejecución).
 - Para medir un importe de un CSV propio hay que convertirlo antes (Fase 6) y confirmar la semántica en la versión convertida.
-- Las comparaciones, el ranking y la participación (7B) se añadirán como una versión nueva de la operación; las decisiones que les aplican están en la sección «Pendiente: 7B» de la Fase 7.
+- Las comparaciones, el ranking y la participación (7B) se añadieron como una versión nueva de la operación, `analytics.query@2`, sin cambiar `@1`: [ADR-019](019-comparisons-ranking-share.md).

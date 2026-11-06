@@ -84,7 +84,7 @@ npm run dev --workspace @dataflow/web -- --port 3002
 Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:check + contracts:check +
 `export_openapi.py --check` + test:e2e.
 
-## Estado (2026-11-05)
+## Estado (2026-11-06)
 
 | Fase | API  | Rama                        | Estado                                                                       |
 | ---- | ---- | --------------------------- | ---------------------------------------------------------------------------- |
@@ -94,15 +94,16 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 6A   | 0.8  | `feat/fase-6-conversiones`  | tablas tipadas, cast, normalize_null_tokens, deduplicate; migración 0007     |
 | 6B   | 0.9  | `feat/fase-6-conversiones`  | csv-quality-v2, conjuntos de reglas, quality.evaluate@2; migración 0008      |
 | 7A   | 0.10 | `feat/fase-7-analisis`      | métricas, analytics.query@1, evidencia por cifra; migración 0009; con commit |
-| 7B   | 0.11 | `feat/fase-7-analisis`      | pendiente: comparaciones, ranking, participación (misma rama)                |
+| 7B   | 0.11 | `feat/fase-7-analisis`      | analytics.query@2: comparaciones, ranking, % del total; `analysis-v6`        |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
-resultados de las tablas de texto: no regenerar sus referencias para hacer pasar una prueba.
-Integración: `develop` contiene las Fases 4 a 6 (merge `--no-ff`). La Fase 7 se mezcla en `develop` al
-terminar la 7B. **Traspaso 7B**: sección «Pendiente: 7B» de `docs/architecture/phase-7.md` (decisiones
-aprobadas D7/D9, desempate, plan B1-B4 y lo descubierto en 7A).
+resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
+no regenerar sus referencias para hacer pasar una prueba.
+Integración: `develop` contiene las Fases 4 a 7 (merge `--no-ff`). Fase 7 completa (7A y 7B): ADR-018 y
+ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`.
 Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015); copiar reglas de calidad y
-métricas entre importaciones (ADR-017, ADR-018).
+métricas entre importaciones (ADR-017, ADR-018); para la Fase 8, resultados de análisis en el historial de
+ejecuciones y gráficos (sección «Pendiente para la Fase 8» de `phase-7.md`).
 
 ## Forma de trabajo
 
