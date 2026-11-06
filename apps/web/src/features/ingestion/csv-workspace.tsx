@@ -20,6 +20,7 @@ import { useApp } from "@/lib/providers";
 import { ExecutionPanel } from "@/features/executions/execution-panel";
 import { SemanticUnderstanding } from "@/features/understanding/semantic-editor";
 import { CleaningStage } from "@/features/cleaning/proposal";
+import { CopilotPanel } from "@/features/copilot/copilot-panel";
 import { QualityRules } from "@/features/quality/rules-editor";
 import { AnalysisStage } from "@/features/analytics/analysis-stage";
 import { DashboardStage } from "@/features/dashboards/dashboard-stage";
@@ -44,6 +45,7 @@ const DASHBOARD_STAGE = 6;
 // Etapa «Explicación»: informes con procedencia y exportación a PDF desde la Fase 9.
 const REPORT_STAGE = 7;
 const REAL_STAGES = new Set([ANALYSIS_STAGE, DASHBOARD_STAGE, REPORT_STAGE]);
+const CLEANING_STAGE = 3;
 const states = {
   queued: "En cola",
   processing: "Procesando",
@@ -72,11 +74,14 @@ export function CsvWorkspace({
   const [cleaningEpoch, setCleaningEpoch] = useState(0);
   const [rulesDirty, setRulesDirty] = useState(false);
   const [rulesEpoch, setRulesEpoch] = useState(0);
+  // Plan de limpieza guardado desde el copiloto: Limpieza lo abre para la vista previa.
+  const [copilotPlan, setCopilotPlan] = useState<string | null>(null);
   const [pendingChange, setPendingChange] = useState<{
     kind: "stage" | "version" | "offset" | "upload";
     value?: string | number;
   } | null>(null);
   function applyChange(change: NonNullable<typeof pendingChange>) {
+    if (change.kind !== "stage") setCopilotPlan(null); // el plan está fijado a su tabla
     if (change.kind === "stage") setStage(Number(change.value));
     else if (change.kind === "version") setSelected(String(change.value));
     else if (change.kind === "offset") {
@@ -447,13 +452,15 @@ export function CsvWorkspace({
                     onDirtyChange={setRulesDirty}
                   />
                 )}
-                {stage === 3 && (
+                {stage === CLEANING_STAGE && (
                   <CleaningStage
-                    key={`${version.id}-${cleaningEpoch}`}
+                    key={`${version.id}-${cleaningEpoch}-${copilotPlan ?? ""}`}
                     projectId={projectId}
                     version={version}
                     diagnostic={diagnostic.data}
                     archived={archived}
+                    copilotPlanId={copilotPlan}
+                    onDismissCopilotPlan={() => setCopilotPlan(null)}
                     onShowDerived={(id) => void showDerived(id)}
                     onDirtyChange={setCleaningDirty}
                   />
@@ -470,6 +477,24 @@ export function CsvWorkspace({
               </>
             ) : null}
           </div>
+          {version.state === "succeeded" && (
+            <CopilotPanel
+              projectId={projectId}
+              versionId={version.id}
+              versionNumber={version.number}
+              archived={archived}
+              onOpenStage={(target) =>
+                requestChange({
+                  kind: "stage",
+                  value: target === "understanding" ? 1 : ANALYSIS_STAGE,
+                })
+              }
+              onOpenCleaningPlan={(plan) => {
+                setCopilotPlan(plan);
+                requestChange({ kind: "stage", value: CLEANING_STAGE });
+              }}
+            />
+          )}
           {version.state === "succeeded" && (
             <ExecutionPanel
               key={`${version.id}-${planEpoch}`}

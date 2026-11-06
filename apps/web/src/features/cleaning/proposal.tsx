@@ -190,6 +190,8 @@ export function CleaningStage({
   archived,
   onShowDerived,
   onDirtyChange,
+  copilotPlanId = null,
+  onDismissCopilotPlan,
 }: {
   projectId: string;
   version: DatasetVersion;
@@ -197,6 +199,9 @@ export function CleaningStage({
   archived: boolean;
   onShowDerived: (parentVersionId: string) => void;
   onDirtyChange: (dirty: boolean) => void;
+  /** Plan guardado desde el copiloto (Fase 10): mismo ciclo de vista previa y aprobación. */
+  copilotPlanId?: string | null;
+  onDismissCopilotPlan?: () => void;
 }) {
   const tables = useRepresentations(version.id);
   const table = tables.data?.[0];
@@ -247,6 +252,8 @@ export function CleaningStage({
       archived={archived}
       onShowDerived={onShowDerived}
       onDirtyChange={onDirtyChange}
+      copilotPlanId={copilotPlanId}
+      onDismissCopilotPlan={onDismissCopilotPlan}
     />
   );
 }
@@ -260,6 +267,8 @@ function Proposal({
   archived,
   onShowDerived,
   onDirtyChange,
+  copilotPlanId,
+  onDismissCopilotPlan,
 }: {
   projectId: string;
   table: { id: string; sha256: string };
@@ -269,6 +278,8 @@ function Proposal({
   archived: boolean;
   onShowDerived: (parentVersionId: string) => void;
   onDirtyChange: (dirty: boolean) => void;
+  copilotPlanId: string | null;
+  onDismissCopilotPlan?: () => void;
 }) {
   const suggested = useMemo(
     () => initialDraft(diagnostic, columns, semantic),
@@ -374,6 +385,40 @@ function Proposal({
           onRepeat={() => void preview(planId).catch(() => {})}
           onShowDerived={onShowDerived}
         />
+        {createPreview.isError && (
+          <p className="auth-error" role="alert">
+            {errorMessage(createPreview.error)}
+          </p>
+        )}
+      </section>
+    );
+  if (copilotPlanId && !previewId)
+    return (
+      <section className="cleaning-stage" aria-label="Limpieza supervisada">
+        <div className="section-heading">
+          <div>
+            <h3>Plan de limpieza propuesto por el copiloto</h3>
+            <p>
+              Está guardado como plan y no ha cambiado ningún dato. Genera la
+              vista previa sobre todo el dataset y aprueba el efecto exacto
+              antes de aplicarlo.
+            </p>
+          </div>
+          {onDismissCopilotPlan && (
+            <Button variant="outline" size="sm" onClick={onDismissCopilotPlan}>
+              Usar la propuesta del diagnóstico
+            </Button>
+          )}
+        </div>
+        <Button
+          disabled={archived || pending}
+          onClick={() => {
+            setPlanId(copilotPlanId);
+            void preview(copilotPlanId).catch(() => {});
+          }}
+        >
+          Generar vista previa
+        </Button>
         {createPreview.isError && (
           <p className="auth-error" role="alert">
             {errorMessage(createPreview.error)}
