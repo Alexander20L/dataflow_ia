@@ -194,6 +194,23 @@ function SemanticForm({
           {context.table_ref.artifact_sha256.slice(0, 16)}
         </small>
       </div>
+      {context.origin && !archived && (
+        <div className="info-banner" role="status">
+          <span>
+            Esta versión deriva de v{context.origin.version_number}, que tiene
+            la revisión semántica {context.origin.revision.revision}. Puedes
+            partir de sus decisiones (mismas columnas); no se confirma nada
+            hasta que guardes.
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => update(normalizeDraft(context.origin!.draft))}
+          >
+            Partir de la revisión de v{context.origin.version_number}
+          </Button>
+        </div>
+      )}
       {newer && (
         <div className="warning-banner" role="status">
           <span>
