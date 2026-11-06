@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 
+from dataflow.modules.analytics.contracts import QueryParameters
 from dataflow.modules.cleaning.public import (
     CastParameters,
     DeduplicateParameters,
@@ -25,7 +26,7 @@ from dataflow.modules.planning.public import (
 from dataflow.modules.quality.contracts import QualityParameters
 from dataflow.modules.quality.public import QualityRulesParameters
 from dataflow.modules.understanding.contracts import ProfileParameters
-from dataflow.platform.data_types import NUMERIC
+from dataflow.platform.data_types import ALL_TYPES, NUMERIC
 
 # Sólo operaciones con ejecutor real; ninguna exige revisión semántica (Fase 3). Las de
 # limpieza transforman datos: se ejecutan con vista previa y aprobación, nunca como "plan".
@@ -45,6 +46,16 @@ DESCRIPTORS: tuple[OperationDescriptor, ...] = (
         "quality_rules",
         QualityRulesParameters,
         ruleset_reference=("ruleset_revision_id", "ruleset_sha256"),
+    ),
+    OperationDescriptor(
+        "analytics.query",
+        1,
+        "Consultar métricas",
+        "table",
+        "analysis_result",
+        QueryParameters,
+        column_types=lambda parameters: {"filter_column_ids": ALL_TYPES},
+        metric_reference="metrics",
     ),
     OperationDescriptor(
         "cleaning.trim_whitespace",

@@ -10,6 +10,7 @@ from dataflow.modules.planning.contracts import (
     ConfirmedColumnRole,
     InputKind,
     InputRef,
+    MetricRequirement,
     OperationCatalog,
     OperationDescriptor,
     OutputKind,
@@ -19,6 +20,7 @@ from dataflow.modules.planning.contracts import (
     PlanStep,
     Problem,
     ProblemCode,
+    ResolveIn,
     Schema,
     SemanticRevisionRequirement,
 )
@@ -231,7 +233,110 @@ def step_parameter_problems(
     if parameters is not None:
         problems.extend(type_problems(step, descriptor, parameters, facts, schema))
         problems.extend(ruleset_problems(step, descriptor, parameters, facts, schema))
+        problems.extend(metric_problems(step, descriptor, parameters, facts, schema))
     return problems, parameters
+
+
+def metric_problems(
+    step: PlanStep,
+    descriptor: OperationDescriptor,
+    parameters: BaseModel,
+    facts: PlanningFacts,
+    schema: Schema | None,
+) -> list[Problem]:
+    """Métricas referenciadas: revisión exacta, columnas existentes y tipos; requisito
+    semántico positivo (medida confirmada como «measure»; columna temporal como
+    «business_date»); unidad o moneda compartida y una única columna temporal."""
+    if descriptor.metric_reference is None:
+        return []
+    name = descriptor.metric_reference
+    problems: list[Problem] = []
+
+    def problem(code: ProblemCode, message: str, resolve: ResolveIn = "plan_steps") -> None:
+        problems.append(
+            Problem(code=code, message=message, resolve_in=resolve, step_id=step.id, parameter=name)
+        )
+
+    uses_time = (
+        getattr(parameters, "time_grain", None) is not None
+        or getattr(parameters, "time_range", None) is not None
+    )
+    resolved: list[MetricRequirement] = []
+    for reference in getattr(parameters, name):
+        requirement = facts.metrics.get(reference.revision_id)
+        if requirement is None or requirement.content_sha256 != reference.content_sha256:
+            problem(
+                "METRIC_REFERENCE_MISMATCH",
+                f"La métrica {reference.revision_id} no existe, no es accesible o su hash no "
+                "coincide.",
+            )
+            continue
+        columns = [
+            requirement.measure_column_id,
+            *requirement.filter_column_ids,
+            *([requirement.time_column_id] if requirement.time_column_id else []),
+        ]
+        missing = [column for column in columns if column not in facts.column_ids]
+        if missing:
+            problem(
+                "METRIC_REFERENCE_MISMATCH",
+                f"La métrica usa la columna {missing[0]}, que no existe en la tabla fijada.",
+            )
+            continue
+        resolved.append(requirement)
+        actual = schema.get(requirement.measure_column_id) if schema is not None else None
+        if actual is not None and actual not in requirement.measure_types:
+            problem(
+                "COLUMN_TYPE_MISMATCH",
+                f"La métrica necesita una columna {', '.join(sorted(requirement.measure_types))}; "
+                f"{requirement.measure_column_id} es «{actual}». Conviértela en Limpieza.",
+            )
+        if requirement.requires_measure_role and (
+            not facts.semantic_pinned
+            or facts.confirmed_roles.get(requirement.measure_column_id) != "measure"
+        ):
+            problem(
+                "SEMANTIC_REQUIREMENT_MISSING",
+                f"La columna {requirement.measure_column_id} debe estar confirmada como medida "
+                "(«measure») en la revisión semántica fijada.",
+                "understanding",
+            )
+        if uses_time and requirement.time_column_id is not None:
+            time_type = schema.get(requirement.time_column_id) if schema is not None else None
+            if time_type is not None and time_type != "date":
+                problem(
+                    "COLUMN_TYPE_MISMATCH",
+                    f"La columna temporal {requirement.time_column_id} debe ser una fecha.",
+                )
+            if (
+                not facts.semantic_pinned
+                or facts.confirmed_roles.get(requirement.time_column_id) != "business_date"
+            ):
+                problem(
+                    "SEMANTIC_REQUIREMENT_MISSING",
+                    f"La columna {requirement.time_column_id} debe estar confirmada como fecha "
+                    "de negocio («business_date») en la revisión semántica fijada.",
+                    "understanding",
+                )
+    if uses_time and resolved:
+        times = {r.time_column_id for r in resolved}
+        if None in times or len(times) > 1:
+            problem(
+                "TIME_COLUMN_MISMATCH",
+                "Para agrupar por tiempo o filtrar un periodo, todas las métricas deben declarar "
+                "la misma columna temporal.",
+            )
+    if facts.semantic_pinned:
+        units = {
+            facts.column_units.get(r.measure_column_id) for r in resolved if r.requires_measure_role
+        }
+        if len(units) > 1:
+            shown = ", ".join(sorted(unit or "sin unidad" for unit in units))
+            problem(
+                "UNIT_MISMATCH",
+                f"Las métricas combinadas deben compartir unidad o moneda; hay: {shown}.",
+            )
+    return problems
 
 
 def ruleset_problems(
@@ -300,6 +405,19 @@ def type_problems(
     if descriptor.column_types is not None and schema is not None:
         for name, allowed in descriptor.column_types(parameters).items():
             for column in referenced_columns(parameters, name):
+                if column not in facts.column_ids and name not in column_parameters(
+                    descriptor.parameters
+                ):
+                    problems.append(
+                        Problem(
+                            code="UNKNOWN_COLUMN",
+                            message=f"La columna {column} no existe en la tabla fijada.",
+                            resolve_in="plan_steps",
+                            step_id=step.id,
+                            parameter=name,
+                        )
+                    )
+                    continue
                 actual = schema.get(column)
                 if actual is not None and actual not in allowed:
                     problems.append(

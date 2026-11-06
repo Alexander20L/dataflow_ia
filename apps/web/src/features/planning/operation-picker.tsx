@@ -9,6 +9,7 @@ const outputs = {
   profile: "Perfil",
   quality: "Calidad",
   quality_rules: "Reglas de calidad",
+  analysis_result: "Resultado de análisis",
 };
 
 export function requirementLabel(

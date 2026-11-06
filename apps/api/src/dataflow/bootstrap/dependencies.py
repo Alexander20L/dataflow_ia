@@ -11,10 +11,12 @@ from dataflow.bootstrap.services import (
     make_datasets,
     make_executions,
     make_ingestion,
+    make_metrics,
     make_planning,
     make_rulesets,
     make_semantics,
 )
+from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.cleaning.application import CleaningService
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.datasets.public import Datasets
@@ -122,6 +124,13 @@ def ruleset_service(db: Db, objects: Objects) -> RulesetService:
 
 
 Rulesets = Annotated[RulesetService, Depends(ruleset_service)]
+
+
+def metric_service(db: Db, objects: Objects) -> MetricService:
+    return make_metrics(db, objects)
+
+
+Metrics = Annotated[MetricService, Depends(metric_service)]
 
 
 def planning_service(db: Db, objects: Objects) -> PlanningService:

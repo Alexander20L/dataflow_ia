@@ -186,6 +186,9 @@ LATER_TABLES = {
     "quality_ruleset_families",
     "quality_ruleset_revisions",
     "quality_ruleset_save_requests",
+    "analytics_metric_families",
+    "analytics_metric_revisions",
+    "analytics_metric_save_requests",
 }
 
 

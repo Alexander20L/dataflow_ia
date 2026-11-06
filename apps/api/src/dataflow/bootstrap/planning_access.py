@@ -1,8 +1,11 @@
 from uuid import UUID
 
+from dataflow.modules.analytics.application import MetricService
+from dataflow.modules.analytics.contracts import MEASURED
 from dataflow.modules.datasets.public import Datasets
 from dataflow.modules.executions.public import Executions
 from dataflow.modules.planning.contracts import (
+    MetricRequirement,
     PinnedTable,
     RulesetRequirement,
     SemanticRole,
@@ -28,9 +31,11 @@ class PlanningTableAccess:
         projects: ProjectPermissions,
         semantics: SemanticService,
         rulesets: RulesetService,
+        metrics: MetricService,
     ) -> None:
         self.datasets, self.executions = datasets, executions
         self.projects, self.semantics, self.rulesets = projects, semantics, rulesets
+        self.metrics = metrics
 
     def table(self, owner: UUID, artifact: UUID) -> PinnedTable:
         table = self.executions.artifact(owner, artifact)
@@ -94,6 +99,35 @@ class PlanningTableAccess:
             facts.content_sha256,
             {column: frozenset(types) for column, types in facts.column_types.items()},
         )
+
+    def analytics_metric(self, owner: UUID, revision: UUID) -> MetricRequirement | None:
+        facts = self.metrics.facts(owner, revision)
+        if facts is None:
+            return None
+        return MetricRequirement(
+            facts.content_sha256,
+            facts.measure_column_id,
+            frozenset(facts.measure_types),
+            facts.aggregation in MEASURED,
+            facts.time_column_id,
+            tuple(facts.filter_column_ids),
+        )
+
+    def column_units(
+        self, owner: UUID, reference: SemanticReference, table: TableInput
+    ) -> dict[UUID, str | None]:
+        """Moneda (preferente) o unidad de las columnas confirmadas en la revisión fijada."""
+        self.confirmed_roles(owner, reference, table)  # verifica revisión ↔ tabla
+        revision = self.semantics.get(owner, reference.id)
+        return {
+            column.id: f"currency:{column.currency}"
+            if column.currency
+            else f"unit:{column.unit}"
+            if column.unit
+            else None
+            for column in revision.content.columns
+            if column.review.state == "confirmed"
+        }
 
     def lock_owner(self, owner: UUID) -> None:
         self.datasets.lock_owner(owner)

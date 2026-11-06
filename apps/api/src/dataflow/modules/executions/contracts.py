@@ -18,6 +18,7 @@ ArtifactKind = Literal[
     "effect_samples",
     "row_lineage",
     "quality_rules",
+    "analysis_result",
 ]
 
 
@@ -25,11 +26,12 @@ class ProcessingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
     # analysis-v1: Fase 4 (lectura, perfil, calidad); analysis-v2: añade cleaning.* (Fase 5);
     # analysis-v3: conversiones, tokens nulos y deduplicación (Fase 6A);
-    # analysis-v4: quality.evaluate@2 con reglas del usuario (Fase 6B).
+    # analysis-v4: quality.evaluate@2 con reglas del usuario (Fase 6B);
+    # analysis-v5: analytics.query@1 con métricas definidas (Fase 7A).
     # Los planes guardados conservan el valor con el que se crearon (y su hash).
-    operation_catalog: Literal["analysis-v1", "analysis-v2", "analysis-v3", "analysis-v4"] = (
-        "analysis-v4"
-    )
+    operation_catalog: Literal[
+        "analysis-v1", "analysis-v2", "analysis-v3", "analysis-v4", "analysis-v5"
+    ] = "analysis-v5"
     rule_catalog: Literal["csv-quality-v1"] = "csv-quality-v1"
     max_rows: int = Field(ge=1, le=100000)
     max_columns: int = Field(ge=1, le=128)

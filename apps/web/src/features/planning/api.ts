@@ -28,6 +28,9 @@ export const problemLabels: Record<Problem["code"], string> = {
   IDENTIFIER_CONVERSION_UNCONFIRMED:
     "Conversión de identificador sin confirmar",
   QUALITY_RULESET_MISMATCH: "Reglas de calidad no válidas",
+  METRIC_REFERENCE_MISMATCH: "Métrica no válida",
+  UNIT_MISMATCH: "Unidades o monedas distintas",
+  TIME_COLUMN_MISMATCH: "Columna temporal distinta",
 };
 
 /** Clave idempotente estable por contenido: un reintento reutiliza la misma solicitud. */

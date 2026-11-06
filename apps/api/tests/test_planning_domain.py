@@ -8,6 +8,7 @@ from dataflow.modules.planning.contracts import (
     COLUMN_REF,
     ConfirmedColumnRole,
     IdentifierConversionGuard,
+    MetricRequirement,
     OperationDescriptor,
     PlanDraft,
     PlanningFacts,
@@ -325,3 +326,130 @@ def test_identifier_conversion_guard(
     assert codes(result) == expected
     if expected:
         assert (result[0].resolve_in, result[0].parameter) == ("plan_steps", "confirm")
+
+
+class MetricRef(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    revision_id: UUID
+    content_sha256: str
+
+
+class QueryParameters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    metrics: list[MetricRef] = Field(min_length=1)
+    time_grain: Literal["month"] | None = None
+
+
+QUERY = OperationDescriptor(
+    "fake.query",
+    1,
+    "Consulta",
+    "table",
+    "analysis_result",
+    QueryParameters,
+    metric_reference="metrics",
+)
+AMOUNT, DAY, OTHER_AMOUNT, CODE = uuid4(), uuid4(), uuid4(), uuid4()
+TYPED_COLUMNS = {AMOUNT: "decimal", DAY: "date", OTHER_AMOUNT: "decimal", CODE: "string"}
+
+
+def requirement(
+    measure: UUID = AMOUNT,
+    measured: bool = True,
+    time: UUID | None = DAY,
+    sha: str = "a" * 64,
+) -> MetricRequirement:
+    return MetricRequirement(
+        sha, measure, NUMERIC if measured else frozenset(TYPED_COLUMNS.values()), measured, time, ()
+    )
+
+
+def query_problems(
+    metrics: dict[UUID, MetricRequirement],
+    refs: list[tuple[UUID, str]],
+    time_grain: str | None = None,
+    pinned: bool = True,
+    roles: dict[UUID, str] | None = None,
+    units: dict[UUID, str | None] | None = None,
+    column_types: dict[UUID, str] | None = None,
+) -> list[Problem]:
+    parameters: dict[str, Any] = {
+        "metrics": [{"revision_id": str(r), "content_sha256": s} for r, s in refs]
+    }
+    if time_grain:
+        parameters["time_grain"] = time_grain
+    draft = PlanDraft(
+        semantic_ref=SEMANTIC_REF if pinned else None,
+        steps=[step("query", "fake.query", None, parameters)],
+    )
+    facts = PlanningFacts(
+        input_kind="table",
+        column_ids=frozenset(TYPED_COLUMNS),
+        semantic_pinned=pinned,
+        confirmed_roles=roles
+        if roles is not None
+        else {AMOUNT: "measure", DAY: "business_date", OTHER_AMOUNT: "measure"},  # type: ignore[arg-type]
+        column_types=column_types or TYPED_COLUMNS,  # type: ignore[arg-type]
+        metrics=metrics,
+        column_units=units
+        if units is not None
+        else {AMOUNT: "currency:EUR", OTHER_AMOUNT: "currency:EUR"},
+    )
+
+    class Catalog(FakeCatalog):
+        def descriptor(self, name: str, version: int) -> OperationDescriptor | None:
+            return QUERY if name == "fake.query" else super().descriptor(name, version)
+
+    return validate_plan(draft, Catalog(), facts)
+
+
+def test_metric_query_valid_with_confirmed_semantics() -> None:
+    m1, m2 = uuid4(), uuid4()
+    metrics = {m1: requirement(), m2: requirement(OTHER_AMOUNT)}
+    assert query_problems(metrics, [(m1, "a" * 64), (m2, "a" * 64)], time_grain="month") == []
+
+
+def test_semantic_requirement_missing_until_measure_is_confirmed() -> None:
+    m = uuid4()
+    result = query_problems({m: requirement()}, [(m, "a" * 64)], roles={})
+    assert [(p.code, p.resolve_in) for p in result] == [
+        ("SEMANTIC_REQUIREMENT_MISSING", "understanding")
+    ]
+    unpinned = query_problems({m: requirement()}, [(m, "a" * 64)], pinned=False, time_grain="month")
+    assert [p.code for p in unpinned] == ["SEMANTIC_REQUIREMENT_MISSING"] * 2  # medida y fecha
+    # Un conteo no exige rol de medida ni unidad.
+    count = uuid4()
+    assert (
+        query_problems(
+            {count: requirement(CODE, measured=False, time=None)}, [(count, "a" * 64)], roles={}
+        )
+        == []
+    )
+
+
+def test_metric_reference_type_and_unit_problems() -> None:
+    m1, m2 = uuid4(), uuid4()
+    forged = query_problems({m1: requirement()}, [(m1, "0" * 64)])
+    assert [p.code for p in forged] == ["METRIC_REFERENCE_MISMATCH"]
+    assert [p.code for p in query_problems({}, [(uuid4(), "a" * 64)])] == [
+        "METRIC_REFERENCE_MISMATCH"
+    ]
+    missing_column = query_problems({m1: requirement(uuid4())}, [(m1, "a" * 64)])
+    assert [p.code for p in missing_column] == ["METRIC_REFERENCE_MISMATCH"]
+    text = query_problems(
+        {m1: requirement()}, [(m1, "a" * 64)], column_types={**TYPED_COLUMNS, AMOUNT: "string"}
+    )
+    assert [p.code for p in text] == ["COLUMN_TYPE_MISMATCH"]
+    currencies = query_problems(
+        {m1: requirement(), m2: requirement(OTHER_AMOUNT)},
+        [(m1, "a" * 64), (m2, "a" * 64)],
+        units={AMOUNT: "currency:EUR", OTHER_AMOUNT: "currency:USD"},
+    )
+    assert [p.code for p in currencies] == ["UNIT_MISMATCH"]
+    assert "currency:EUR, currency:USD" in currencies[0].message
+    no_time = query_problems(
+        {m1: requirement(), m2: requirement(OTHER_AMOUNT, time=None)},
+        [(m1, "a" * 64), (m2, "a" * 64)],
+        time_grain="month",
+    )
+    assert [p.code for p in no_time] == ["TIME_COLUMN_MISMATCH"]

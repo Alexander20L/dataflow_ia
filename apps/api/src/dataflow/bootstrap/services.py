@@ -2,12 +2,16 @@ from uuid import uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
 from dataflow.bootstrap.cleaning_access import CleaningPlanAccess
 from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry
 from dataflow.bootstrap.planning_access import PlanningTableAccess
 from dataflow.bootstrap.provenance import environment_snapshot
 from dataflow.bootstrap.quality_access import QualityTableAccess
 from dataflow.bootstrap.semantic_access import SemanticRepresentationAccess
+from dataflow.modules.analytics.application import MetricService
+from dataflow.modules.analytics.infrastructure import SQLMetricRepository
+from dataflow.modules.analytics.steps import AnalyticsQueryStep, MetricSource
 from dataflow.modules.audit.public import record_event
 from dataflow.modules.cleaning.application import CleaningService
 from dataflow.modules.cleaning.engine import IsolatedCleaner
@@ -107,6 +111,14 @@ def make_analysis(db: Session, objects: LocalObjects) -> AnalysisService:
         processing_config(),
         make_semantics(db, objects),
     )
+
+
+def make_metrics(db: Session, objects: LocalObjects) -> MetricService:
+    require_ready(db)
+    access = AnalyticsTableAccess(
+        make_datasets(db), make_executions(db), ProjectPermissions(db), objects
+    )
+    return MetricService(SQLMetricRepository(db), access, SQLUnitOfWork(db))
 
 
 def make_rulesets(db: Session, objects: LocalObjects) -> RulesetService:
@@ -211,6 +223,7 @@ def make_operations(
     analyzer: Analyzer,
     cleaner: IsolatedCleaner,
     rulesets: RulesetSource | None = None,
+    metrics: MetricSource | None = None,
 ) -> OperationRegistry:
     return OperationRegistry(
         {
@@ -218,6 +231,7 @@ def make_operations(
             "understanding.profile@1": ProfileStep(objects, analyzer),
             "quality.evaluate@1": QualityStep(objects, analyzer),
             "quality.evaluate@2": QualityRulesStep(objects, analyzer, rulesets),
+            "analytics.query@1": AnalyticsQueryStep(objects, objects.root, metrics),
             "cleaning.trim_whitespace@1": TrimWhitespaceStep(objects, cleaner),
             "cleaning.filter_rows@1": FilterRowsStep(objects, cleaner),
             "cleaning.normalize_null_tokens@1": NormalizeNullTokensStep(objects, cleaner),
@@ -252,7 +266,13 @@ def make_runner(
                 datasets, executions, projects, make_semantics(db, objects)
             ),
         },
-        make_operations(objects, engine, cleaner, make_rulesets(db, objects)),
+        make_operations(
+            objects,
+            engine,
+            cleaner,
+            make_rulesets(db, objects),
+            AnalyticsMetricSource(make_metrics(db, objects), make_semantics(db, objects)),
+        ),
         DatasetPublication(db, datasets, executions, approvals, config),
         environment_snapshot(),
         {
@@ -273,6 +293,7 @@ def make_planning(db: Session, objects: LocalObjects) -> PlanningService:
             ProjectPermissions(db),
             make_semantics(db, objects),
             make_rulesets(db, objects),
+            make_metrics(db, objects),
         ),
         SQLPlanningRepository(db),
         OperationCatalog(),
