@@ -292,7 +292,7 @@ function MetricCells({
   );
 }
 
-function Provenance({
+export function Provenance({
   runId,
   evidenceId,
   onClose,

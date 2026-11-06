@@ -22,6 +22,7 @@ import { SemanticUnderstanding } from "@/features/understanding/semantic-editor"
 import { CleaningStage } from "@/features/cleaning/proposal";
 import { QualityRules } from "@/features/quality/rules-editor";
 import { AnalysisStage } from "@/features/analytics/analysis-stage";
+import { DashboardStage } from "@/features/dashboards/dashboard-stage";
 import {
   useCancelImport,
   useDiagnostic,
@@ -36,6 +37,9 @@ import {
 
 // Etapa «Análisis» (índice en `steps`): disponible para datos propios desde la Fase 7A.
 const ANALYSIS_STAGE = 5;
+// Etapa «Visualización»: dashboards persistidos para datos propios desde la Fase 8.
+const DASHBOARD_STAGE = 6;
+const REAL_STAGES = new Set([ANALYSIS_STAGE, DASHBOARD_STAGE]);
 const states = {
   queued: "En cola",
   processing: "Procesando",
@@ -307,9 +311,9 @@ export function CsvWorkspace({
               <button
                 key={step}
                 className={`step ${stage === i ? "current" : ""}`}
-                disabled={i > 3 && i !== ANALYSIS_STAGE}
+                disabled={i > 3 && !REAL_STAGES.has(i)}
                 title={
-                  i > 3 && i !== ANALYSIS_STAGE
+                  i > 3 && !REAL_STAGES.has(i)
                     ? "Se integrará en el siguiente incremento"
                     : undefined
                 }
@@ -390,7 +394,7 @@ export function CsvWorkspace({
               </div>
             ) : diagnostic.data ? (
               <>
-                {stage !== ANALYSIS_STAGE && (
+                {!REAL_STAGES.has(stage) && (
                   <RealResults
                     key={`${version.id}-${stage}`}
                     version={version}
@@ -406,6 +410,14 @@ export function CsvWorkspace({
                     onOpenUnderstanding={() =>
                       requestChange({ kind: "stage", value: 1 })
                     }
+                  />
+                )}
+                {stage === DASHBOARD_STAGE && (
+                  <DashboardStage
+                    projectId={projectId}
+                    versionId={version.id}
+                    versionNumber={version.number}
+                    archived={archived}
                   />
                 )}
                 {stage === 2 && (
