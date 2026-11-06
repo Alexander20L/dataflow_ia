@@ -381,6 +381,89 @@
   display: grid;
   gap: 10px;
 }
+.analysis-stage,
+.analysis-results,
+.metric-list,
+.metric-form {
+  display: grid;
+  gap: 12px;
+}
+.analysis-stage {
+  margin-top: 18px;
+}
+.analysis-stage .section-heading p {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.metric-option {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.metric-option span {
+  display: grid;
+  gap: 2px;
+}
+.metric-option.unavailable {
+  opacity: 0.6;
+}
+.query-options {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px 14px;
+  min-width: 0;
+}
+.query-options .chip-options,
+.query-options .form-footer {
+  grid-column: 1 / -1;
+}
+.query-options label,
+.metric-form label {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+}
+.metric-filter {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px 12px;
+  min-width: 0;
+}
+.metric-cell {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.compare-options {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px 14px 14px;
+  min-width: 0;
+}
+.compare-options legend {
+  padding: 0 6px;
+}
+.compare-options .chip-options,
+.compare-options small {
+  grid-column: 1 / -1;
+}
+.tie-mark {
+  color: var(--muted);
+  font-weight: 600;
+}
 .quality-rules,
 .rules-report,
 .rules-report section,

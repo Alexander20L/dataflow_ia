@@ -9,13 +9,13 @@ from pydantic import BaseModel, ConfigDict, Field
 from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.data_types import DataType
 
-CATALOG_VERSION = "analysis-v4"
+CATALOG_VERSION = "analysis-v6"
 MAX_STEPS = 16
 # Marca en el esquema de parámetros: el campo contiene IDs de columna de la tabla fijada.
 COLUMN_REF = "x-dataflow-column-ref"
 
 InputKind = Literal["source", "table"]
-OutputKind = Literal["table", "profile", "quality", "quality_rules"]
+OutputKind = Literal["table", "profile", "quality", "quality_rules", "analysis_result"]
 SemanticRole = Literal["unknown", "identifier", "dimension", "measure", "business_date"]
 ProblemCode = Literal[
     "EMPTY_PLAN",
@@ -30,6 +30,10 @@ ProblemCode = Literal[
     "COLUMN_TYPE_MISMATCH",
     "IDENTIFIER_CONVERSION_UNCONFIRMED",
     "QUALITY_RULESET_MISMATCH",
+    "METRIC_REFERENCE_MISMATCH",
+    "UNIT_MISMATCH",
+    "TIME_COLUMN_MISMATCH",
+    "SHARE_NOT_ADDITIVE",
 ]
 ResolveIn = Literal["plan_steps", "plan_input", "understanding"]
 PlanStatus = Literal["incomplete", "valid"]
@@ -82,6 +86,20 @@ class RulesetRequirement:
 
 
 @dataclass(frozen=True)
+class MetricRequirement:
+    """Revisión de una métrica: columnas, tipos, si exige el rol semántico «measure» y si su
+    agregación se puede sumar entre grupos (participación sobre el total)."""
+
+    content_sha256: str
+    measure_column_id: UUID
+    measure_types: frozenset[DataType]
+    requires_measure_role: bool
+    time_column_id: UUID | None
+    filter_column_ids: tuple[UUID, ...]
+    additive: bool = False
+
+
+@dataclass(frozen=True)
 class OperationDescriptor:
     name: str
     version: int
@@ -96,6 +114,11 @@ class OperationDescriptor:
     identifier_guard: IdentifierConversionGuard | None = None
     # (parámetro con el ID de revisión, parámetro con su hash) de un conjunto de reglas.
     ruleset_reference: tuple[str, str] | None = None
+    # Parámetro con la lista de referencias exactas a métricas ({revision_id, content_sha256}).
+    metric_reference: str | None = None
+    # Parámetro con IDs de revisión (de entre las métricas) que deben poder sumarse
+    # (participación sobre el total).
+    additive_metrics: str | None = None
 
     @property
     def key(self) -> str:
@@ -164,6 +187,10 @@ class PlanningFacts:
     column_types: dict[UUID, DataType] = field(default_factory=dict)
     # Revisiones de reglas referenciadas por los pasos que existen y son del propietario.
     quality_rulesets: dict[UUID, RulesetRequirement] = field(default_factory=dict)
+    # Métricas referenciadas que existen y son del propietario.
+    metrics: dict[UUID, MetricRequirement] = field(default_factory=dict)
+    # Unidad o moneda de las columnas confirmadas en la revisión fijada («currency:EUR»).
+    column_units: dict[UUID, str | None] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -226,6 +253,10 @@ class PlanningAccess(Protocol):
     ) -> dict[UUID, SemanticRole]: ...
     def semantic_reference(self, owner: UUID, revision: UUID) -> SemanticReference: ...
     def quality_ruleset(self, owner: UUID, revision: UUID) -> RulesetRequirement | None: ...
+    def analytics_metric(self, owner: UUID, revision: UUID) -> MetricRequirement | None: ...
+    def column_units(
+        self, owner: UUID, reference: SemanticReference, table: TableInput
+    ) -> dict[UUID, str | None]: ...
     def lock_owner(self, owner: UUID) -> None: ...
 
 

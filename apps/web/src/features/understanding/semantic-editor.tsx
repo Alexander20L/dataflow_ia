@@ -36,9 +36,11 @@ export function SemanticUnderstanding({
   onDirtyChange,
 }: Props) {
   const tables = useRepresentations(versionId);
-  const table = tables.data?.find(
-    (table) => table.execution_id === baselineExecutionId,
-  );
+  // Una importación revisa la tabla de su ejecución de referencia. Una versión derivada no la
+  // tiene (su tabla la publica la aplicación de la limpieza): se usa su única tabla publicada.
+  const table =
+    tables.data?.find((table) => table.execution_id === baselineExecutionId) ??
+    (tables.data?.length === 1 ? tables.data[0] : undefined);
   if (tables.isPending)
     return (
       <p role="status" className="empty-copy">
@@ -192,6 +194,23 @@ function SemanticForm({
           {context.table_ref.artifact_sha256.slice(0, 16)}
         </small>
       </div>
+      {context.origin && !archived && (
+        <div className="info-banner" role="status">
+          <span>
+            Esta versión deriva de v{context.origin.version_number}, que tiene
+            la revisión semántica {context.origin.revision.revision}. Puedes
+            partir de sus decisiones (mismas columnas); no se confirma nada
+            hasta que guardes.
+          </span>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => update(normalizeDraft(context.origin!.draft))}
+          >
+            Partir de la revisión de v{context.origin.version_number}
+          </Button>
+        </div>
+      )}
       {newer && (
         <div className="warning-banner" role="status">
           <span>

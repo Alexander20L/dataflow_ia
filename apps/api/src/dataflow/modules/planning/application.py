@@ -15,6 +15,7 @@ from dataflow.modules.executions.public import (
 from dataflow.modules.planning.contracts import (
     ApplicableOperation,
     ConfirmedColumnRole,
+    MetricRequirement,
     OperationCatalog,
     OperationDescriptor,
     PinnedTable,
@@ -266,7 +267,15 @@ class PlanningService:
         self.executions.save_plan_revision(revision, binding)
         plan = UserPlan(revision, binding, number)
         self.repository.save_validation(
-            revision.id, self.check(plan, table, roles, self.rulesets(owner, plan))
+            revision.id,
+            self.check(
+                plan,
+                table,
+                roles,
+                self.rulesets(owner, plan),
+                self.metrics(owner, plan),
+                self.units(owner, draft.semantic_ref, table.input),
+            ),
         )
         return plan
 
@@ -319,7 +328,33 @@ class PlanningService:
             table,
             self.roles(owner, semantic_ref, table.input),
             self.rulesets(owner, plan),
+            self.metrics(owner, plan),
+            self.units(owner, semantic_ref, table.input),
         )
+
+    def metrics(self, owner: UUID, plan: UserPlan) -> dict[UUID, MetricRequirement]:
+        """Métricas citadas por los pasos, resueltas por el puerto (inexistentes o ajenas se
+        omiten y la validación lo informa)."""
+        result: dict[UUID, MetricRequirement] = {}
+        for step in plan.revision.content["steps"]:
+            descriptor = self.catalog.descriptor(step["operation"], step["version"])
+            if descriptor is None or descriptor.metric_reference is None:
+                continue
+            references = step.get("parameters", {}).get(descriptor.metric_reference) or []
+            for reference in references if isinstance(references, list) else []:
+                try:
+                    revision = UUID(str(reference.get("revision_id")))
+                except (AttributeError, ValueError):
+                    continue
+                requirement = self.access.analytics_metric(owner, revision)
+                if requirement is not None:
+                    result[revision] = requirement
+        return result
+
+    def units(
+        self, owner: UUID, reference: SemanticReference | None, table: TableInput
+    ) -> dict[UUID, str | None]:
+        return self.access.column_units(owner, reference, table) if reference else {}
 
     def rulesets(self, owner: UUID, plan: UserPlan) -> dict[UUID, RulesetRequirement]:
         """Revisiones de reglas citadas por los pasos (resueltas por el puerto; las
@@ -345,6 +380,8 @@ class PlanningService:
         table: PinnedTable,
         roles: dict[UUID, SemanticRole],
         rulesets: dict[UUID, RulesetRequirement] | None = None,
+        metrics: dict[UUID, MetricRequirement] | None = None,
+        units: dict[UUID, str | None] | None = None,
     ) -> PlanValidation:
         content = plan.revision.content
         draft = PlanDraft(semantic_ref=content["semantic_ref"], steps=content["steps"])
@@ -355,6 +392,8 @@ class PlanningService:
             confirmed_roles=roles,
             column_types=dict(table.column_types),
             quality_rulesets=rulesets or {},
+            metrics=metrics or {},
+            column_units=units or {},
         )
         problems = validate_plan(draft, self.catalog, facts)
         return PlanValidation(

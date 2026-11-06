@@ -314,7 +314,7 @@ def test_identifier_guard_and_leading_zero_defense(flow: Flow) -> None:
 def test_new_operations_are_published_with_column_references(flow: Flow) -> None:
     catalog = flow.client.get("/api/v1/operations").json()
     operations = {op["key"]: op for op in catalog["operations"]}
-    assert catalog["catalog_version"] == "analysis-v4"
+    assert catalog["catalog_version"] == "analysis-v6"
     for key, field in [
         ("cleaning.cast@1", "column_id"),
         ("cleaning.normalize_null_tokens@1", "column_ids"),

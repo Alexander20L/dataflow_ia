@@ -21,6 +21,7 @@ import { ExecutionPanel } from "@/features/executions/execution-panel";
 import { SemanticUnderstanding } from "@/features/understanding/semantic-editor";
 import { CleaningStage } from "@/features/cleaning/proposal";
 import { QualityRules } from "@/features/quality/rules-editor";
+import { AnalysisStage } from "@/features/analytics/analysis-stage";
 import {
   useCancelImport,
   useDiagnostic,
@@ -33,6 +34,8 @@ import {
   type Separator,
 } from "./api";
 
+// Etapa «Análisis» (índice en `steps`): disponible para datos propios desde la Fase 7A.
+const ANALYSIS_STAGE = 5;
 const states = {
   queued: "En cola",
   processing: "Procesando",
@@ -304,9 +307,11 @@ export function CsvWorkspace({
               <button
                 key={step}
                 className={`step ${stage === i ? "current" : ""}`}
-                disabled={i > 3}
+                disabled={i > 3 && i !== ANALYSIS_STAGE}
                 title={
-                  i > 3 ? "Se integrará en el siguiente incremento" : undefined
+                  i > 3 && i !== ANALYSIS_STAGE
+                    ? "Se integrará en el siguiente incremento"
+                    : undefined
                 }
                 onClick={() => {
                   if (i !== stage) requestChange({ kind: "stage", value: i });
@@ -385,12 +390,24 @@ export function CsvWorkspace({
               </div>
             ) : diagnostic.data ? (
               <>
-                <RealResults
-                  key={`${version.id}-${stage}`}
-                  version={version}
-                  diagnostic={diagnostic.data}
-                  stage={stage}
-                />
+                {stage !== ANALYSIS_STAGE && (
+                  <RealResults
+                    key={`${version.id}-${stage}`}
+                    version={version}
+                    diagnostic={diagnostic.data}
+                    stage={stage}
+                  />
+                )}
+                {stage === ANALYSIS_STAGE && (
+                  <AnalysisStage
+                    projectId={projectId}
+                    versionId={version.id}
+                    archived={archived}
+                    onOpenUnderstanding={() =>
+                      requestChange({ kind: "stage", value: 1 })
+                    }
+                  />
+                )}
                 {stage === 2 && (
                   <QualityRules
                     key={`${version.id}-${rulesEpoch}`}

@@ -1,0 +1,439 @@
+{
+  "schema_version": 1,
+  "operation": "analytics.query@1",
+  "scope": {
+    "execution_id": "00000000-0000-4000-8000-000000000003",
+    "step_id": "query",
+    "slot": "analysis_result",
+    "input": {
+      "version_id": "00000000-0000-4000-8000-000000000001",
+      "artifact_id": "00000000-0000-4000-8000-000000000002",
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "semantic_ref": {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "revision": 2,
+      "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "query_filters": [],
+    "time_grain": "quarter",
+    "time_range": null
+  },
+  "avg_scale": 4,
+  "dimensions": [
+    {
+      "key": "d0",
+      "column_id": "00000000-0000-4000-8000-000000000101",
+      "name": "region",
+      "technical_type": "string",
+      "time_grain": null
+    },
+    {
+      "key": "d1",
+      "column_id": "00000000-0000-4000-8000-000000000105",
+      "name": "cliente",
+      "technical_type": "string",
+      "time_grain": null
+    },
+    {
+      "key": "period",
+      "column_id": "00000000-0000-4000-8000-000000000102",
+      "name": "fecha",
+      "technical_type": "date",
+      "time_grain": "quarter"
+    }
+  ],
+  "metrics": [
+    {
+      "key": "m0",
+      "revision_id": "00000000-0000-4000-8000-000000000201",
+      "revision": 1,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "sum importe",
+      "aggregation": "sum",
+      "measure_column_id": "00000000-0000-4000-8000-000000000103",
+      "measure_column": "importe",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": "EUR",
+      "scale": 2,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    },
+    {
+      "key": "m1",
+      "revision_id": "00000000-0000-4000-8000-000000000204",
+      "revision": 4,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "count_distinct cliente",
+      "aggregation": "count_distinct",
+      "measure_column_id": "00000000-0000-4000-8000-000000000105",
+      "measure_column": "cliente",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": null,
+      "scale": null,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    }
+  ],
+  "rows": [
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Este"
+          },
+          {
+            "column_id": "00000000-0000-4000-8000-000000000105",
+            "value": "e"
+          }
+        ],
+        "period": {
+          "grain": "quarter",
+          "start": "2025-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Este",
+        "d1": "e",
+        "period": "2025-Q1"
+      },
+      "values": {
+        "m0": "3.00",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "9fbc94e5aa6049b191451455262baffcfc35a6e2ba7cbe05852979210ccf2e9b",
+        "m1": "dde91494dad3185840b3ac3daac96afa090dc93849295568c563ff43b885be69"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Este"
+          },
+          {
+            "column_id": "00000000-0000-4000-8000-000000000105",
+            "value": "e"
+          }
+        ],
+        "period": {
+          "grain": "quarter",
+          "start": "2026-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Este",
+        "d1": "e",
+        "period": "2026-Q1"
+      },
+      "values": {
+        "m0": "-4.25",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "e3195c72adfc94a5ce1f97308a049dcd7153d4df1e7cc3d844f0b17f1a7a114f",
+        "m1": "59aefac060905eaaae6fe664569ed95ad1413bffcacba450b3ff47d56937f743"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Norte"
+          },
+          {
+            "column_id": "00000000-0000-4000-8000-000000000105",
+            "value": "a"
+          }
+        ],
+        "period": {
+          "grain": "quarter",
+          "start": "2025-10-01"
+        }
+      },
+      "labels": {
+        "d0": "Norte",
+        "d1": "a",
+        "period": "2025-Q4"
+      },
+      "values": {
+        "m0": "10.00",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "54e26d412cc72e86c7593ab206d5b3df0dafe5b3fb3806ddee68f6fd4b57b20f",
+        "m1": "8b7337e55be737690f95223fa96aab38faef97db8db793d19359ff54cf99ba98"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Norte"
+          },
+          {
+            "column_id": "00000000-0000-4000-8000-000000000105",
+            "value": "a"
+          }
+        ],
+        "period": {
+          "grain": "quarter",
+          "start": "2026-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Norte",
+        "d1": "a",
+        "period": "2026-Q1"
+      },
+      "values": {
+        "m0": "0.10",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "5effe4039cc7110909569a147cbc0ca533f78bbfc5af07e1a1532d1d9f80942e",
+        "m1": "4086c2b58d797439f13374b5a3346059b8ae79ae66b90119e6912fde200a6fd8"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Norte"
+          },
+          {
+            "column_id": "00000000-0000-4000-8000-000000000105",
+            "value": "c"
+          }
+        ],
+        "period": {
+          "grain": "quarter",
+          "start": "2026-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Norte",
+        "d1": "c",
+        "period": "2026-Q1"
+      },
+      "values": {
+        "m0": "0.20",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "977acc322c40ab6c8bbd07800184d90e8d00c5dab1688caafac5d87556e7284b",
+        "m1": "69220ecb172dbaa87b9bbc2dd55fb8304ed9816bce1ecf4198e380237d6cc781"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Norte"
+          },
+          {
+            "column_id": "00000000-0000-4000-8000-000000000105",
+            "value": "f"
+          }
+        ],
+        "period": {
+          "grain": "quarter",
+          "start": "2025-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Norte",
+        "d1": "f",
+        "period": "2025-Q1"
+      },
+      "values": {
+        "m0": "7.77",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "f75b57ed9d2a1f0c9a6699fd4d3ac3c63e235a764c7fddf0fcc5df670f70a650",
+        "m1": "7591d73c55b0ef459355f86b4a4efb568487f0bb3184ee6656067a413aa92d50"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Sur"
+          },
+          {
+            "column_id": "00000000-0000-4000-8000-000000000105",
+            "value": "a"
+          }
+        ],
+        "period": {
+          "grain": "quarter",
+          "start": "2026-04-01"
+        }
+      },
+      "labels": {
+        "d0": "Sur",
+        "d1": "a",
+        "period": "2026-Q2"
+      },
+      "values": {
+        "m0": "0.13",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "4869648e1240eef3a74b703250b5bd6b401e59e7decb1830258a66e4ac7c5a18",
+        "m1": "0c18db080e5b8370a2a286982bc7f083625455b31cb8204b76340c99a9a34b55"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Sur"
+          },
+          {
+            "column_id": "00000000-0000-4000-8000-000000000105",
+            "value": "b"
+          }
+        ],
+        "period": {
+          "grain": "quarter",
+          "start": "2026-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Sur",
+        "d1": "b",
+        "period": "2026-Q1"
+      },
+      "values": {
+        "m0": "0.20",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "938c245046aa9a4e728dfd5702932e8eadb86c763516bba099e57accdf766f2a",
+        "m1": "d4eec8886e4f99a65f0318466edb7bc73e0aac27dee7588cf62ac6d386e92703"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Sur"
+          },
+          {
+            "column_id": "00000000-0000-4000-8000-000000000105",
+            "value": "b"
+          }
+        ],
+        "period": {
+          "missing": true
+        }
+      },
+      "labels": {
+        "d0": "Sur",
+        "d1": "b",
+        "period": "(sin valor)"
+      },
+      "values": {
+        "m0": "2.50",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "d143766b801c5ba7513a6dda9b543b6ab3f4854e6af0377ac5382ae1e1cb3236",
+        "m1": "0bbe3ebf9a9a86c9493e2e692990e8a8d07d29e6e7a2b1a4cce94761f1932d2f"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Sur"
+          },
+          {
+            "column_id": "00000000-0000-4000-8000-000000000105",
+            "value": {
+              "missing": true
+            }
+          }
+        ],
+        "period": {
+          "grain": "quarter",
+          "start": "2026-04-01"
+        }
+      },
+      "labels": {
+        "d0": "Sur",
+        "d1": "(sin valor)",
+        "period": "2026-Q2"
+      },
+      "values": {
+        "m0": "0.12",
+        "m1": "0"
+      },
+      "evidence": {
+        "m0": "915373398e867096294887b9bf89e54c2b8302a64f15141213a772e3950806c2",
+        "m1": "16be59f61a58a8624a947cf1a632fb4397e63887b2adf23570c9c6fb523f9cb4"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": {
+              "missing": true
+            }
+          },
+          {
+            "column_id": "00000000-0000-4000-8000-000000000105",
+            "value": "d"
+          }
+        ],
+        "period": {
+          "grain": "quarter",
+          "start": "2026-01-01"
+        }
+      },
+      "labels": {
+        "d0": "(sin valor)",
+        "d1": "d",
+        "period": "2026-Q1"
+      },
+      "values": {
+        "m0": "1.00",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "2055809052e99caa15c52a2f2f2d65944c951c0bc3a71a86cd491d27437fd7f0",
+        "m1": "4dfa743a48a8ee32bd6037805f38615220809744ec917edf061344ccbd935b32"
+      }
+    }
+  ],
+  "row_count": 11
+}

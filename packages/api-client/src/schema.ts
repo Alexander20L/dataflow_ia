@@ -136,6 +136,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/executions/{execution_id}/analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Result */
+        get: operations["getExecutionAnalysis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/executions/{execution_id}/artifacts": {
         parameters: {
             query?: never;
@@ -187,6 +204,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/executions/{execution_id}/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Evidence */
+        get: operations["getEvidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/executions/{execution_id}/profile": {
         parameters: {
             query?: never;
@@ -230,6 +264,23 @@ export interface paths {
         };
         /** Report */
         get: operations["getExecutionQualityRules"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/metrics/{revision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Revision */
+        get: operations["getMetric"];
         put?: never;
         post?: never;
         delete?: never;
@@ -507,6 +558,24 @@ export interface paths {
         get: operations["listApplicableOperations"];
         put?: never;
         post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/representations/{artifact_id}/metrics": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Context */
+        get: operations["getMetrics"];
+        put?: never;
+        /** Save */
+        post: operations["saveMetric"];
         delete?: never;
         options?: never;
         head?: never;
@@ -802,6 +871,65 @@ export interface components {
             /** Table Sha256 */
             table_sha256: string;
         };
+        /** AnalysisResult */
+        AnalysisResult: {
+            /** Avg Scale */
+            avg_scale: number;
+            /** Dimensions */
+            dimensions: components["schemas"]["ResultColumn"][];
+            /** Metrics */
+            metrics: components["schemas"]["MetricDefinition"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "analytics.query@1";
+            /** Row Count */
+            row_count: number;
+            /** Rows */
+            rows: components["schemas"]["ResultRow"][];
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            scope: components["schemas"]["EvidenceScope"];
+        };
+        /** AnalysisResultV2 */
+        AnalysisResultV2: {
+            /** Avg Scale */
+            avg_scale: number;
+            /** Change Scale */
+            change_scale: number;
+            /** Comparisons */
+            comparisons: ("previous_period" | "same_period_last_year")[];
+            /** Dimensions */
+            dimensions: components["schemas"]["ResultColumn"][];
+            /** Metrics */
+            metrics: components["schemas"]["MetricDefinitionV2"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "analytics.query@2";
+            ranking: components["schemas"]["RankingSummary"] | null;
+            /** Row Count */
+            row_count: number;
+            /** Rows */
+            rows: components["schemas"]["ResultRowV2"][];
+            /**
+             * Schema Version
+             * @default 2
+             * @constant
+             */
+            schema_version: 2;
+            scope: components["schemas"]["EvidenceScope"];
+            /** Share Scale */
+            share_scale: number;
+            /** Shares */
+            shares: components["schemas"]["ShareTotal"][];
+        };
         /** ApplicableOperation */
         ApplicableOperation: {
             /** Applicable */
@@ -917,7 +1045,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules";
+            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result";
             /** Logical Content Sha256 */
             logical_content_sha256: string | null;
             /**
@@ -967,6 +1095,26 @@ export interface components {
             started_at: string;
             /** State */
             state: string;
+        };
+        /**
+         * BaseCounts
+         * @description Filas de la tabla y su destino en la base de una comparación (una métrica, un tipo).
+         *
+         *     `excluded_by_filters`: filtros de la consulta que no son de periodo y filtros de la
+         *     métrica. `outside_base_periods`: filas sin fecha o fuera de los periodos base necesarios
+         *     (el periodo consultado no se aplica a la base). Suma: `input_rows`.
+         */
+        BaseCounts: {
+            /** Excluded By Filters */
+            excluded_by_filters: number;
+            /** Excluded By Nulls */
+            excluded_by_nulls: number;
+            /** Included Rows */
+            included_rows: number;
+            /** Input Rows */
+            input_rows: number;
+            /** Outside Base Periods */
+            outside_base_periods: number;
         };
         /** BaseTable */
         BaseTable: {
@@ -1093,6 +1241,43 @@ export interface components {
             suggested_role: "unknown" | "identifier" | "dimension" | "measure" | "business_date";
             /** Suggested Type */
             suggested_type: ("string" | "integer" | "decimal" | "date" | "boolean") | null;
+        };
+        /**
+         * ComparisonCell
+         * @description Comparación de una cifra con su periodo base. Nunca se usa 0 en lugar de un nulo.
+         *
+         *     `base_status`: `no_base_data` (el periodo base no tiene filas para la métrica),
+         *     `no_counterpart` (29 de febrero, semana 53 o fuera del calendario), `missing_period` (la
+         *     fila es el grupo sin fecha). `change_status`: `base_zero` deja `change` y anula
+         *     `change_pct`; `base_missing` y `current_missing` anulan ambos.
+         */
+        ComparisonCell: {
+            /** Base */
+            base: string | null;
+            /** Base Label */
+            base_label: string | null;
+            /** Base Period */
+            base_period: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Base Status
+             * @enum {string}
+             */
+            base_status: "available" | "no_base_data" | "no_counterpart" | "missing_period";
+            /** Change */
+            change: string | null;
+            /** Change Pct */
+            change_pct: string | null;
+            /**
+             * Change Status
+             * @enum {string}
+             */
+            change_status: "available" | "base_zero" | "base_missing" | "current_missing";
+            /** Evidence */
+            evidence: {
+                [key: string]: string;
+            };
         };
         /** ConfirmedColumnRole */
         ConfirmedColumnRole: {
@@ -1298,6 +1483,112 @@ export interface components {
             /** Message */
             message: string;
         };
+        /**
+         * EvidenceReference
+         * @description Dirección estable de una cifra: el mismo cálculo produce el mismo `evidence_id`.
+         *
+         *     `value` conserva la dirección de @1 (sin `detail`). Las cifras derivadas de @2 añaden
+         *     `cell` y su `detail`: comparación y periodo base, escala de la variación o de la
+         *     participación, o dirección, top N e indicador de empate de la posición.
+         */
+        EvidenceReference: {
+            /**
+             * Cell
+             * @default value
+             * @enum {string}
+             */
+            cell: "value" | "previous_period" | "same_period_last_year" | "change" | "change_pct" | "share_of_total" | "rank";
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            } | null;
+            /** Evidence Id */
+            evidence_id: string;
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            input: components["schemas"]["BaseTable"];
+            metric: components["schemas"]["MetricReference"];
+            /** Metric Filters */
+            metric_filters: components["schemas"]["Filter"][];
+            /** Query Filters */
+            query_filters: components["schemas"]["Filter"][];
+            /** Row Key */
+            row_key: {
+                [key: string]: unknown;
+            };
+            /** Semantic Ref */
+            semantic_ref: {
+                [key: string]: unknown;
+            } | null;
+            /** Slot */
+            slot: string;
+            /** Step Id */
+            step_id: string;
+            /** Time Grain */
+            time_grain: ("day" | "week" | "month" | "quarter" | "year") | null;
+            time_range: components["schemas"]["TimeRange"] | null;
+        };
+        /**
+         * EvidenceScope
+         * @description Partes comunes de toda referencia de evidencia de un resultado.
+         */
+        EvidenceScope: {
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            input: components["schemas"]["BaseTable"];
+            /** Query Filters */
+            query_filters: components["schemas"]["Filter"][];
+            /** Semantic Ref */
+            semantic_ref: {
+                [key: string]: unknown;
+            } | null;
+            /**
+             * Slot
+             * @default analysis_result
+             * @constant
+             */
+            slot: "analysis_result";
+            /** Step Id */
+            step_id: string;
+            /** Time Grain */
+            time_grain: ("day" | "week" | "month" | "quarter" | "year") | null;
+            time_range: components["schemas"]["TimeRange"] | null;
+        };
+        /**
+         * EvidenceView
+         * @description Una cifra con su dirección completa y su contexto. `value` es la cifra de la celda
+         *     direccionada (la posición, en `rank`); `metric_value`, la cifra del grupo en su métrica.
+         */
+        EvidenceView: {
+            comparison?: components["schemas"]["ComparisonCell"] | null;
+            /** Definition */
+            definition: components["schemas"]["MetricDefinitionV2"] | components["schemas"]["MetricDefinition"];
+            /** Labels */
+            labels: {
+                [key: string]: string | null;
+            };
+            /** Metric Value */
+            metric_value?: string | null;
+            /**
+             * Operation
+             * @default analytics.query@1
+             * @enum {string}
+             */
+            operation: "analytics.query@1" | "analytics.query@2";
+            rank?: components["schemas"]["RankCell"] | null;
+            ranking?: components["schemas"]["RankingSummary"] | null;
+            reference: components["schemas"]["EvidenceReference"];
+            share?: components["schemas"]["ShareCell"] | null;
+            share_total?: components["schemas"]["ShareTotal"] | null;
+            /** Value */
+            value: string | null;
+        };
         /** ExecutionDetail */
         ExecutionDetail: {
             /** Attempt History */
@@ -1427,6 +1718,25 @@ export interface components {
             source_row: number;
             /** Value */
             value: string | null;
+        };
+        /**
+         * Filter
+         * @description Filtro estructurado. Los valores se escriben como cadenas canónicas del tipo de la
+         *     columna (decimal con punto, fecha ISO, `true`/`false`); el motor los interpreta.
+         */
+        Filter: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /**
+             * Operator
+             * @enum {string}
+             */
+            operator: "eq" | "neq" | "in" | "not_in" | "gt" | "gte" | "lt" | "lte" | "between" | "is_null" | "is_not_null";
+            /** Values */
+            values?: string[];
         };
         /** GrainDefinition */
         GrainDefinition: {
@@ -1561,6 +1871,271 @@ export interface components {
             /** Password */
             password: string;
         };
+        /**
+         * MetricContent
+         * @description Contenido sometido a hash (dominio `analytics_metric`).
+         */
+        MetricContent: {
+            /**
+             * Aggregation
+             * @enum {string}
+             */
+            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max";
+            base_table: components["schemas"]["BaseTable"];
+            /** Description */
+            description?: string | null;
+            /** Filters */
+            filters?: components["schemas"]["Filter"][];
+            /** Label */
+            label: string;
+            /**
+             * Measure Column Id
+             * Format: uuid
+             */
+            measure_column_id: string;
+            /**
+             * Null Policy
+             * @default exclude
+             * @constant
+             */
+            null_policy: "exclude";
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            /** Time Column Id */
+            time_column_id?: string | null;
+        };
+        /** MetricContext */
+        MetricContext: {
+            /**
+             * Artifact Id
+             * Format: uuid
+             */
+            artifact_id: string;
+            /** Metrics */
+            metrics: components["schemas"]["MetricSummary"][];
+        };
+        /**
+         * MetricCounts
+         * @description Filas de la tabla de entrada y su destino para una métrica.
+         */
+        MetricCounts: {
+            /** Excluded By Filters */
+            excluded_by_filters: number;
+            /** Excluded By Nulls */
+            excluded_by_nulls: number;
+            /** Included Rows */
+            included_rows: number;
+            /** Input Rows */
+            input_rows: number;
+        };
+        /**
+         * MetricDefinition
+         * @description Definición usada en el cálculo (copiada de la revisión exacta).
+         */
+        MetricDefinition: {
+            /**
+             * Aggregation
+             * @enum {string}
+             */
+            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max";
+            /** Content Sha256 */
+            content_sha256: string;
+            counts: components["schemas"]["MetricCounts"];
+            /** Currency */
+            currency: string | null;
+            /** Filters */
+            filters: components["schemas"]["Filter"][];
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Measure Column */
+            measure_column: string;
+            /**
+             * Measure Column Id
+             * Format: uuid
+             */
+            measure_column_id: string;
+            /**
+             * Null Policy
+             * @constant
+             */
+            null_policy: "exclude";
+            /** Revision */
+            revision: number;
+            /**
+             * Revision Id
+             * Format: uuid
+             */
+            revision_id: string;
+            /** Scale */
+            scale: number | null;
+            /** Time Column Id */
+            time_column_id: string | null;
+            /** Unit */
+            unit: string | null;
+        };
+        /**
+         * MetricDefinitionV2
+         * @description `counts` es el periodo consultado, igual que en @1; `base_counts`, la base de cada
+         *     comparación.
+         */
+        MetricDefinitionV2: {
+            /**
+             * Aggregation
+             * @enum {string}
+             */
+            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max";
+            /** Base Counts */
+            base_counts?: {
+                [key: string]: components["schemas"]["BaseCounts"];
+            };
+            /** Content Sha256 */
+            content_sha256: string;
+            counts: components["schemas"]["MetricCounts"];
+            /** Currency */
+            currency: string | null;
+            /** Filters */
+            filters: components["schemas"]["Filter"][];
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Measure Column */
+            measure_column: string;
+            /**
+             * Measure Column Id
+             * Format: uuid
+             */
+            measure_column_id: string;
+            /**
+             * Null Policy
+             * @constant
+             */
+            null_policy: "exclude";
+            /** Revision */
+            revision: number;
+            /**
+             * Revision Id
+             * Format: uuid
+             */
+            revision_id: string;
+            /** Scale */
+            scale: number | null;
+            /** Time Column Id */
+            time_column_id: string | null;
+            /** Unit */
+            unit: string | null;
+        };
+        /** MetricDraft */
+        MetricDraft: {
+            /**
+             * Aggregation
+             * @enum {string}
+             */
+            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max";
+            /** Description */
+            description?: string | null;
+            /** Filters */
+            filters?: components["schemas"]["Filter"][];
+            /** Label */
+            label: string;
+            /**
+             * Measure Column Id
+             * Format: uuid
+             */
+            measure_column_id: string;
+            /**
+             * Null Policy
+             * @default exclude
+             * @constant
+             */
+            null_policy: "exclude";
+            /** Time Column Id */
+            time_column_id?: string | null;
+        };
+        /** MetricProblem */
+        MetricProblem: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "UNKNOWN_COLUMN" | "COLUMN_TYPE_MISMATCH" | "INVALID_FILTER_VALUE";
+            /** Message */
+            message: string;
+        };
+        /** MetricReference */
+        MetricReference: {
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Revision Id
+             * Format: uuid
+             */
+            revision_id: string;
+        };
+        /** MetricRevision */
+        MetricRevision: {
+            content: components["schemas"]["MetricContent"];
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /**
+             * Family Id
+             * Format: uuid
+             */
+            family_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Previous Revision Id */
+            previous_revision_id: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Revision */
+            revision: number;
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+        };
+        /** MetricSummary */
+        MetricSummary: {
+            /** Anchored Here */
+            anchored_here: boolean;
+            /** Applicable */
+            applicable: boolean;
+            /**
+             * Family Id
+             * Format: uuid
+             */
+            family_id: string;
+            head: components["schemas"]["MetricRevision"];
+            /** Problems */
+            problems: components["schemas"]["MetricProblem"][];
+            /** Revision Count */
+            revision_count: number;
+        };
         /** NullPolicy */
         NullPolicy: {
             /**
@@ -1607,7 +2182,7 @@ export interface components {
              * Output Kind
              * @enum {string}
              */
-            output_kind: "table" | "profile" | "quality" | "quality_rules";
+            output_kind: "table" | "profile" | "quality" | "quality_rules" | "analysis_result";
             /** Parameters Schema */
             parameters_schema: {
                 [key: string]: unknown;
@@ -1834,7 +2409,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "EMPTY_PLAN" | "TOO_MANY_STEPS" | "DUPLICATE_STEP_ID" | "INVALID_STEP_REFERENCE" | "UNSUPPORTED_OPERATION" | "INPUT_KIND_MISMATCH" | "INVALID_PARAMETERS" | "UNKNOWN_COLUMN" | "SEMANTIC_REQUIREMENT_MISSING" | "COLUMN_TYPE_MISMATCH" | "IDENTIFIER_CONVERSION_UNCONFIRMED" | "QUALITY_RULESET_MISMATCH";
+            code: "EMPTY_PLAN" | "TOO_MANY_STEPS" | "DUPLICATE_STEP_ID" | "INVALID_STEP_REFERENCE" | "UNSUPPORTED_OPERATION" | "INPUT_KIND_MISMATCH" | "INVALID_PARAMETERS" | "UNKNOWN_COLUMN" | "SEMANTIC_REQUIREMENT_MISSING" | "COLUMN_TYPE_MISMATCH" | "IDENTIFIER_CONVERSION_UNCONFIRMED" | "QUALITY_RULESET_MISMATCH" | "METRIC_REFERENCE_MISMATCH" | "UNIT_MISMATCH" | "TIME_COLUMN_MISMATCH" | "SHARE_NOT_ADDITIVE";
             /** Message */
             message: string;
             /** Parameter */
@@ -1991,6 +2566,46 @@ export interface components {
              */
             severity: "low" | "medium" | "high";
         };
+        /** RankCell */
+        RankCell: {
+            /** Evidence */
+            evidence: string;
+            /** Position */
+            position: number;
+            /** Tied With Previous */
+            tied_with_previous: boolean;
+        };
+        /** RankingPartition */
+        RankingPartition: {
+            /** Groups */
+            groups: number;
+            /** Hidden */
+            hidden: number;
+            /** Period */
+            period: {
+                [key: string]: unknown;
+            } | null;
+            /** Ranked */
+            ranked: number;
+            /** Shown */
+            shown: number;
+        };
+        /** RankingSummary */
+        RankingSummary: {
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "desc" | "asc";
+            /** Hidden Groups */
+            hidden_groups: number;
+            /** Metric */
+            metric: string;
+            /** Partitions */
+            partitions: components["schemas"]["RankingPartition"][];
+            /** Top N */
+            top_n: number;
+        };
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -2028,6 +2643,68 @@ export interface components {
              * @enum {string}
              */
             severity: "low" | "medium" | "high";
+        };
+        /** ResultColumn */
+        ResultColumn: {
+            /** Column Id */
+            column_id: string | null;
+            /** Key */
+            key: string;
+            /** Name */
+            name: string;
+            /** Technical Type */
+            technical_type: string | null;
+            /** Time Grain */
+            time_grain?: ("day" | "week" | "month" | "quarter" | "year") | null;
+        };
+        /** ResultRow */
+        ResultRow: {
+            /** Evidence */
+            evidence: {
+                [key: string]: string;
+            };
+            /** Key */
+            key: {
+                [key: string]: unknown;
+            };
+            /** Labels */
+            labels: {
+                [key: string]: string | null;
+            };
+            /** Values */
+            values: {
+                [key: string]: string | null;
+            };
+        };
+        /** ResultRowV2 */
+        ResultRowV2: {
+            /** Comparisons */
+            comparisons?: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["ComparisonCell"];
+                };
+            };
+            /** Evidence */
+            evidence: {
+                [key: string]: string;
+            };
+            /** Key */
+            key: {
+                [key: string]: unknown;
+            };
+            /** Labels */
+            labels: {
+                [key: string]: string | null;
+            };
+            rank?: components["schemas"]["RankCell"] | null;
+            /** Share */
+            share?: {
+                [key: string]: components["schemas"]["ShareCell"];
+            };
+            /** Values */
+            values: {
+                [key: string]: string | null;
+            };
         };
         /** Review */
         Review: {
@@ -2227,6 +2904,22 @@ export interface components {
             /** Revision Count */
             revision_count: number;
         };
+        /** SaveMetricRequest */
+        SaveMetricRequest: {
+            draft: components["schemas"]["MetricDraft"];
+            /** Expected Revision */
+            expected_revision: number;
+            /** Family Id */
+            family_id?: string | null;
+            /** Table Sha256 */
+            table_sha256: string;
+        };
+        /** SaveMetricResponse */
+        SaveMetricResponse: {
+            /** Changed */
+            changed: boolean;
+            revision: components["schemas"]["MetricRevision"];
+        };
         /** SaveRulesetRequest */
         SaveRulesetRequest: {
             draft: components["schemas"]["RulesetDraft"];
@@ -2330,6 +3023,22 @@ export interface components {
             /** Revision */
             revision: number;
         };
+        /**
+         * SemanticOrigin
+         * @description Revisión vigente de la versión de origen de una derivada (mismos IDs de columna). Es una
+         *     sugerencia: cargarla en el borrador no confirma nada hasta que el usuario guarda.
+         */
+        SemanticOrigin: {
+            draft: components["schemas"]["SemanticDraft"];
+            revision: components["schemas"]["SemanticReference"];
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Version Number */
+            version_number: number;
+        };
         /** SemanticReference */
         SemanticReference: {
             /** Content Sha256 */
@@ -2414,6 +3123,45 @@ export interface components {
             expires_at: string;
             user: components["schemas"]["UserResponse"];
         };
+        /**
+         * ShareCell
+         * @description Porcentaje del grupo sobre el total de su periodo (o del resultado), redondeado por
+         *     separado con `share_scale` y HALF_EVEN. `total_zero`/`value_missing`: nulo, nunca 0.
+         */
+        ShareCell: {
+            /** Evidence */
+            evidence: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "total_zero" | "value_missing";
+            /** Value */
+            value: string | null;
+        };
+        /**
+         * ShareTotal
+         * @description Total de una partición, calculado ANTES del top N y del presupuesto: los porcentajes
+         *     de las filas visibles pueden sumar menos de 100. Cada porcentaje se redondea por separado,
+         *     así que la suma de todos los grupos puede desviarse de 100 hasta `tolerance` puntos
+         *     (n × media unidad de `share_scale`).
+         */
+        ShareTotal: {
+            /** Groups */
+            groups: number;
+            /** Metric */
+            metric: string;
+            /** Mixed Signs */
+            mixed_signs: boolean;
+            /** Period */
+            period: {
+                [key: string]: unknown;
+            } | null;
+            /** Tolerance */
+            tolerance: string;
+            /** Total */
+            total: string;
+        };
         /** StepRef */
         StepRef: {
             /**
@@ -2484,6 +3232,16 @@ export interface components {
             /** Whitespace Cells */
             whitespace_cells: number;
         };
+        /**
+         * TimeRange
+         * @description Rango inclusivo de fechas de negocio (ISO).
+         */
+        TimeRange: {
+            /** End */
+            end?: string | null;
+            /** Start */
+            start?: string | null;
+        };
         /** UnderstandingContext */
         UnderstandingContext: {
             /** Columns */
@@ -2491,6 +3249,7 @@ export interface components {
             editable: components["schemas"]["SemanticDraft"];
             head: components["schemas"]["SemanticRevision"] | null;
             key_assessment: components["schemas"]["KeyAssessment"] | null;
+            origin?: components["schemas"]["SemanticOrigin"] | null;
             profile: components["schemas"]["DatasetProfile"] | null;
             /** Revision Count */
             revision_count: number;
@@ -3618,6 +4377,129 @@ export interface operations {
             };
         };
     };
+    getExecutionAnalysis: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalysisResult"] | components["schemas"]["AnalysisResultV2"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listExecutionArtifacts: {
         parameters: {
             query?: never;
@@ -3987,6 +4869,130 @@ export interface operations {
             };
         };
     };
+    getEvidence: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                execution_id: string;
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EvidenceView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     getExecutionProfile: {
         parameters: {
             query?: never;
@@ -4253,6 +5259,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["QualityRulesReport"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getMetric: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricRevision"];
                 };
             };
             /** @description Bad Request */
@@ -6632,6 +7761,257 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApplicableOperation"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getMetrics: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricContext"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveMetric: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SaveMetricRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SaveMetricResponse"];
                 };
             };
             /** @description Bad Request */

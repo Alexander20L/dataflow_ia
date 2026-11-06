@@ -1,6 +1,6 @@
 # DataFlow AI
 
-Plataforma de análisis de datos supervisado. **API 0.9 / Fase 6:** limpieza supervisada de CSV propios con conversiones de tipo (entero, decimal, fecha, booleano), marcadores de nulo, deduplicación, recorte de espacios y exclusión de registros: vista previa sobre todo el dataset, aprobación del efecto exacto y versión derivada con columnas tipadas y diagnóstico nuevo; el original no cambia. Si un valor no convierte, no se publica nada y se listan los valores y el motivo. Además, reglas de calidad configurables (obligatoriedad, clave única, rango, catálogo de valores, formato convertible) que se evalúan aparte de la completitud técnica. Incluye los planes versionados de Fase 4, el contexto semántico de Fase 3 y CSV, originales, perfilado y calidad reales. Exploración y etapas posteriores continúan como demostración independiente.
+Plataforma de análisis de datos supervisado. **API 0.11 / Fase 7:** análisis de negocio determinista sobre CSV propios con métricas que define el usuario (columna, agregación, filtros y fecha de negocio), comparaciones con el periodo anterior o el mismo periodo del año anterior, top N y % del total, y evidencia rastreable por cifra. **Fase 6:** limpieza supervisada de CSV propios con conversiones de tipo (entero, decimal, fecha, booleano), marcadores de nulo, deduplicación, recorte de espacios y exclusión de registros: vista previa sobre todo el dataset, aprobación del efecto exacto y versión derivada con columnas tipadas y diagnóstico nuevo; el original no cambia. Si un valor no convierte, no se publica nada y se listan los valores y el motivo. Además, reglas de calidad configurables (obligatoriedad, clave única, rango, catálogo de valores, formato convertible) que se evalúan aparte de la completitud técnica. Incluye los planes versionados de Fase 4, el contexto semántico de Fase 3 y CSV, originales, perfilado y calidad reales. Exploración y etapas posteriores continúan como demostración independiente.
 
 ## Ejecutar
 
@@ -96,6 +96,8 @@ En la etapa **Limpieza** de un CSV propio, la propuesta se arma desde el diagnó
 
 Desde la Fase 6A la propuesta también convierte tipos con formatos exactos (sin recortar ni aceptar formatos regionales), convierte marcadores como «NA» en nulos y elimina duplicados conservando la primera aparición. Una columna confirmada como identificador en la revisión semántica exige confirmar su conversión a número, y un código con ceros a la izquierda («007») nunca se convierte. [Documentación Fase 6](docs/architecture/phase-6.md).
 
+En **Análisis** se definen métricas (por ejemplo, «Ingresos» = suma de importe por fecha de negocio) y se consultan por dimensiones, granularidad temporal y periodo. Una suma o una media exigen que la columna esté confirmada como medida en Entendimiento, y la fecha como fecha de negocio; si falta, el análisis lo indica y enlaza con Entendimiento. Cada cifra abre «De dónde sale este número»: definición, filtros, versión de datos, revisión semántica y filas excluidas por filtros o por nulos. Los nulos nunca cuentan como cero. «Comparar y ordenar» añade la comparación con el periodo anterior o con el mismo periodo del año anterior (variación absoluta y porcentual; un periodo sin datos se muestra como tal, nunca como 0), un top N por una métrica (dos valores iguales se ordenan por las dimensiones y se marcan con «=») y el % del total de sumas y conteos, calculado sobre todos los grupos aunque el top N oculte algunos. Esas cifras también abren su procedencia. [Documentación Fase 7](docs/architecture/phase-7.md).
+
 En **Calidad → Reglas de calidad del proyecto** se definen reglas de negocio por columna (csv-quality-v2), se guardan como revisiones inmutables y se evalúan como un plan: el informe separa la calidad técnica (Q-001 a Q-003, completitud) de las reglas del usuario. Las reglas sirven para la tabla y sus versiones derivadas.
 
 En **Entendimiento → Revisión semántica** declara filas, roles, interpretación, claves, unidades/moneda y nulos. Guarda revisiones parciales y consulta su historial. No convierte ni limpia valores. Un plan puede fijar una revisión exacta o continuar sin contrato para análisis técnicos. [Documentación Fase 3](docs/architecture/phase-3.md).
@@ -124,11 +126,15 @@ Consultar `docs/architecture/implementation-plan.md` para fases y verificación 
 
 ### Diseño del siguiente incremento — Fase 1
 
-Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación de datasets/ejecuciones: [Fase 2](docs/architecture/phase-2.md). Revisión semántica persistida: [Fase 3](docs/architecture/phase-3.md). Planes y catálogo de operaciones: [Fase 4](docs/architecture/phase-4.md). Limpieza supervisada y versiones derivadas: [Fase 5](docs/architecture/phase-5.md). Tablas tipadas y conversiones: [Fase 6](docs/architecture/phase-6.md).
+Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación de datasets/ejecuciones: [Fase 2](docs/architecture/phase-2.md). Revisión semántica persistida: [Fase 3](docs/architecture/phase-3.md). Planes y catálogo de operaciones: [Fase 4](docs/architecture/phase-4.md). Limpieza supervisada y versiones derivadas: [Fase 5](docs/architecture/phase-5.md). Tablas tipadas y conversiones: [Fase 6](docs/architecture/phase-6.md). Análisis de negocio: [Fase 7](docs/architecture/phase-7.md).
 
 `npm run contracts:check` verifica sus esquemas, ejemplos y casos negativos sin API ni PostgreSQL. Para regenerar exclusivamente los artefactos de diseño: `npm run contracts:examples`. El contrato HTTP vigente continúa en `contracts/openapi/dataflow.json`.
 
 ## Contenedor y CI
+
+**Actualizar desde 0.10 / esquema 0009:** sin migración. Desplegar API y worker juntos: el catálogo pasa a `analysis-v6` con `analytics.query@2` (comparaciones, ranking y participación); `analytics.query@1`, sus planes guardados y sus resultados no cambian. Detalles en [Fase 7](docs/architecture/phase-7.md).
+
+**Actualizar desde 0.9 / esquema 0008:** 0009 es aditiva (métricas de análisis, sin backfill). Desplegar API y worker juntos: el catálogo pasa a `analysis-v5` con `analytics.query@1`; los diagnósticos y resultados existentes no cambian. Detalles en [Fase 7](docs/architecture/phase-7.md).
 
 **Actualizar desde 0.8 / esquema 0007:** 0008 es aditiva (conjuntos de reglas de calidad, sin backfill). Desplegar API y worker juntos: el catálogo pasa a `analysis-v4` con `quality.evaluate@2`; los diagnósticos existentes no cambian. Detalles en [Fase 6](docs/architecture/phase-6.md).
 

@@ -77,7 +77,7 @@ Las ejecuciones 0.5 (`csv_import`, `table_analysis`) se ejecutan con el mismo ad
 
 ## Pendiente
 
-- **E2E de requisito semántico**: añadido en [Fase 6](phase-6.md) (`cleaning-cast.spec.ts`) con la primera regla semántica real: convertir a número un identificador confirmado exige confirmación explícita. El requisito positivo `ConfirmedColumnRole` (columna confirmada como medida) tendrá su E2E con las métricas de Fase 7.
+- **E2E de requisito semántico**: añadido en [Fase 6](phase-6.md) (`cleaning-cast.spec.ts`) con la primera regla semántica real: convertir a número un identificador confirmado exige confirmación explícita. El requisito positivo (columna confirmada como medida y fecha de negocio) tiene su E2E desde la [Fase 7](phase-7.md) (`analytics.spec.ts`).
 - Limpieza (`cleaning.*`), vista previa y aprobación: Fase 5.
 
 ## Pruebas

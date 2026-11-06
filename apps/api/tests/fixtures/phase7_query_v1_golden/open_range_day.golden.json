@@ -1,0 +1,116 @@
+{
+  "schema_version": 1,
+  "operation": "analytics.query@1",
+  "scope": {
+    "execution_id": "00000000-0000-4000-8000-000000000003",
+    "step_id": "query",
+    "slot": "analysis_result",
+    "input": {
+      "version_id": "00000000-0000-4000-8000-000000000001",
+      "artifact_id": "00000000-0000-4000-8000-000000000002",
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "semantic_ref": {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "revision": 2,
+      "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "query_filters": [],
+    "time_grain": "day",
+    "time_range": {
+      "start": "2026-03-01",
+      "end": null
+    }
+  },
+  "avg_scale": 0,
+  "dimensions": [
+    {
+      "key": "period",
+      "column_id": "00000000-0000-4000-8000-000000000102",
+      "name": "fecha",
+      "technical_type": "date",
+      "time_grain": "day"
+    }
+  ],
+  "metrics": [
+    {
+      "key": "m0",
+      "revision_id": "00000000-0000-4000-8000-000000000201",
+      "revision": 1,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "sum importe",
+      "aggregation": "sum",
+      "measure_column_id": "00000000-0000-4000-8000-000000000103",
+      "measure_column": "importe",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": "EUR",
+      "scale": 2,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 9,
+        "excluded_by_nulls": 0,
+        "included_rows": 3
+      }
+    }
+  ],
+  "rows": [
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "grain": "day",
+          "start": "2026-03-15"
+        }
+      },
+      "labels": {
+        "period": "2026-03-15"
+      },
+      "values": {
+        "m0": "-4.25"
+      },
+      "evidence": {
+        "m0": "724b51f27c210e0ae42af72b314b9feba9c376e91ede4da0569c80d0e622a9f1"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "grain": "day",
+          "start": "2026-04-01"
+        }
+      },
+      "labels": {
+        "period": "2026-04-01"
+      },
+      "values": {
+        "m0": "0.13"
+      },
+      "evidence": {
+        "m0": "56a86e17ca0b3f9f02312fb4b71744dd3742f7265c9e2d65aa6bd37a07cee75a"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "grain": "day",
+          "start": "2026-04-02"
+        }
+      },
+      "labels": {
+        "period": "2026-04-02"
+      },
+      "values": {
+        "m0": "0.12"
+      },
+      "evidence": {
+        "m0": "342cd80b180222accea6068d7bb0fcc0df095bdb5155c83422439b8ed4650364"
+      }
+    }
+  ],
+  "row_count": 3
+}

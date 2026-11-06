@@ -175,3 +175,12 @@ def test_preview_filters_do_not_interpret_headers_as_expressions(name: str, tmp_
     assert pages == {"Q-001": [2], "Q-003": [3], "Q-002": [4]}
     paged = preview.read(content, 1, 1)
     assert [row.row_number for row in paged.rows] == [2] and paged.total == 4
+
+
+def test_canonical_decimal_handles_full_precision() -> None:
+    """Decimal(38, s) admite 38 dígitos: el contexto por defecto de Python (28) no basta."""
+    value = Decimal("1234567890123456789012345678901234.5678")
+    assert (
+        canonical_cell(value, "decimal", {"scale": 4}) == "1234567890123456789012345678901234.5678"
+    )
+    assert canonical_cell(Decimal("9" * 38), "decimal", {"scale": 0}) == "9" * 38

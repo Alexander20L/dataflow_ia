@@ -64,7 +64,7 @@ def test_executions_depends_only_on_ports_not_on_operation_modules() -> None:
     root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "executions"
     forbidden = tuple(
         f"dataflow.modules.{name}"
-        for name in ["planning", "cleaning", "quality", "ingestion", "understanding"]
+        for name in ["planning", "cleaning", "quality", "ingestion", "understanding", "analytics"]
     )
     files = list(root.rglob("*.py"))
     assert files
@@ -75,7 +75,13 @@ def test_executions_depends_only_on_ports_not_on_operation_modules() -> None:
 
 def test_planning_does_not_import_operation_implementations() -> None:
     root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "planning"
-    forbidden = ("polars", "duckdb", "dataflow.modules.ingestion", "dataflow.modules.quality")
+    forbidden = (
+        "polars",
+        "duckdb",
+        "dataflow.modules.ingestion",
+        "dataflow.modules.quality",
+        "dataflow.modules.analytics",
+    )
     for file in root.rglob("*.py"):
         for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
             assert not module.startswith(forbidden), (file, module)
@@ -92,5 +98,20 @@ def test_cleaning_compute_path_has_no_database_access() -> None:
         "dataflow.modules.cleaning.repository",
     )
     for name in ["infrastructure.py", "engine.py", "processor.py", "domain.py", "contracts.py"]:
+        for module in imports(ast.parse((root / name).read_text(encoding="utf-8"))):
+            assert not module.startswith(forbidden), (name, module)
+
+
+def test_analytics_compute_path_has_no_database_access() -> None:
+    # El subproceso de analytics.query@1 (y lo que importa) no abre conexiones.
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "analytics"
+    forbidden = (
+        "sqlalchemy",
+        "fastapi",
+        "dataflow.bootstrap",
+        "dataflow.platform.database",
+        "dataflow.modules.analytics.infrastructure",
+    )
+    for name in ["engine.py", "processor.py", "domain.py", "contracts.py"]:
         for module in imports(ast.parse((root / name).read_text(encoding="utf-8"))):
             assert not module.startswith(forbidden), (name, module)

@@ -172,6 +172,16 @@ class KeyAssessment(SemanticModel):
     null_key_rows: int
 
 
+class SemanticOrigin(SemanticModel):
+    """Revisión vigente de la versión de origen de una derivada (mismos IDs de columna). Es una
+    sugerencia: cargarla en el borrador no confirma nada hasta que el usuario guarda."""
+
+    version_id: UUID
+    version_number: int
+    revision: SemanticReference
+    draft: SemanticDraft
+
+
 class UnderstandingContext(SemanticModel):
     table_ref: TableReference
     columns: list[ColumnFacts]
@@ -183,6 +193,7 @@ class UnderstandingContext(SemanticModel):
     suggestions: list[ColumnSuggestion]
     warnings: list[SemanticWarning]
     key_assessment: KeyAssessment | None
+    origin: SemanticOrigin | None = None
 
 
 class RevisionPage(SemanticModel):
@@ -212,6 +223,10 @@ class RepresentationAccess(Protocol):
         self, owner: UUID, artifact: UUID, with_profile: bool = False
     ) -> Representation: ...
     def require_write(self, owner: UUID, project: UUID) -> None: ...
+    def origin_table(self, owner: UUID, artifact: UUID) -> tuple[UUID, int, UUID] | None:
+        """(versión, número, tabla) de origen si la tabla pertenece a una derivada."""
+        ...
+
     def key_facts(
         self, owner: UUID, artifact: UUID, columns: list[UUID], null_policy: str
     ) -> KeyAssessment: ...
