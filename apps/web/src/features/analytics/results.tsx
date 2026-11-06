@@ -6,6 +6,7 @@ import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
 import { number } from "@/lib/utils";
 import { useEvidence, type AnalysisResult } from "./api";
+import { CsvExport } from "@/features/reports/csv-export";
 import {
   aggregationLabel,
   BASE_STATUS,
@@ -146,10 +147,16 @@ export function Results({
           </tbody>
         </table>
       </div>
-      <p className="fine-print muted">
-        {result.row_count} fila(s) · selecciona una cifra para ver de dónde
-        sale.
-      </p>
+      <div className="results-footer">
+        <p className="fine-print muted">
+          {result.row_count} fila(s) · selecciona una cifra para ver de dónde
+          sale.
+        </p>
+        <CsvExport
+          href={`/api/v1/executions/${runId}/analysis.csv`}
+          label="Exportar resultado"
+        />
+      </div>
       {ranking && rankedBy && (
         <p className="fine-print muted" data-testid="ranking-note">
           Top {ranking.top_n} por {rankedBy.label} (

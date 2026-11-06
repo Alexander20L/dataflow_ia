@@ -14,6 +14,7 @@ from dataflow.bootstrap.services import (
     make_ingestion,
     make_metrics,
     make_planning,
+    make_reports,
     make_rulesets,
     make_semantics,
 )
@@ -31,6 +32,7 @@ from dataflow.modules.planning.application import PlanningService
 from dataflow.modules.projects.application import ProjectService
 from dataflow.modules.projects.infrastructure import SQLProjectRepository
 from dataflow.modules.quality.application import RulesetService
+from dataflow.modules.reports.application import ReportService
 from dataflow.modules.understanding.public import SemanticService
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import get_db
@@ -140,6 +142,13 @@ def dashboard_service(db: Db, objects: Objects) -> DashboardService:
 
 
 Dashboards = Annotated[DashboardService, Depends(dashboard_service)]
+
+
+def report_service(db: Db, objects: Objects) -> ReportService:
+    return make_reports(db, objects)
+
+
+Reports = Annotated[ReportService, Depends(report_service)]
 
 
 def planning_service(db: Db, objects: Objects) -> PlanningService:

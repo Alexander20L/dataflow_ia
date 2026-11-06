@@ -134,6 +134,10 @@ LATER_TABLES = {
     "dashboard_families",
     "dashboard_revisions",
     "dashboard_save_requests",
+    "report_families",
+    "report_revisions",
+    "report_save_requests",
+    "report_renders",
 }
 
 

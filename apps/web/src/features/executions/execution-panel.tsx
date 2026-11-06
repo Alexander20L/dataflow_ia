@@ -29,6 +29,7 @@ function runLabel(run: Execution) {
   if (run.kind === "plan") return `Plan revisión ${run.plan?.revision ?? "?"}`;
   if (run.kind === "cleaning_preview") return "Vista previa de limpieza";
   if (run.kind === "cleaning_apply") return "Aplicación de limpieza";
+  if (run.kind === "report_render") return "Informe a PDF";
   const steps = run.plan?.content.steps;
   return Array.isArray(steps) && steps.length === 1
     ? "Sólo calidad (0.5)"

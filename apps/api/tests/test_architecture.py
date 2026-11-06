@@ -129,3 +129,31 @@ def test_dashboards_depend_only_on_their_ports() -> None:
             ):
                 assert module == "dataflow.modules.audit.public", (file, module)
             assert not module.startswith(("polars", "duckdb")), (file, module)
+
+
+def test_reports_depend_only_on_their_ports_and_render_without_database() -> None:
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "reports"
+    allowed = {
+        "dataflow.modules.audit.public",
+        "dataflow.modules.dashboards.contracts",
+        "dataflow.modules.executions.public",
+        "dataflow.modules.datasets.public",
+    }
+    files = list(root.rglob("*.py"))
+    assert files
+    for file in files:
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            if module.startswith("dataflow.modules.") and not module.startswith(
+                "dataflow.modules.reports"
+            ):
+                assert module in allowed, (file, module)
+    forbidden = (
+        "sqlalchemy",
+        "fastapi",
+        "dataflow.bootstrap",
+        "dataflow.platform.database",
+        "dataflow.modules.reports.infrastructure",
+    )
+    for name in ["pdf.py", "processor.py", "contracts.py", "domain.py"]:
+        for module in imports(ast.parse((root / name).read_text(encoding="utf-8"))):
+            assert not module.startswith(forbidden), (name, module)

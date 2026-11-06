@@ -23,6 +23,8 @@ import { CleaningStage } from "@/features/cleaning/proposal";
 import { QualityRules } from "@/features/quality/rules-editor";
 import { AnalysisStage } from "@/features/analytics/analysis-stage";
 import { DashboardStage } from "@/features/dashboards/dashboard-stage";
+import { CsvExport } from "@/features/reports/csv-export";
+import { ReportStage } from "@/features/reports/report-stage";
 import {
   useCancelImport,
   useDiagnostic,
@@ -39,7 +41,9 @@ import {
 const ANALYSIS_STAGE = 5;
 // Etapa «Visualización»: dashboards persistidos para datos propios desde la Fase 8.
 const DASHBOARD_STAGE = 6;
-const REAL_STAGES = new Set([ANALYSIS_STAGE, DASHBOARD_STAGE]);
+// Etapa «Explicación»: informes con procedencia y exportación a PDF desde la Fase 9.
+const REPORT_STAGE = 7;
+const REAL_STAGES = new Set([ANALYSIS_STAGE, DASHBOARD_STAGE, REPORT_STAGE]);
 const states = {
   queued: "En cola",
   processing: "Procesando",
@@ -234,6 +238,12 @@ export function CsvWorkspace({
                 Descargar original
               </a>
             )}
+            {version.state === "succeeded" && (
+              <CsvExport
+                href={`/api/v1/versions/${version.id}/export.csv`}
+                label={`Exportar v${version.number}`}
+              />
+            )}
             {(versions.data?.total ?? 0) > 20 && (
               <div className="pagination">
                 <Button
@@ -410,6 +420,14 @@ export function CsvWorkspace({
                     onOpenUnderstanding={() =>
                       requestChange({ kind: "stage", value: 1 })
                     }
+                  />
+                )}
+                {stage === REPORT_STAGE && (
+                  <ReportStage
+                    projectId={projectId}
+                    versionId={version.id}
+                    versionNumber={version.number}
+                    archived={archived}
                   />
                 )}
                 {stage === DASHBOARD_STAGE && (

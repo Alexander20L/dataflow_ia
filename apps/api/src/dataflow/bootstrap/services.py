@@ -9,6 +9,11 @@ from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry
 from dataflow.bootstrap.planning_access import PlanningTableAccess
 from dataflow.bootstrap.provenance import environment_snapshot
 from dataflow.bootstrap.quality_access import QualityTableAccess
+from dataflow.bootstrap.reports_access import (
+    ReportAccess,
+    ReportInputResolver,
+    WorkerRegistry,
+)
 from dataflow.bootstrap.semantic_access import SemanticRepresentationAccess
 from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.analytics.infrastructure import SQLMetricRepository
@@ -62,6 +67,9 @@ from dataflow.modules.planning.infrastructure import SQLPlanningRepository
 from dataflow.modules.projects.public import ProjectPermissions
 from dataflow.modules.quality.application import RulesetService
 from dataflow.modules.quality.infrastructure import SQLRulesetRepository
+from dataflow.modules.reports.application import ReportService
+from dataflow.modules.reports.infrastructure import SQLReportRepository
+from dataflow.modules.reports.steps import RenderReportStep
 from dataflow.modules.understanding.application import SemanticService
 from dataflow.modules.understanding.semantic_repository import SQLSemanticRepository
 from dataflow.platform.config import get_settings
@@ -218,6 +226,7 @@ WORKER_KINDS: set[RunKind] = {
     "plan",
     "cleaning_preview",
     "cleaning_apply",
+    "report_render",
 }
 
 
@@ -269,13 +278,17 @@ def make_runner(
             "table": TableInputResolver(
                 datasets, executions, projects, make_semantics(db, objects)
             ),
+            "report": ReportInputResolver(lambda: make_reports(db, objects), objects),
         },
-        make_operations(
-            objects,
-            engine,
-            cleaner,
-            make_rulesets(db, objects),
-            AnalyticsMetricSource(make_metrics(db, objects), make_semantics(db, objects)),
+        WorkerRegistry(
+            make_operations(
+                objects,
+                engine,
+                cleaner,
+                make_rulesets(db, objects),
+                AnalyticsMetricSource(make_metrics(db, objects), make_semantics(db, objects)),
+            ),
+            {"reports.render_pdf@1": RenderReportStep(objects, objects.root)},
         ),
         DatasetPublication(db, datasets, executions, approvals, config),
         environment_snapshot(),
@@ -284,6 +297,26 @@ def make_runner(
             "cleaning_apply": ApplyFinalizer(objects, cleaner, approvals),
         },
     )
+
+
+def make_reports(db: Session, objects: LocalObjects) -> ReportService:
+    require_ready(db)
+    access = ReportAccess(
+        DashboardAccess(
+            make_planning(db, objects),
+            make_executions(db),
+            make_datasets(db),
+            make_semantics(db, objects),
+            ProjectPermissions(db),
+        ),
+        make_dashboards(db, objects),
+        make_metrics(db, objects),
+        make_executions(db),
+        make_datasets(db),
+        objects,
+        processing_config(),
+    )
+    return ReportService(SQLReportRepository(db), access, SQLUnitOfWork(db))
 
 
 def make_dashboards(db: Session, objects: LocalObjects) -> DashboardService:
