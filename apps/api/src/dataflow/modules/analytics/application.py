@@ -2,12 +2,15 @@
 resolución de evidencias."""
 
 import json
+from collections.abc import Iterator
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID, uuid4
 
 from dataflow.modules.analytics.contracts import (
     AnalysisResult,
+    AnalysisResultV2,
     BaseTable,
     EvidenceReference,
     EvidenceView,
@@ -19,11 +22,21 @@ from dataflow.modules.analytics.contracts import (
     MetricRepository,
     MetricRevision,
     MetricSummary,
+    ResultRow,
+    ResultRowV2,
     SaveMetricResponse,
     measure_types,
 )
 from dataflow.modules.analytics.domain import metric_problems
-from dataflow.modules.analytics.engine import Metric, evidence_reference
+from dataflow.modules.analytics.engine import (
+    Metric,
+    cell_reference,
+    change_pct_detail,
+    comparison_detail,
+    evidence_reference,
+    rank_detail,
+    share_detail,
+)
 from dataflow.platform.canonical import digest
 from dataflow.platform.errors import ApplicationError
 
@@ -171,41 +184,111 @@ class MetricService:
             filter_column_ids=[f.column_id for f in content.filters],
         )
 
-    def result(self, owner: UUID, execution: UUID) -> AnalysisResult:
+    def result(self, owner: UUID, execution: UUID) -> AnalysisResult | AnalysisResultV2:
         content = self.tables.analysis_result(owner, execution)
         if content is None:
             raise ApplicationError(
                 "RESULT_NOT_READY", "El resultado del análisis no está disponible.", 409
             )
-        return AnalysisResult.model_validate(json.loads(content))
+        data = json.loads(content)
+        if data.get("operation") == "analytics.query@2":
+            return AnalysisResultV2.model_validate(data)
+        return AnalysisResult.model_validate(data)
 
     def evidence(self, owner: UUID, execution: UUID, evidence_id: str) -> EvidenceView:
-        """Resuelve una cifra por su `evidence_id` y vuelve a calcular la dirección para
-        comprobar que el identificador corresponde exactamente a esa cifra."""
+        """Resuelve una cifra por su `evidence_id` (de cualquier celda) y vuelve a calcular la
+        dirección para comprobar que el identificador corresponde exactamente a esa cifra."""
         result = self.result(owner, execution)
         for row in result.rows:
-            for key, identifier in row.evidence.items():
-                if identifier != evidence_id:
+            for cell in addressed_cells(result, row):
+                if cell.identifier != evidence_id:
                     continue
-                definition = next(m for m in result.metrics if m.key == key)
-                reference = MetricReference(
-                    revision_id=definition.revision_id,
-                    content_sha256=definition.content_sha256,
-                )
+                definition = next(m for m in result.metrics if m.key == cell.metric_key)
                 metric = Metric(
-                    reference,
+                    MetricReference(
+                        revision_id=definition.revision_id,
+                        content_sha256=definition.content_sha256,
+                    ),
                     definition.revision,
                     self.repository.revision(owner, definition.revision_id).content,
                 )
-                computed, payload = evidence_reference(result.scope, metric, row.key)
+                computed, payload = (
+                    evidence_reference(result.scope, metric, row.key)
+                    if cell.detail is None
+                    else cell_reference(result.scope, metric, row.key, cell.name, cell.detail)
+                )
                 if computed != evidence_id:
                     raise ApplicationError(
                         "INTEGRITY_ERROR", "La evidencia no coincide con el resultado.", 409
                     )
                 return EvidenceView(
                     reference=EvidenceReference(evidence_id=computed, **payload),
-                    value=row.values[key],
+                    value=cell.value,
                     definition=definition,
                     labels=row.labels,
+                    operation=result.operation,
+                    metric_value=row.values[cell.metric_key],
+                    **cell.context,
                 )
         raise ApplicationError("EVIDENCE_NOT_FOUND", "Esa cifra no existe en el resultado.", 404)
+
+
+@dataclass(frozen=True)
+class AddressedCell:
+    metric_key: str
+    name: str
+    identifier: str
+    detail: dict[str, Any] | None  # None: `value`, dirección de @1
+    value: str | None
+    context: dict[str, Any]
+
+
+def addressed_cells(
+    result: AnalysisResult | AnalysisResultV2, row: ResultRow
+) -> Iterator[AddressedCell]:
+    """Todas las cifras direccionables de una fila, con el detalle que las generó."""
+    for key, identifier in row.evidence.items():
+        yield AddressedCell(key, "value", identifier, None, row.values[key], {})
+    if not isinstance(result, AnalysisResultV2) or not isinstance(row, ResultRowV2):
+        return
+    for key, comparisons in row.comparisons.items():
+        for kind, comparison in comparisons.items():
+            context = {"comparison": comparison}
+            base = comparison_detail(kind, comparison.base_period)
+            yield AddressedCell(
+                key, kind, comparison.evidence["base"], base, comparison.base, context
+            )
+            yield AddressedCell(
+                key, "change", comparison.evidence["change"], base, comparison.change, context
+            )
+            yield AddressedCell(
+                key,
+                "change_pct",
+                comparison.evidence["change_pct"],
+                change_pct_detail(kind, comparison.base_period, result.change_scale),
+                comparison.change_pct,
+                context,
+            )
+    for key, share in row.share.items():
+        total = next(
+            (t for t in result.shares if t.metric == key and t.period == row.key["period"]),
+            None,
+        )
+        yield AddressedCell(
+            key,
+            "share_of_total",
+            share.evidence,
+            share_detail(result.share_scale),
+            share.value,
+            {"share": share, "share_total": total},
+        )
+    if row.rank is not None and result.ranking is not None:
+        ranking = result.ranking
+        yield AddressedCell(
+            ranking.metric,
+            "rank",
+            row.rank.evidence,
+            rank_detail(ranking.direction, ranking.top_n, row.rank.tied_with_previous),
+            str(row.rank.position),
+            {"rank": row.rank, "ranking": ranking},
+        )

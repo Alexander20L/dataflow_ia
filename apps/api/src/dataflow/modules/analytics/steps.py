@@ -1,4 +1,4 @@
-"""Ejecutor de analytics.query@1: de sólo lectura, se ejecuta como plan normal."""
+"""Ejecutor de analytics.query@1 y @2: de sólo lectura, se ejecutan como plan normal."""
 
 import json
 from pathlib import Path
@@ -7,10 +7,12 @@ from uuid import UUID, uuid4
 
 from dataflow.modules.analytics.contracts import (
     AnalysisResult,
+    AnalysisResultV2,
     BaseTable,
     EvidenceScope,
     MetricRevision,
     QueryParameters,
+    QueryParametersV2,
 )
 from dataflow.modules.datasets.public import ObjectStore
 from dataflow.modules.executions.public import (
@@ -25,6 +27,12 @@ from dataflow.platform.errors import ApplicationError
 from dataflow.platform.isolation import run_isolated
 
 MODULE = "dataflow.modules.analytics.processor"
+
+
+def query_parameters(step: PlanStepSpec) -> QueryParameters:
+    """Parámetros según la versión del paso: @1 conserva su modelo y su resultado."""
+    model = QueryParametersV2 if step.version == 2 else QueryParameters
+    return model.model_validate(step.parameters)
 
 
 class MetricSource(Protocol):
@@ -50,7 +58,7 @@ class AnalyticsQueryStep:
         if self.sources is None:
             raise ApplicationError("UNSUPPORTED_OPERATION", "Análisis no disponible.", 409)
         assert lease.execution.plan
-        parameters = QueryParameters.model_validate(step.parameters)
+        parameters = query_parameters(step)
         semantic = lease.execution.plan.content.get("semantic_ref")
         units = self.sources.units(lease.owner_id, UUID(semantic["id"])) if semantic else {}
         metrics = []
@@ -84,7 +92,7 @@ class AnalyticsQueryStep:
         metrics = self.prepared.pop((lease.attempt_id, step.id), None)
         if metrics is None:
             raise ApplicationError("PROCESSING_ERROR", "Las métricas no se prepararon.", 409)
-        parameters = QueryParameters.model_validate(step.parameters)
+        parameters = query_parameters(step)
         table = plan.content["input"]
         scope = EvidenceScope(
             execution_id=lease.execution_id,
@@ -106,6 +114,8 @@ class AnalyticsQueryStep:
             [
                 "--mode",
                 "query",
+                "--operation-version",
+                str(step.version),
                 "--input",
                 "{dir}/input.parquet",
                 "--columns-json",
@@ -125,7 +135,11 @@ class AnalyticsQueryStep:
             min(timeout, plan.config.timeout_seconds),
         )
         report = files["analysis.json"]
-        parsed = AnalysisResult.model_validate_json(report)
+        parsed: AnalysisResult | AnalysisResultV2 = (
+            AnalysisResultV2.model_validate_json(report)
+            if step.version == 2
+            else AnalysisResult.model_validate_json(report)
+        )
         prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
         content = self.objects.put(f"{prefix}/analysis.json", report)
         return StepResult(

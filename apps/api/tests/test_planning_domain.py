@@ -453,3 +453,72 @@ def test_metric_reference_type_and_unit_problems() -> None:
         time_grain="month",
     )
     assert [p.code for p in no_time] == ["TIME_COLUMN_MISMATCH"]
+
+
+class ShareParameters(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    metrics: list[MetricRef] = Field(min_length=1)
+    share_of_total: list[UUID] = Field(default_factory=list)
+
+
+SHARE_QUERY = OperationDescriptor(
+    "fake.share",
+    1,
+    "Participación",
+    "table",
+    "analysis_result",
+    ShareParameters,
+    metric_reference="metrics",
+    additive_metrics="share_of_total",
+)
+
+
+def test_share_of_total_requires_additive_metrics() -> None:
+    """La participación sólo se calcula sobre métricas que se pueden sumar entre grupos; planning
+    lo sabe por el requisito de la métrica, sin importar analytics."""
+    additive, average = uuid4(), uuid4()
+    metrics = {
+        additive: MetricRequirement("a" * 64, AMOUNT, NUMERIC, True, None, (), additive=True),
+        average: MetricRequirement("a" * 64, AMOUNT, NUMERIC, True, None, ()),
+    }
+
+    def problems(shared: list[UUID]) -> list[Problem]:
+        draft = PlanDraft(
+            semantic_ref=SEMANTIC_REF,
+            steps=[
+                step(
+                    "share",
+                    "fake.share",
+                    None,
+                    {
+                        "metrics": [
+                            {"revision_id": str(m), "content_sha256": "a" * 64}
+                            for m in (additive, average)
+                        ],
+                        "share_of_total": [str(m) for m in shared],
+                    },
+                )
+            ],
+        )
+        facts = PlanningFacts(
+            input_kind="table",
+            column_ids=frozenset(TYPED_COLUMNS),
+            semantic_pinned=True,
+            confirmed_roles={AMOUNT: "measure"},
+            column_types=TYPED_COLUMNS,  # type: ignore[arg-type]
+            metrics=metrics,
+            column_units={AMOUNT: "currency:EUR"},
+        )
+
+        class Catalog(FakeCatalog):
+            def descriptor(self, name: str, version: int) -> OperationDescriptor | None:
+                return SHARE_QUERY if name == "fake.share" else super().descriptor(name, version)
+
+        return validate_plan(draft, Catalog(), facts)
+
+    assert problems([additive]) == []
+    found = problems([additive, average])
+    assert [(p.code, p.parameter, p.resolve_in) for p in found] == [
+        ("SHARE_NOT_ADDITIVE", "share_of_total", "plan_steps")
+    ]
+    assert str(average) in found[0].message

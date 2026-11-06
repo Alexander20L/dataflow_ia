@@ -1,4 +1,5 @@
-"""Fase 7A · A4: analytics.query@1 de punta a punta (plan normal, resultado y evidencia)."""
+"""Fase 7A · A4 y 7B · B3a: analytics.query@1 y @2 de punta a punta (plan normal, resultado y
+evidencia)."""
 
 from typing import Any
 from uuid import uuid4
@@ -44,7 +45,12 @@ def confirm_semantics(s: Scenario, table: dict[str, Any], **roles: tuple[str, st
 
 
 def query_plan(
-    s: Scenario, table: dict[str, Any], metrics: list[dict[str, Any]], semantic: Any, **query: Any
+    s: Scenario,
+    table: dict[str, Any],
+    metrics: list[dict[str, Any]],
+    semantic: Any,
+    version: int = 1,
+    **query: Any,
 ) -> Any:
     response = s.client.post(
         f"/api/v1/projects/{s.project_id}/plans",
@@ -56,7 +62,7 @@ def query_plan(
                 {
                     "id": "query",
                     "operation": "analytics.query",
-                    "version": 1,
+                    "version": version,
                     "input": {"kind": "input"},
                     "parameters": {
                         "metrics": [
@@ -230,3 +236,173 @@ def test_units_filters_and_privacy(scenario: Scenario) -> None:
 
     account(s.client)  # el cliente pasa a la sesión de otra cuenta
     assert s.client.get(f"/api/v1/executions/{run}/analysis").status_code == 404
+
+
+def test_query_v2_ranking_share_and_evidence_of_every_cell(scenario: Scenario) -> None:
+    s, c = scenario, scenario.columns
+    table = typed_table(s)
+    income, operations = metrics_for(s, table)
+    semantic = confirm_semantics(
+        s, table, importe=("measure", "EUR"), fecha=("business_date", None)
+    )
+    plan = query_plan(
+        s,
+        table,
+        [income, operations],
+        semantic,
+        version=2,
+        dimensions=[c["region"]],
+        ranking={"metric_revision_id": operations["id"], "top_n": 3},
+        share_of_total=[income["id"], operations["id"]],
+    )
+    assert plan["validation"]["valid"], plan["validation"]
+    assert plan["content"]["config"]["operation_catalog"] == "analysis-v6"
+    run = execute(s, plan)
+    result = s.client.get(f"/api/v1/executions/{run}/analysis").json()
+    assert result["operation"] == "analytics.query@2"
+    rows = [
+        (
+            r["labels"]["d0"],
+            r["values"]["m1"],
+            r["rank"]["position"],
+            r["rank"]["tied_with_previous"],
+            r["share"]["m0"]["value"],
+            r["share"]["m1"]["value"],
+        )
+        for r in result["rows"]
+    ]
+    # Operaciones: Norte 3, y Este, Oeste y Sur 1. Oeste empata con Este (desempate por
+    # región) y Sur queda fuera del top 3. Los totales incluyen a Sur: 401.25 € y 6.
+    assert rows == [
+        ("Norte", "3", 1, False, "50.09", "50.00"),
+        ("Este", "1", 2, False, "29.97", "16.67"),
+        ("Oeste", "1", 3, True, "19.94", "16.67"),
+    ]
+    assert result["ranking"]["hidden_groups"] == 1
+    assert [(t["metric"], t["total"], t["groups"]) for t in result["shares"]] == [
+        ("m0", "401.25", 3),
+        ("m1", "6", 4),
+    ]
+
+    def evidence(identifier: str) -> Any:
+        response = s.client.get(f"/api/v1/executions/{run}/evidence/{identifier}")
+        assert response.status_code == 200, response.text
+        return response.json()
+
+    west = result["rows"][2]
+    rank = evidence(west["rank"]["evidence"])
+    assert (rank["value"], rank["metric_value"], rank["operation"]) == (
+        "3",
+        "1",
+        "analytics.query@2",
+    )
+    assert rank["reference"]["cell"] == "rank"
+    assert rank["reference"]["detail"] == {
+        "direction": "desc",
+        "top_n": 3,
+        "tied_with_previous": True,
+    }
+    assert rank["reference"]["metric"]["revision_id"] == operations["id"]
+    assert rank["rank"]["tied_with_previous"] and rank["ranking"]["top_n"] == 3
+    north = result["rows"][0]
+    share = evidence(north["share"]["m0"]["evidence"])
+    assert (share["value"], share["metric_value"]) == ("50.09", "201.00")
+    assert share["reference"]["detail"] == {"share_scale": 2}
+    assert share["share_total"]["total"] == "401.25"
+    value = evidence(north["evidence"]["m0"])
+    assert value["reference"]["cell"] == "value" and value["reference"]["detail"] is None
+    assert value["definition"]["base_counts"] == {}
+
+
+def test_query_v2_comparisons_end_to_end(scenario: Scenario) -> None:
+    s = scenario
+    table = typed_table(s)
+    _, operations = metrics_for(s, table)
+    semantic = confirm_semantics(
+        s, table, importe=("measure", "EUR"), fecha=("business_date", None)
+    )
+    plan = query_plan(
+        s,
+        table,
+        [operations],
+        semantic,
+        version=2,
+        time_grain="day",
+        time_range={"start": "2026-01-03", "end": "2026-01-05"},
+        comparisons=["previous_period"],
+    )
+    assert plan["validation"]["valid"], plan["validation"]
+    result = s.client.get(f"/api/v1/executions/{execute(s, plan)}/analysis").json()
+    cells = [
+        (
+            r["labels"]["period"],
+            r["values"]["m0"],
+            r["comparisons"]["m0"]["previous_period"]["base_label"],
+            r["comparisons"]["m0"]["previous_period"]["base"],
+            r["comparisons"]["m0"]["previous_period"]["change_pct"],
+        )
+        for r in result["rows"]
+    ]
+    # El 3 de enero se compara con el 2, fuera del periodo consultado.
+    assert cells == [
+        ("2026-01-03", "1", "2026-01-02", "1", "0.00"),
+        ("2026-01-04", "1", "2026-01-03", "1", "0.00"),
+        ("2026-01-05", "1", "2026-01-04", "1", "0.00"),
+    ]
+    definition = result["metrics"][0]
+    assert definition["counts"]["excluded_by_filters"] == 3
+    assert definition["base_counts"]["previous_period"] == {
+        "input_rows": 6,
+        "excluded_by_filters": 0,
+        "outside_base_periods": 3,  # dos del 1 de enero y el del 5
+        "excluded_by_nulls": 0,
+        "included_rows": 3,
+    }
+    run = result["scope"]["execution_id"]
+    first = result["rows"][0]["comparisons"]["m0"]["previous_period"]
+    view = s.client.get(f"/api/v1/executions/{run}/evidence/{first['evidence']['base']}").json()
+    assert view["reference"]["cell"] == "previous_period" and view["value"] == "1"
+    assert view["reference"]["detail"]["base_period"] == {"grain": "day", "start": "2026-01-02"}
+    assert view["comparison"]["base_status"] == "available"
+    assert view["definition"]["base_counts"]["previous_period"]["included_rows"] == 3
+
+
+def test_query_v2_validation_in_the_plan(scenario: Scenario) -> None:
+    s, c = scenario, scenario.columns
+    table = typed_table(s)
+    income, _ = metrics_for(s, table)
+    semantic = confirm_semantics(
+        s, table, importe=("measure", "EUR"), fecha=("business_date", None)
+    )
+    average = save_metric(
+        s,
+        table,
+        {"label": "Ticket medio", "measure_column_id": c["importe"], "aggregation": "avg"},
+    ).json()["revision"]
+    not_additive = query_plan(
+        s,
+        table,
+        [income, average],
+        semantic,
+        version=2,
+        dimensions=[c["region"]],
+        share_of_total=[average["id"]],
+    )["validation"]["problems"]
+    assert [(p["code"], p["parameter"]) for p in not_additive] == [
+        ("SHARE_NOT_ADDITIVE", "share_of_total")
+    ]
+    misaligned = query_plan(
+        s,
+        table,
+        [income],
+        semantic,
+        version=2,
+        time_grain="month",
+        time_range={"start": "2026-01-03"},
+        comparisons=["previous_period"],
+    )["validation"]["problems"]
+    assert [p["code"] for p in misaligned] == ["INVALID_PARAMETERS"]
+    assert "primer día de un mes" in misaligned[0]["message"]
+    # @1 no admite los parámetros nuevos: sus planes no cambian de significado.
+    old = query_plan(s, table, [income], semantic, comparisons=["previous_period"])
+    assert [p["code"] for p in old["validation"]["problems"]] == ["INVALID_PARAMETERS"]

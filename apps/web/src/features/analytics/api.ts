@@ -6,7 +6,10 @@ import { api, requireData } from "@/lib/api";
 export type MetricContext = components["schemas"]["MetricContext"];
 export type MetricRevision = components["schemas"]["MetricRevision"];
 export type MetricDraft = components["schemas"]["MetricDraft"];
-export type AnalysisResult = components["schemas"]["AnalysisResult"];
+/** Resultado de analytics.query@1 o @2 (unión distinguida por `operation`). */
+export type AnalysisResult =
+  | components["schemas"]["AnalysisResult"]
+  | components["schemas"]["AnalysisResultV2"];
 export type EvidenceView = components["schemas"]["EvidenceView"];
 
 export function useMetrics(artifactId?: string) {

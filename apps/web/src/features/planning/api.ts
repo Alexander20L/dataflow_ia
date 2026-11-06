@@ -31,6 +31,7 @@ export const problemLabels: Record<Problem["code"], string> = {
   METRIC_REFERENCE_MISMATCH: "Métrica no válida",
   UNIT_MISMATCH: "Unidades o monedas distintas",
   TIME_COLUMN_MISMATCH: "Columna temporal distinta",
+  SHARE_NOT_ADDITIVE: "Participación no sumable",
 };
 
 /** Clave idempotente estable por contenido: un reintento reutiliza la misma solicitud. */

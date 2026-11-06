@@ -6,17 +6,23 @@ dimensiones, filtros, granularidad y periodo) y el sistema genera el cálculo. E
 negocio («Ingresos») es una etiqueta sobre una métrica definida explícitamente.
 """
 
-from datetime import datetime
-from typing import Any, Final, Literal, Protocol
+from datetime import date, datetime
+from typing import Annotated, Any, Final, Literal, Protocol
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
+from dataflow.modules.analytics.periods import (
+    GRAIN_NAMES,
+    ComparisonKind,
+    TimeGrain,
+    ends_period,
+    starts_period,
+)
 from dataflow.modules.planning.public import COLUMN_REF
 from dataflow.platform.data_types import ALL_TYPES, NUMERIC, DataType
 
 Aggregation = Literal["sum", "count", "count_distinct", "avg", "min", "max"]
-TimeGrain = Literal["day", "week", "month", "quarter", "year"]
 FilterOperator = Literal[
     "eq", "neq", "in", "not_in", "gt", "gte", "lt", "lte", "between", "is_null", "is_not_null"
 ]
@@ -153,6 +159,85 @@ class QueryParameters(AnalyticsModel):
         return [f.column_id for f in self.filters]
 
 
+MAX_TOP_N = 1000
+SHAREABLE: frozenset[str] = frozenset({"sum", "count"})  # se pueden sumar (7B-2)
+
+
+class Ranking(AnalyticsModel):
+    """Top N por una métrica de la consulta, dentro de cada periodo (o de todo el resultado si
+    no se agrupa por tiempo). Posiciones 1, 2, 3 sin empates compartidos: dos valores iguales se
+    ordenan por las dimensiones (desempate estable) y la fila lo declara con
+    `tied_with_previous`. Los grupos sin valor en esa métrica no tienen posición."""
+
+    metric_revision_id: UUID
+    direction: Literal["desc", "asc"] = "desc"
+    top_n: int = Field(ge=1, le=MAX_TOP_N)
+
+
+class QueryParametersV2(QueryParameters):
+    """analytics.query@2: los parámetros de @1 más comparaciones por periodo, ranking y
+    participación sobre el total (7B).
+
+    @1 no cambia y sus planes guardados se siguen ejecutando igual. Sin opciones nuevas, @2
+    calcula las mismas cifras, conteos y `evidence_id` de `value` que @1."""
+
+    comparisons: list[ComparisonKind] = Field(default_factory=list, max_length=2)
+    change_scale: int = Field(default=2, ge=0, le=12)
+    ranking: Ranking | None = None
+    share_of_total: list[UUID] = Field(default_factory=list, max_length=MAX_METRICS)
+    share_scale: int = Field(default=2, ge=0, le=12)
+
+    @field_validator("comparisons")
+    @classmethod
+    def unique_comparisons(cls, value: list[ComparisonKind]) -> list[ComparisonKind]:
+        if len(set(value)) != len(value):
+            raise ValueError("Cada comparación sólo puede aparecer una vez.")
+        return value
+
+    @model_validator(mode="after")
+    def known_metrics(self) -> "QueryParametersV2":
+        revisions = {m.revision_id for m in self.metrics}
+        if self.ranking is not None:
+            if not self.dimensions:
+                raise ValueError("Para ordenar un top N, agrupa por al menos una dimensión.")
+            if self.ranking.metric_revision_id not in revisions:
+                raise ValueError("El ranking debe usar una de las métricas de la consulta.")
+        if len(set(self.share_of_total)) != len(self.share_of_total):
+            raise ValueError("Cada participación sólo puede aparecer una vez.")
+        if any(revision not in revisions for revision in self.share_of_total):
+            raise ValueError("La participación debe usar métricas de la consulta.")
+        return self
+
+    @model_validator(mode="after")
+    def comparable_periods(self) -> "QueryParametersV2":
+        if not self.comparisons:
+            return self
+        if self.time_grain is None:
+            raise ValueError("Para comparar periodos, agrupa por tiempo (día, semana, mes…).")
+        grain, bounds = self.time_grain, self.time_range
+        name = GRAIN_NAMES[grain]
+
+        def day(text: str) -> date:
+            try:
+                return date.fromisoformat(text)
+            except ValueError:
+                raise ValueError(f"«{text}» no es una fecha válida.") from None
+
+        # Decisión 7B-1: con comparaciones el periodo está alineado; nunca se compara medio
+        # mes con un mes completo.
+        if bounds is not None and bounds.start and not starts_period(day(bounds.start), grain):
+            raise ValueError(
+                f"Para comparar, el periodo debe empezar el primer día de {name}; "
+                f"«{bounds.start}» no lo es."
+            )
+        if bounds is not None and bounds.end and not ends_period(day(bounds.end), grain):
+            raise ValueError(
+                f"Para comparar, el periodo debe terminar el último día de {name}; "
+                f"«{bounds.end}» no lo es."
+            )
+        return self
+
+
 # --- Resultado ---------------------------------------------------------------------------
 
 MISSING: dict[str, bool] = {"missing": True}  # marca explícita del grupo «(sin valor)»
@@ -226,8 +311,133 @@ class AnalysisResult(AnalyticsModel):
     row_count: int
 
 
+BaseStatus = Literal["available", "no_base_data", "no_counterpart", "missing_period"]
+ChangeStatus = Literal["available", "base_zero", "base_missing", "current_missing"]
+
+
+class BaseCounts(AnalyticsModel):
+    """Filas de la tabla y su destino en la base de una comparación (una métrica, un tipo).
+
+    `excluded_by_filters`: filtros de la consulta que no son de periodo y filtros de la
+    métrica. `outside_base_periods`: filas sin fecha o fuera de los periodos base necesarios
+    (el periodo consultado no se aplica a la base). Suma: `input_rows`."""
+
+    input_rows: int
+    excluded_by_filters: int
+    outside_base_periods: int
+    excluded_by_nulls: int
+    included_rows: int
+
+
+class MetricDefinitionV2(MetricDefinition):
+    """`counts` es el periodo consultado, igual que en @1; `base_counts`, la base de cada
+    comparación."""
+
+    base_counts: dict[ComparisonKind, BaseCounts] = Field(default_factory=dict)
+
+
+class ComparisonCell(AnalyticsModel):
+    """Comparación de una cifra con su periodo base. Nunca se usa 0 en lugar de un nulo.
+
+    `base_status`: `no_base_data` (el periodo base no tiene filas para la métrica),
+    `no_counterpart` (29 de febrero, semana 53 o fuera del calendario), `missing_period` (la
+    fila es el grupo sin fecha). `change_status`: `base_zero` deja `change` y anula
+    `change_pct`; `base_missing` y `current_missing` anulan ambos."""
+
+    base_period: dict[str, str] | None  # {"grain", "start"}
+    base_label: str | None
+    base: str | None
+    base_status: BaseStatus
+    change: str | None
+    change_pct: str | None
+    change_status: ChangeStatus
+    evidence: dict[str, str]  # base · change · change_pct → evidence_id
+
+
+class ShareCell(AnalyticsModel):
+    """Porcentaje del grupo sobre el total de su periodo (o del resultado), redondeado por
+    separado con `share_scale` y HALF_EVEN. `total_zero`/`value_missing`: nulo, nunca 0."""
+
+    value: str | None
+    status: Literal["available", "total_zero", "value_missing"]
+    evidence: str
+
+
+class ShareTotal(AnalyticsModel):
+    """Total de una partición, calculado ANTES del top N y del presupuesto: los porcentajes
+    de las filas visibles pueden sumar menos de 100. Cada porcentaje se redondea por separado,
+    así que la suma de todos los grupos puede desviarse de 100 hasta `tolerance` puntos
+    (n × media unidad de `share_scale`)."""
+
+    metric: str  # m0, m1…
+    period: dict[str, Any] | None  # partición: clave de periodo o None (todo el resultado)
+    total: str
+    groups: int
+    tolerance: str
+    mixed_signs: bool  # hay valores negativos: un porcentaje puede ser negativo o > 100
+
+
+class RankCell(AnalyticsModel):
+    position: int
+    tied_with_previous: bool  # mismo valor que la posición anterior: la diferencia es el desempate
+    evidence: str
+
+
+class RankingPartition(AnalyticsModel):
+    period: dict[str, Any] | None
+    groups: int
+    ranked: int  # con valor en la métrica del ranking
+    shown: int
+    hidden: int  # fuera del top N o sin valor
+
+
+class RankingSummary(AnalyticsModel):
+    metric: str  # m0, m1…
+    direction: Literal["desc", "asc"]
+    top_n: int
+    partitions: list[RankingPartition]
+    hidden_groups: int
+
+
+class ResultRowV2(ResultRow):
+    comparisons: dict[str, dict[ComparisonKind, ComparisonCell]] = Field(default_factory=dict)
+    share: dict[str, ShareCell] = Field(default_factory=dict)
+    rank: RankCell | None = None
+
+
+class AnalysisResultV2(AnalyticsModel):
+    schema_version: Literal[2] = 2
+    operation: Literal["analytics.query@2"] = "analytics.query@2"
+    scope: EvidenceScope
+    avg_scale: int
+    comparisons: list[ComparisonKind]
+    change_scale: int
+    share_scale: int
+    shares: list[ShareTotal]
+    ranking: RankingSummary | None
+    dimensions: list[ResultColumn]
+    metrics: list[MetricDefinitionV2]
+    rows: list[ResultRowV2]
+    row_count: int
+
+
+EvidenceCell = Literal[
+    "value",
+    "previous_period",
+    "same_period_last_year",
+    "change",
+    "change_pct",
+    "share_of_total",
+    "rank",
+]
+
+
 class EvidenceReference(AnalyticsModel):
-    """Dirección estable de una cifra: el mismo cálculo produce el mismo `evidence_id`."""
+    """Dirección estable de una cifra: el mismo cálculo produce el mismo `evidence_id`.
+
+    `value` conserva la dirección de @1 (sin `detail`). Las cifras derivadas de @2 añaden
+    `cell` y su `detail`: comparación y periodo base, escala de la variación o de la
+    participación, o dirección, top N e indicador de empate de la posición."""
 
     evidence_id: str
     execution_id: UUID
@@ -241,14 +451,28 @@ class EvidenceReference(AnalyticsModel):
     time_grain: TimeGrain | None
     time_range: TimeRange | None
     row_key: dict[str, Any]
-    cell: Literal["value"] = "value"
+    cell: EvidenceCell = "value"
+    detail: dict[str, Any] | None = None
 
 
 class EvidenceView(AnalyticsModel):
+    """Una cifra con su dirección completa y su contexto. `value` es la cifra de la celda
+    direccionada (la posición, en `rank`); `metric_value`, la cifra del grupo en su métrica."""
+
     reference: EvidenceReference
     value: str | None
-    definition: MetricDefinition
+    definition: MetricDefinitionV2 | MetricDefinition
     labels: dict[str, str | None]
+    operation: Literal["analytics.query@1", "analytics.query@2"] = "analytics.query@1"
+    metric_value: str | None = None
+    comparison: ComparisonCell | None = None
+    share: ShareCell | None = None
+    share_total: ShareTotal | None = None
+    rank: RankCell | None = None
+    ranking: RankingSummary | None = None
+
+
+AnalysisResultView = Annotated[AnalysisResult | AnalysisResultV2, Field(discriminator="operation")]
 
 
 # --- Persistencia y API ------------------------------------------------------------------

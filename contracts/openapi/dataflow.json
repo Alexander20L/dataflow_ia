@@ -160,6 +160,106 @@
         "title": "AnalysisResult",
         "type": "object"
       },
+      "AnalysisResultV2": {
+        "additionalProperties": false,
+        "properties": {
+          "avg_scale": {
+            "title": "Avg Scale",
+            "type": "integer"
+          },
+          "change_scale": {
+            "title": "Change Scale",
+            "type": "integer"
+          },
+          "comparisons": {
+            "items": {
+              "enum": [
+                "previous_period",
+                "same_period_last_year"
+              ],
+              "type": "string"
+            },
+            "title": "Comparisons",
+            "type": "array"
+          },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/ResultColumn"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricDefinitionV2"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "operation": {
+            "const": "analytics.query@2",
+            "default": "analytics.query@2",
+            "title": "Operation",
+            "type": "string"
+          },
+          "ranking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RankingSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ResultRowV2"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": 2,
+            "default": 2,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/EvidenceScope"
+          },
+          "share_scale": {
+            "title": "Share Scale",
+            "type": "integer"
+          },
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/ShareTotal"
+            },
+            "title": "Shares",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scope",
+          "avg_scale",
+          "comparisons",
+          "change_scale",
+          "share_scale",
+          "shares",
+          "ranking",
+          "dimensions",
+          "metrics",
+          "rows",
+          "row_count"
+        ],
+        "title": "AnalysisResultV2",
+        "type": "object"
+      },
       "ApplicableOperation": {
         "additionalProperties": false,
         "properties": {
@@ -612,6 +712,41 @@
         "title": "AttemptResponse",
         "type": "object"
       },
+      "BaseCounts": {
+        "additionalProperties": false,
+        "description": "Filas de la tabla y su destino en la base de una comparación (una métrica, un tipo).\n\n`excluded_by_filters`: filtros de la consulta que no son de periodo y filtros de la\nmétrica. `outside_base_periods`: filas sin fecha o fuera de los periodos base necesarios\n(el periodo consultado no se aplica a la base). Suma: `input_rows`.",
+        "properties": {
+          "excluded_by_filters": {
+            "title": "Excluded By Filters",
+            "type": "integer"
+          },
+          "excluded_by_nulls": {
+            "title": "Excluded By Nulls",
+            "type": "integer"
+          },
+          "included_rows": {
+            "title": "Included Rows",
+            "type": "integer"
+          },
+          "input_rows": {
+            "title": "Input Rows",
+            "type": "integer"
+          },
+          "outside_base_periods": {
+            "title": "Outside Base Periods",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "input_rows",
+          "excluded_by_filters",
+          "outside_base_periods",
+          "excluded_by_nulls",
+          "included_rows"
+        ],
+        "title": "BaseCounts",
+        "type": "object"
+      },
       "BaseTable": {
         "additionalProperties": false,
         "properties": {
@@ -936,6 +1071,109 @@
           "reasons"
         ],
         "title": "ColumnSuggestion",
+        "type": "object"
+      },
+      "ComparisonCell": {
+        "additionalProperties": false,
+        "description": "Comparación de una cifra con su periodo base. Nunca se usa 0 en lugar de un nulo.\n\n`base_status`: `no_base_data` (el periodo base no tiene filas para la métrica),\n`no_counterpart` (29 de febrero, semana 53 o fuera del calendario), `missing_period` (la\nfila es el grupo sin fecha). `change_status`: `base_zero` deja `change` y anula\n`change_pct`; `base_missing` y `current_missing` anulan ambos.",
+        "properties": {
+          "base": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base"
+          },
+          "base_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Label"
+          },
+          "base_period": {
+            "anyOf": [
+              {
+                "additionalProperties": {
+                  "type": "string"
+                },
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Base Period"
+          },
+          "base_status": {
+            "enum": [
+              "available",
+              "no_base_data",
+              "no_counterpart",
+              "missing_period"
+            ],
+            "title": "Base Status",
+            "type": "string"
+          },
+          "change": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          },
+          "change_pct": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Pct"
+          },
+          "change_status": {
+            "enum": [
+              "available",
+              "base_zero",
+              "base_missing",
+              "current_missing"
+            ],
+            "title": "Change Status",
+            "type": "string"
+          },
+          "evidence": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "object"
+          }
+        },
+        "required": [
+          "base_period",
+          "base_label",
+          "base",
+          "base_status",
+          "change",
+          "change_pct",
+          "change_status",
+          "evidence"
+        ],
+        "title": "ComparisonCell",
         "type": "object"
       },
       "ConfirmedColumnRole": {
@@ -1441,13 +1679,33 @@
       },
       "EvidenceReference": {
         "additionalProperties": false,
-        "description": "Dirección estable de una cifra: el mismo cálculo produce el mismo `evidence_id`.",
+        "description": "Dirección estable de una cifra: el mismo cálculo produce el mismo `evidence_id`.\n\n`value` conserva la dirección de @1 (sin `detail`). Las cifras derivadas de @2 añaden\n`cell` y su `detail`: comparación y periodo base, escala de la variación o de la\nparticipación, o dirección, top N e indicador de empate de la posición.",
         "properties": {
           "cell": {
-            "const": "value",
             "default": "value",
+            "enum": [
+              "value",
+              "previous_period",
+              "same_period_last_year",
+              "change",
+              "change_pct",
+              "share_of_total",
+              "rank"
+            ],
             "title": "Cell",
             "type": "string"
+          },
+          "detail": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Detail"
           },
           "evidence_id": {
             "title": "Evidence Id",
@@ -1633,9 +1891,28 @@
       },
       "EvidenceView": {
         "additionalProperties": false,
+        "description": "Una cifra con su dirección completa y su contexto. `value` es la cifra de la celda\ndireccionada (la posición, en `rank`); `metric_value`, la cifra del grupo en su métrica.",
         "properties": {
+          "comparison": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ComparisonCell"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "definition": {
-            "$ref": "#/components/schemas/MetricDefinition"
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MetricDefinitionV2"
+              },
+              {
+                "$ref": "#/components/schemas/MetricDefinition"
+              }
+            ],
+            "title": "Definition"
           },
           "labels": {
             "additionalProperties": {
@@ -1651,8 +1928,68 @@
             "title": "Labels",
             "type": "object"
           },
+          "metric_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Metric Value"
+          },
+          "operation": {
+            "default": "analytics.query@1",
+            "enum": [
+              "analytics.query@1",
+              "analytics.query@2"
+            ],
+            "title": "Operation",
+            "type": "string"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RankCell"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "ranking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RankingSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "reference": {
             "$ref": "#/components/schemas/EvidenceReference"
+          },
+          "share": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShareCell"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "share_total": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ShareTotal"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "value": {
             "anyOf": [
@@ -2709,6 +3046,146 @@
         "title": "MetricDefinition",
         "type": "object"
       },
+      "MetricDefinitionV2": {
+        "additionalProperties": false,
+        "description": "`counts` es el periodo consultado, igual que en @1; `base_counts`, la base de cada\ncomparación.",
+        "properties": {
+          "aggregation": {
+            "enum": [
+              "sum",
+              "count",
+              "count_distinct",
+              "avg",
+              "min",
+              "max"
+            ],
+            "title": "Aggregation",
+            "type": "string"
+          },
+          "base_counts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BaseCounts"
+            },
+            "propertyNames": {
+              "enum": [
+                "previous_period",
+                "same_period_last_year"
+              ]
+            },
+            "title": "Base Counts",
+            "type": "object"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/MetricCounts"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "filters": {
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "measure_column": {
+            "title": "Measure Column",
+            "type": "string"
+          },
+          "measure_column_id": {
+            "format": "uuid",
+            "title": "Measure Column Id",
+            "type": "string"
+          },
+          "null_policy": {
+            "const": "exclude",
+            "title": "Null Policy",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "time_column_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column Id"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "key",
+          "revision_id",
+          "revision",
+          "content_sha256",
+          "label",
+          "aggregation",
+          "measure_column_id",
+          "measure_column",
+          "time_column_id",
+          "filters",
+          "null_policy",
+          "unit",
+          "currency",
+          "scale",
+          "counts"
+        ],
+        "title": "MetricDefinitionV2",
+        "type": "object"
+      },
       "MetricDraft": {
         "additionalProperties": false,
         "properties": {
@@ -3638,7 +4115,8 @@
               "QUALITY_RULESET_MISMATCH",
               "METRIC_REFERENCE_MISMATCH",
               "UNIT_MISMATCH",
-              "TIME_COLUMN_MISMATCH"
+              "TIME_COLUMN_MISMATCH",
+              "SHARE_NOT_ADDITIVE"
             ],
             "title": "Code",
             "type": "string"
@@ -4025,6 +4503,113 @@
         "title": "RangeRule",
         "type": "object"
       },
+      "RankCell": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "position": {
+            "title": "Position",
+            "type": "integer"
+          },
+          "tied_with_previous": {
+            "title": "Tied With Previous",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "position",
+          "tied_with_previous",
+          "evidence"
+        ],
+        "title": "RankCell",
+        "type": "object"
+      },
+      "RankingPartition": {
+        "additionalProperties": false,
+        "properties": {
+          "groups": {
+            "title": "Groups",
+            "type": "integer"
+          },
+          "hidden": {
+            "title": "Hidden",
+            "type": "integer"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period"
+          },
+          "ranked": {
+            "title": "Ranked",
+            "type": "integer"
+          },
+          "shown": {
+            "title": "Shown",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "period",
+          "groups",
+          "ranked",
+          "shown",
+          "hidden"
+        ],
+        "title": "RankingPartition",
+        "type": "object"
+      },
+      "RankingSummary": {
+        "additionalProperties": false,
+        "properties": {
+          "direction": {
+            "enum": [
+              "desc",
+              "asc"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "hidden_groups": {
+            "title": "Hidden Groups",
+            "type": "integer"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "partitions": {
+            "items": {
+              "$ref": "#/components/schemas/RankingPartition"
+            },
+            "title": "Partitions",
+            "type": "array"
+          },
+          "top_n": {
+            "title": "Top N",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "metric",
+          "direction",
+          "top_n",
+          "partitions",
+          "hidden_groups"
+        ],
+        "title": "RankingSummary",
+        "type": "object"
+      },
       "RegisterRequest": {
         "additionalProperties": false,
         "properties": {
@@ -4219,6 +4804,92 @@
           "evidence"
         ],
         "title": "ResultRow",
+        "type": "object"
+      },
+      "ResultRowV2": {
+        "additionalProperties": false,
+        "properties": {
+          "comparisons": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/ComparisonCell"
+              },
+              "propertyNames": {
+                "enum": [
+                  "previous_period",
+                  "same_period_last_year"
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Comparisons",
+            "type": "object"
+          },
+          "evidence": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "object"
+          },
+          "key": {
+            "additionalProperties": true,
+            "title": "Key",
+            "type": "object"
+          },
+          "labels": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Labels",
+            "type": "object"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RankCell"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "share": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ShareCell"
+            },
+            "title": "Share",
+            "type": "object"
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "key",
+          "labels",
+          "values",
+          "evidence"
+        ],
+        "title": "ResultRowV2",
         "type": "object"
       },
       "Review": {
@@ -5372,6 +6043,91 @@
         "title": "SessionResponse",
         "type": "object"
       },
+      "ShareCell": {
+        "additionalProperties": false,
+        "description": "Porcentaje del grupo sobre el total de su periodo (o del resultado), redondeado por\nseparado con `share_scale` y HALF_EVEN. `total_zero`/`value_missing`: nulo, nunca 0.",
+        "properties": {
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "total_zero",
+              "value_missing"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "value",
+          "status",
+          "evidence"
+        ],
+        "title": "ShareCell",
+        "type": "object"
+      },
+      "ShareTotal": {
+        "additionalProperties": false,
+        "description": "Total de una partición, calculado ANTES del top N y del presupuesto: los porcentajes\nde las filas visibles pueden sumar menos de 100. Cada porcentaje se redondea por separado,\nasí que la suma de todos los grupos puede desviarse de 100 hasta `tolerance` puntos\n(n × media unidad de `share_scale`).",
+        "properties": {
+          "groups": {
+            "title": "Groups",
+            "type": "integer"
+          },
+          "metric": {
+            "title": "Metric",
+            "type": "string"
+          },
+          "mixed_signs": {
+            "title": "Mixed Signs",
+            "type": "boolean"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "additionalProperties": true,
+                "type": "object"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period"
+          },
+          "tolerance": {
+            "title": "Tolerance",
+            "type": "string"
+          },
+          "total": {
+            "title": "Total",
+            "type": "string"
+          }
+        },
+        "required": [
+          "metric",
+          "period",
+          "total",
+          "groups",
+          "tolerance",
+          "mixed_signs"
+        ],
+        "title": "ShareTotal",
+        "type": "object"
+      },
       "StepRef": {
         "additionalProperties": false,
         "properties": {
@@ -5959,7 +6715,7 @@
   "info": {
     "description": "Identidad y proyectos del monolito modular.",
     "title": "DataFlow AI API",
-    "version": "0.10.0"
+    "version": "0.11.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -7228,7 +7984,22 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/AnalysisResult"
+                  "discriminator": {
+                    "mapping": {
+                      "analytics.query@1": "#/components/schemas/AnalysisResult",
+                      "analytics.query@2": "#/components/schemas/AnalysisResultV2"
+                    },
+                    "propertyName": "operation"
+                  },
+                  "oneOf": [
+                    {
+                      "$ref": "#/components/schemas/AnalysisResult"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AnalysisResultV2"
+                    }
+                  ],
+                  "title": "Response Getexecutionanalysis"
                 }
               }
             },

@@ -6,6 +6,8 @@ from fastapi import APIRouter, Header, Request
 from dataflow.bootstrap.dependencies import CurrentIdentity, Metrics
 from dataflow.modules.analytics.contracts import (
     AnalysisResult,
+    AnalysisResultV2,
+    AnalysisResultView,
     EvidenceView,
     MetricContext,
     MetricRevision,
@@ -57,10 +59,12 @@ def revision(revision_id: UUID, identity: CurrentIdentity, service: Metrics) -> 
 
 @router.get(
     "/executions/{execution_id}/analysis",
-    response_model=AnalysisResult,
+    response_model=AnalysisResultView,
     operation_id="getExecutionAnalysis",
 )
-def result(execution_id: UUID, identity: CurrentIdentity, service: Metrics) -> AnalysisResult:
+def result(
+    execution_id: UUID, identity: CurrentIdentity, service: Metrics
+) -> AnalysisResult | AnalysisResultV2:
     return service.result(identity.user.id, execution_id)
 
 

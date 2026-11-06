@@ -1,7 +1,7 @@
 from uuid import UUID
 
 from dataflow.modules.analytics.application import MetricService
-from dataflow.modules.analytics.contracts import MEASURED
+from dataflow.modules.analytics.contracts import MEASURED, SHAREABLE
 from dataflow.modules.datasets.public import Datasets
 from dataflow.modules.executions.public import Executions
 from dataflow.modules.planning.contracts import (
@@ -111,6 +111,7 @@ class PlanningTableAccess:
             facts.aggregation in MEASURED,
             facts.time_column_id,
             tuple(facts.filter_column_ids),
+            facts.aggregation in SHAREABLE,
         )
 
     def column_units(

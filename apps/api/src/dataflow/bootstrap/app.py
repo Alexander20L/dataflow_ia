@@ -30,7 +30,7 @@ logger = logging.getLogger("dataflow.http")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 app = FastAPI(
     title="DataFlow AI API",
-    version="0.10.0",
+    version="0.11.0",
     description="Identidad y proyectos del monolito modular.",
     responses={
         status: {"model": ErrorResponse}

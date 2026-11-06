@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.data_types import DataType
 
-CATALOG_VERSION = "analysis-v5"
+CATALOG_VERSION = "analysis-v6"
 MAX_STEPS = 16
 # Marca en el esquema de parámetros: el campo contiene IDs de columna de la tabla fijada.
 COLUMN_REF = "x-dataflow-column-ref"
@@ -33,6 +33,7 @@ ProblemCode = Literal[
     "METRIC_REFERENCE_MISMATCH",
     "UNIT_MISMATCH",
     "TIME_COLUMN_MISMATCH",
+    "SHARE_NOT_ADDITIVE",
 ]
 ResolveIn = Literal["plan_steps", "plan_input", "understanding"]
 PlanStatus = Literal["incomplete", "valid"]
@@ -86,7 +87,8 @@ class RulesetRequirement:
 
 @dataclass(frozen=True)
 class MetricRequirement:
-    """Revisión de una métrica: columnas, tipos y si exige el rol semántico «measure»."""
+    """Revisión de una métrica: columnas, tipos, si exige el rol semántico «measure» y si su
+    agregación se puede sumar entre grupos (participación sobre el total)."""
 
     content_sha256: str
     measure_column_id: UUID
@@ -94,6 +96,7 @@ class MetricRequirement:
     requires_measure_role: bool
     time_column_id: UUID | None
     filter_column_ids: tuple[UUID, ...]
+    additive: bool = False
 
 
 @dataclass(frozen=True)
@@ -113,6 +116,9 @@ class OperationDescriptor:
     ruleset_reference: tuple[str, str] | None = None
     # Parámetro con la lista de referencias exactas a métricas ({revision_id, content_sha256}).
     metric_reference: str | None = None
+    # Parámetro con IDs de revisión (de entre las métricas) que deben poder sumarse
+    # (participación sobre el total).
+    additive_metrics: str | None = None
 
     @property
     def key(self) -> str:

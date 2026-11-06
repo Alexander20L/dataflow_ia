@@ -880,9 +880,8 @@ export interface components {
             /** Metrics */
             metrics: components["schemas"]["MetricDefinition"][];
             /**
-             * Operation
-             * @default analytics.query@1
-             * @constant
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
              */
             operation: "analytics.query@1";
             /** Row Count */
@@ -896,6 +895,40 @@ export interface components {
              */
             schema_version: 1;
             scope: components["schemas"]["EvidenceScope"];
+        };
+        /** AnalysisResultV2 */
+        AnalysisResultV2: {
+            /** Avg Scale */
+            avg_scale: number;
+            /** Change Scale */
+            change_scale: number;
+            /** Comparisons */
+            comparisons: ("previous_period" | "same_period_last_year")[];
+            /** Dimensions */
+            dimensions: components["schemas"]["ResultColumn"][];
+            /** Metrics */
+            metrics: components["schemas"]["MetricDefinitionV2"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "analytics.query@2";
+            ranking: components["schemas"]["RankingSummary"] | null;
+            /** Row Count */
+            row_count: number;
+            /** Rows */
+            rows: components["schemas"]["ResultRowV2"][];
+            /**
+             * Schema Version
+             * @default 2
+             * @constant
+             */
+            schema_version: 2;
+            scope: components["schemas"]["EvidenceScope"];
+            /** Share Scale */
+            share_scale: number;
+            /** Shares */
+            shares: components["schemas"]["ShareTotal"][];
         };
         /** ApplicableOperation */
         ApplicableOperation: {
@@ -1063,6 +1096,26 @@ export interface components {
             /** State */
             state: string;
         };
+        /**
+         * BaseCounts
+         * @description Filas de la tabla y su destino en la base de una comparación (una métrica, un tipo).
+         *
+         *     `excluded_by_filters`: filtros de la consulta que no son de periodo y filtros de la
+         *     métrica. `outside_base_periods`: filas sin fecha o fuera de los periodos base necesarios
+         *     (el periodo consultado no se aplica a la base). Suma: `input_rows`.
+         */
+        BaseCounts: {
+            /** Excluded By Filters */
+            excluded_by_filters: number;
+            /** Excluded By Nulls */
+            excluded_by_nulls: number;
+            /** Included Rows */
+            included_rows: number;
+            /** Input Rows */
+            input_rows: number;
+            /** Outside Base Periods */
+            outside_base_periods: number;
+        };
         /** BaseTable */
         BaseTable: {
             /**
@@ -1188,6 +1241,43 @@ export interface components {
             suggested_role: "unknown" | "identifier" | "dimension" | "measure" | "business_date";
             /** Suggested Type */
             suggested_type: ("string" | "integer" | "decimal" | "date" | "boolean") | null;
+        };
+        /**
+         * ComparisonCell
+         * @description Comparación de una cifra con su periodo base. Nunca se usa 0 en lugar de un nulo.
+         *
+         *     `base_status`: `no_base_data` (el periodo base no tiene filas para la métrica),
+         *     `no_counterpart` (29 de febrero, semana 53 o fuera del calendario), `missing_period` (la
+         *     fila es el grupo sin fecha). `change_status`: `base_zero` deja `change` y anula
+         *     `change_pct`; `base_missing` y `current_missing` anulan ambos.
+         */
+        ComparisonCell: {
+            /** Base */
+            base: string | null;
+            /** Base Label */
+            base_label: string | null;
+            /** Base Period */
+            base_period: {
+                [key: string]: string;
+            } | null;
+            /**
+             * Base Status
+             * @enum {string}
+             */
+            base_status: "available" | "no_base_data" | "no_counterpart" | "missing_period";
+            /** Change */
+            change: string | null;
+            /** Change Pct */
+            change_pct: string | null;
+            /**
+             * Change Status
+             * @enum {string}
+             */
+            change_status: "available" | "base_zero" | "base_missing" | "current_missing";
+            /** Evidence */
+            evidence: {
+                [key: string]: string;
+            };
         };
         /** ConfirmedColumnRole */
         ConfirmedColumnRole: {
@@ -1396,14 +1486,22 @@ export interface components {
         /**
          * EvidenceReference
          * @description Dirección estable de una cifra: el mismo cálculo produce el mismo `evidence_id`.
+         *
+         *     `value` conserva la dirección de @1 (sin `detail`). Las cifras derivadas de @2 añaden
+         *     `cell` y su `detail`: comparación y periodo base, escala de la variación o de la
+         *     participación, o dirección, top N e indicador de empate de la posición.
          */
         EvidenceReference: {
             /**
              * Cell
              * @default value
-             * @constant
+             * @enum {string}
              */
-            cell: "value";
+            cell: "value" | "previous_period" | "same_period_last_year" | "change" | "change_pct" | "share_of_total" | "rank";
+            /** Detail */
+            detail?: {
+                [key: string]: unknown;
+            } | null;
             /** Evidence Id */
             evidence_id: string;
             /**
@@ -1462,14 +1560,32 @@ export interface components {
             time_grain: ("day" | "week" | "month" | "quarter" | "year") | null;
             time_range: components["schemas"]["TimeRange"] | null;
         };
-        /** EvidenceView */
+        /**
+         * EvidenceView
+         * @description Una cifra con su dirección completa y su contexto. `value` es la cifra de la celda
+         *     direccionada (la posición, en `rank`); `metric_value`, la cifra del grupo en su métrica.
+         */
         EvidenceView: {
-            definition: components["schemas"]["MetricDefinition"];
+            comparison?: components["schemas"]["ComparisonCell"] | null;
+            /** Definition */
+            definition: components["schemas"]["MetricDefinitionV2"] | components["schemas"]["MetricDefinition"];
             /** Labels */
             labels: {
                 [key: string]: string | null;
             };
+            /** Metric Value */
+            metric_value?: string | null;
+            /**
+             * Operation
+             * @default analytics.query@1
+             * @enum {string}
+             */
+            operation: "analytics.query@1" | "analytics.query@2";
+            rank?: components["schemas"]["RankCell"] | null;
+            ranking?: components["schemas"]["RankingSummary"] | null;
             reference: components["schemas"]["EvidenceReference"];
+            share?: components["schemas"]["ShareCell"] | null;
+            share_total?: components["schemas"]["ShareTotal"] | null;
             /** Value */
             value: string | null;
         };
@@ -1826,6 +1942,58 @@ export interface components {
              * @enum {string}
              */
             aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max";
+            /** Content Sha256 */
+            content_sha256: string;
+            counts: components["schemas"]["MetricCounts"];
+            /** Currency */
+            currency: string | null;
+            /** Filters */
+            filters: components["schemas"]["Filter"][];
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Measure Column */
+            measure_column: string;
+            /**
+             * Measure Column Id
+             * Format: uuid
+             */
+            measure_column_id: string;
+            /**
+             * Null Policy
+             * @constant
+             */
+            null_policy: "exclude";
+            /** Revision */
+            revision: number;
+            /**
+             * Revision Id
+             * Format: uuid
+             */
+            revision_id: string;
+            /** Scale */
+            scale: number | null;
+            /** Time Column Id */
+            time_column_id: string | null;
+            /** Unit */
+            unit: string | null;
+        };
+        /**
+         * MetricDefinitionV2
+         * @description `counts` es el periodo consultado, igual que en @1; `base_counts`, la base de cada
+         *     comparación.
+         */
+        MetricDefinitionV2: {
+            /**
+             * Aggregation
+             * @enum {string}
+             */
+            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max";
+            /** Base Counts */
+            base_counts?: {
+                [key: string]: components["schemas"]["BaseCounts"];
+            };
             /** Content Sha256 */
             content_sha256: string;
             counts: components["schemas"]["MetricCounts"];
@@ -2241,7 +2409,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "EMPTY_PLAN" | "TOO_MANY_STEPS" | "DUPLICATE_STEP_ID" | "INVALID_STEP_REFERENCE" | "UNSUPPORTED_OPERATION" | "INPUT_KIND_MISMATCH" | "INVALID_PARAMETERS" | "UNKNOWN_COLUMN" | "SEMANTIC_REQUIREMENT_MISSING" | "COLUMN_TYPE_MISMATCH" | "IDENTIFIER_CONVERSION_UNCONFIRMED" | "QUALITY_RULESET_MISMATCH" | "METRIC_REFERENCE_MISMATCH" | "UNIT_MISMATCH" | "TIME_COLUMN_MISMATCH";
+            code: "EMPTY_PLAN" | "TOO_MANY_STEPS" | "DUPLICATE_STEP_ID" | "INVALID_STEP_REFERENCE" | "UNSUPPORTED_OPERATION" | "INPUT_KIND_MISMATCH" | "INVALID_PARAMETERS" | "UNKNOWN_COLUMN" | "SEMANTIC_REQUIREMENT_MISSING" | "COLUMN_TYPE_MISMATCH" | "IDENTIFIER_CONVERSION_UNCONFIRMED" | "QUALITY_RULESET_MISMATCH" | "METRIC_REFERENCE_MISMATCH" | "UNIT_MISMATCH" | "TIME_COLUMN_MISMATCH" | "SHARE_NOT_ADDITIVE";
             /** Message */
             message: string;
             /** Parameter */
@@ -2398,6 +2566,46 @@ export interface components {
              */
             severity: "low" | "medium" | "high";
         };
+        /** RankCell */
+        RankCell: {
+            /** Evidence */
+            evidence: string;
+            /** Position */
+            position: number;
+            /** Tied With Previous */
+            tied_with_previous: boolean;
+        };
+        /** RankingPartition */
+        RankingPartition: {
+            /** Groups */
+            groups: number;
+            /** Hidden */
+            hidden: number;
+            /** Period */
+            period: {
+                [key: string]: unknown;
+            } | null;
+            /** Ranked */
+            ranked: number;
+            /** Shown */
+            shown: number;
+        };
+        /** RankingSummary */
+        RankingSummary: {
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "desc" | "asc";
+            /** Hidden Groups */
+            hidden_groups: number;
+            /** Metric */
+            metric: string;
+            /** Partitions */
+            partitions: components["schemas"]["RankingPartition"][];
+            /** Top N */
+            top_n: number;
+        };
         /** RegisterRequest */
         RegisterRequest: {
             /**
@@ -2462,6 +2670,36 @@ export interface components {
             /** Labels */
             labels: {
                 [key: string]: string | null;
+            };
+            /** Values */
+            values: {
+                [key: string]: string | null;
+            };
+        };
+        /** ResultRowV2 */
+        ResultRowV2: {
+            /** Comparisons */
+            comparisons?: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["ComparisonCell"];
+                };
+            };
+            /** Evidence */
+            evidence: {
+                [key: string]: string;
+            };
+            /** Key */
+            key: {
+                [key: string]: unknown;
+            };
+            /** Labels */
+            labels: {
+                [key: string]: string | null;
+            };
+            rank?: components["schemas"]["RankCell"] | null;
+            /** Share */
+            share?: {
+                [key: string]: components["schemas"]["ShareCell"];
             };
             /** Values */
             values: {
@@ -2884,6 +3122,45 @@ export interface components {
              */
             expires_at: string;
             user: components["schemas"]["UserResponse"];
+        };
+        /**
+         * ShareCell
+         * @description Porcentaje del grupo sobre el total de su periodo (o del resultado), redondeado por
+         *     separado con `share_scale` y HALF_EVEN. `total_zero`/`value_missing`: nulo, nunca 0.
+         */
+        ShareCell: {
+            /** Evidence */
+            evidence: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "available" | "total_zero" | "value_missing";
+            /** Value */
+            value: string | null;
+        };
+        /**
+         * ShareTotal
+         * @description Total de una partición, calculado ANTES del top N y del presupuesto: los porcentajes
+         *     de las filas visibles pueden sumar menos de 100. Cada porcentaje se redondea por separado,
+         *     así que la suma de todos los grupos puede desviarse de 100 hasta `tolerance` puntos
+         *     (n × media unidad de `share_scale`).
+         */
+        ShareTotal: {
+            /** Groups */
+            groups: number;
+            /** Metric */
+            metric: string;
+            /** Mixed Signs */
+            mixed_signs: boolean;
+            /** Period */
+            period: {
+                [key: string]: unknown;
+            } | null;
+            /** Tolerance */
+            tolerance: string;
+            /** Total */
+            total: string;
         };
         /** StepRef */
         StepRef: {
@@ -4119,7 +4396,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AnalysisResult"];
+                    "application/json": components["schemas"]["AnalysisResult"] | components["schemas"]["AnalysisResultV2"];
                 };
             };
             /** @description Bad Request */

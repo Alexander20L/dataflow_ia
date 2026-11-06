@@ -2,7 +2,7 @@
 
 from collections.abc import Mapping
 
-from dataflow.modules.analytics.contracts import QueryParameters
+from dataflow.modules.analytics.contracts import QueryParameters, QueryParametersV2
 from dataflow.modules.cleaning.public import (
     CastParameters,
     DeduplicateParameters,
@@ -56,6 +56,17 @@ DESCRIPTORS: tuple[OperationDescriptor, ...] = (
         QueryParameters,
         column_types=lambda parameters: {"filter_column_ids": ALL_TYPES},
         metric_reference="metrics",
+    ),
+    OperationDescriptor(
+        "analytics.query",
+        2,
+        "Consultar, comparar y ordenar métricas",
+        "table",
+        "analysis_result",
+        QueryParametersV2,
+        column_types=lambda parameters: {"filter_column_ids": ALL_TYPES},
+        metric_reference="metrics",
+        additive_metrics="share_of_total",
     ),
     OperationDescriptor(
         "cleaning.trim_whitespace",

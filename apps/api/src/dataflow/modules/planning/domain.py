@@ -326,6 +326,20 @@ def metric_problems(
                 "Para agrupar por tiempo o filtrar un periodo, todas las métricas deben declarar "
                 "la misma columna temporal.",
             )
+    if descriptor.additive_metrics is not None:
+        for revision in getattr(parameters, descriptor.additive_metrics) or []:
+            requirement = facts.metrics.get(revision)
+            if requirement is not None and not requirement.additive:
+                problems.append(
+                    Problem(
+                        code="SHARE_NOT_ADDITIVE",
+                        message=f"La participación sobre el total sólo se calcula para sumas y "
+                        f"conteos; la métrica {revision} no se puede sumar entre grupos.",
+                        resolve_in="plan_steps",
+                        step_id=step.id,
+                        parameter=descriptor.additive_metrics,
+                    )
+                )
     if facts.semantic_pinned:
         units = {
             facts.column_units.get(r.measure_column_id) for r in resolved if r.requires_measure_role

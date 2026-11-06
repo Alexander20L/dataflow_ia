@@ -5,7 +5,6 @@ Fase 6 y se interpretan según el tipo de la columna.
 """
 
 import re
-from datetime import date, timedelta
 from decimal import Decimal
 from typing import Any
 from uuid import UUID
@@ -14,10 +13,12 @@ from dataflow.modules.analytics.contracts import (
     Filter,
     MetricDraft,
     MetricProblem,
-    TimeGrain,
     measure_types,
 )
+from dataflow.modules.analytics.periods import period
 from dataflow.platform.conversion import Converted, convert
+
+__all__ = ["filter_problems", "metric_problems", "parse_value", "period"]
 from dataflow.platform.errors import ApplicationError
 
 DECIMAL = re.compile(r"[+-]?(0|[1-9][0-9]*)(\.[0-9]+)?", re.ASCII)
@@ -104,19 +105,3 @@ def metric_problems(draft: MetricDraft, columns: list[dict[str, Any]]) -> list[M
                 )
             )
     return problems + filter_problems(draft.filters, types)
-
-
-def period(value: date, grain: TimeGrain) -> tuple[date, str]:
-    """Inicio y etiqueta del periodo de negocio. Semanas ISO 8601: empiezan en lunes y
-    pertenecen al año ISO (2025-12-29 es 2026-W01)."""
-    if grain == "day":
-        return value, value.isoformat()
-    if grain == "week":
-        year, week, _ = value.isocalendar()
-        return value - timedelta(days=value.weekday()), f"{year}-W{week:02d}"
-    if grain == "month":
-        return value.replace(day=1), f"{value.year}-{value.month:02d}"
-    if grain == "quarter":
-        quarter = (value.month - 1) // 3 + 1
-        return date(value.year, 3 * quarter - 2, 1), f"{value.year}-Q{quarter}"
-    return date(value.year, 1, 1), str(value.year)

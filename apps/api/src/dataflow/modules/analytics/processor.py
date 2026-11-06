@@ -1,4 +1,4 @@
-"""Proceso aislado de analytics.query@1: no importa ni utiliza conexiones de base de datos."""
+"""Proceso aislado de analytics.query@1 y @2: no importa ni utiliza conexiones de base de datos."""
 
 import argparse
 import json
@@ -11,8 +11,9 @@ from dataflow.modules.analytics.contracts import (
     MetricContent,
     MetricReference,
     QueryParameters,
+    QueryParametersV2,
 )
-from dataflow.modules.analytics.engine import Metric, run_query
+from dataflow.modules.analytics.engine import Metric, run_query, run_query_v2
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.tabular import frame_types
 
@@ -20,6 +21,7 @@ from dataflow.platform.tabular import frame_types
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["query"], required=True)
+    parser.add_argument("--operation-version", type=int, choices=[1, 2], default=1)
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--columns-json", required=True)
@@ -46,13 +48,27 @@ def main() -> None:
             )
             for item in json.loads(args.metrics_json)
         ]
-        result = run_query(
-            frame.columns,
-            [list(row) for row in frame.iter_rows()],
-            json.loads(args.columns_json),
-            metrics,
-            QueryParameters.model_validate_json(args.parameters_json),
-            EvidenceScope.model_validate_json(args.scope_json),
+        rows = [list(row) for row in frame.iter_rows()]
+        columns = json.loads(args.columns_json)
+        scope = EvidenceScope.model_validate_json(args.scope_json)
+        result = (
+            run_query_v2(
+                frame.columns,
+                rows,
+                columns,
+                metrics,
+                QueryParametersV2.model_validate_json(args.parameters_json),
+                scope,
+            )
+            if args.operation_version == 2
+            else run_query(
+                frame.columns,
+                rows,
+                columns,
+                metrics,
+                QueryParameters.model_validate_json(args.parameters_json),
+                scope,
+            )
         )
         (args.output / "analysis.json").write_text(result.model_dump_json(), encoding="utf-8")
     except ApplicationError as exc:
