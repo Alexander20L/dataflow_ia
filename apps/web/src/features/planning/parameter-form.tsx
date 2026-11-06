@@ -200,6 +200,25 @@ export function ParameterForm({
               {field.title ?? name}
             </label>
           );
+        // Parámetros estructurados (p. ej. referencias a métricas o filtros): se definen desde
+        // su pantalla y aquí sólo se muestran; un campo de texto los corrompería.
+        if (
+          (typeof current === "object" && current !== null) ||
+          field.type === "object" ||
+          field.type === "array"
+        )
+          return (
+            <div key={name} className="parameter-field">
+              {label}
+              <output className="mono">
+                {JSON.stringify(current ?? null)}
+              </output>
+              <small className="muted">
+                Se define desde su pantalla (por ejemplo, Análisis); aquí sólo
+                se muestra.
+              </small>
+            </div>
+          );
         return (
           <div key={name} className="parameter-field">
             {label}

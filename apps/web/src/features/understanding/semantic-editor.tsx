@@ -36,9 +36,11 @@ export function SemanticUnderstanding({
   onDirtyChange,
 }: Props) {
   const tables = useRepresentations(versionId);
-  const table = tables.data?.find(
-    (table) => table.execution_id === baselineExecutionId,
-  );
+  // Una importación revisa la tabla de su ejecución de referencia. Una versión derivada no la
+  // tiene (su tabla la publica la aplicación de la limpieza): se usa su única tabla publicada.
+  const table =
+    tables.data?.find((table) => table.execution_id === baselineExecutionId) ??
+    (tables.data?.length === 1 ? tables.data[0] : undefined);
   if (tables.isPending)
     return (
       <p role="status" className="empty-copy">
