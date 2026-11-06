@@ -18,13 +18,13 @@ de conversión §3, hash canónico §6), `docs/architecture/phase-N.md` y `docs/
 ## Arquitectura y reglas de módulos
 
 Módulos en `apps/api/src/dataflow/modules/`: identity, projects, audit, datasets, ingestion, understanding,
-quality, planning, executions, cleaning. Composición en `bootstrap/` (`bootstrap/operations.py` une
+quality, planning, executions, cleaning, analytics. Composición en `bootstrap/` (`bootstrap/operations.py` une
 descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
 
 - Capas: domain (sin frameworks) → application (dominio + puertos) → infrastructure → presentation (HTTP/DTO).
   Domain y application no importan infrastructure.
 - Entre módulos **sólo** `dataflow.modules.<m>.public` o `.contracts`. Dependencias acíclicas.
-- **executions** no importa planning, cleaning, quality, ingestion ni understanding: recibe puertos
+- **executions** no importa planning, cleaning, quality, ingestion, understanding ni analytics: recibe puertos
   (`StepRegistry`, `StepExecutor`, `InputResolver`, finalizadores, ganchos de publicación).
 - planning no importa polars/duckdb ni implementaciones de operaciones (validación pura en `planning/domain.py`).
 - El cómputo de cleaning (`domain`, `contracts`, `infrastructure`, `engine`, `processor`) no accede a la BD.
@@ -86,18 +86,23 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 
 ## Estado (2026-11-05)
 
-| Fase | API | Rama                        | Estado                                                                      |
-| ---- | --- | --------------------------- | --------------------------------------------------------------------------- |
-| 1–3  | 0.5 | `main`                      | contratos, datasets/ejecuciones separados, semántica                        |
-| 4    | 0.6 | `feat/fase-4-planificacion` | planes versionados, catálogo `analysis-v1`, worker por pasos                |
-| 5    | 0.7 | `feat/fase-5-limpieza`      | trim/filter_rows, vista previa, aprobación, derivada; con commits, sin push |
-| 6A   | 0.8 | `feat/fase-6-conversiones`  | tablas tipadas, cast, normalize_null_tokens, deduplicate; migración 0007    |
-| 6B   | 0.9 | `feat/fase-6-conversiones`  | csv-quality-v2, conjuntos de reglas, quality.evaluate@2; migración 0008     |
+| Fase | API  | Rama                        | Estado                                                                       |
+| ---- | ---- | --------------------------- | ---------------------------------------------------------------------------- |
+| 1–3  | 0.5  | `main`                      | contratos, datasets/ejecuciones separados, semántica                         |
+| 4    | 0.6  | `feat/fase-4-planificacion` | planes versionados, catálogo `analysis-v1`, worker por pasos                 |
+| 5    | 0.7  | `feat/fase-5-limpieza`      | trim/filter_rows, vista previa, aprobación, derivada; con commits, sin push  |
+| 6A   | 0.8  | `feat/fase-6-conversiones`  | tablas tipadas, cast, normalize_null_tokens, deduplicate; migración 0007     |
+| 6B   | 0.9  | `feat/fase-6-conversiones`  | csv-quality-v2, conjuntos de reglas, quality.evaluate@2; migración 0008      |
+| 7A   | 0.10 | `feat/fase-7-analisis`      | métricas, analytics.query@1, evidencia por cifra; migración 0009; con commit |
+| 7B   | 0.11 | `feat/fase-7-analisis`      | pendiente: comparaciones, ranking, participación (misma rama)                |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto: no regenerar sus referencias para hacer pasar una prueba.
-Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015); copiar reglas de calidad
-entre importaciones (ADR-017).
+Integración: `develop` contiene las Fases 4 a 6 (merge `--no-ff`). La Fase 7 se mezcla en `develop` al
+terminar la 7B. **Traspaso 7B**: sección «Pendiente: 7B» de `docs/architecture/phase-7.md` (decisiones
+aprobadas D7/D9, desempate, plan B1-B4 y lo descubierto en 7A).
+Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015); copiar reglas de calidad y
+métricas entre importaciones (ADR-017, ADR-018).
 
 ## Forma de trabajo
 
