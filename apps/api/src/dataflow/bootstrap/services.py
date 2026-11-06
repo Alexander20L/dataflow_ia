@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
 from dataflow.bootstrap.cleaning_access import CleaningPlanAccess
+from dataflow.bootstrap.dashboards_access import DashboardAccess
 from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry
 from dataflow.bootstrap.planning_access import PlanningTableAccess
 from dataflow.bootstrap.provenance import environment_snapshot
@@ -30,6 +31,8 @@ from dataflow.modules.cleaning.steps import (
     PreviewFinalizer,
     TrimWhitespaceStep,
 )
+from dataflow.modules.dashboards.application import DashboardService
+from dataflow.modules.dashboards.infrastructure import SQLDashboardRepository
 from dataflow.modules.datasets.application import Datasets
 from dataflow.modules.datasets.infrastructure import SQLDatasetRepository
 from dataflow.modules.datasets.objects import LocalObjects
@@ -281,6 +284,18 @@ def make_runner(
             "cleaning_apply": ApplyFinalizer(objects, cleaner, approvals),
         },
     )
+
+
+def make_dashboards(db: Session, objects: LocalObjects) -> DashboardService:
+    require_ready(db)
+    access = DashboardAccess(
+        make_planning(db, objects),
+        make_executions(db),
+        make_datasets(db),
+        make_semantics(db, objects),
+        ProjectPermissions(db),
+    )
+    return DashboardService(SQLDashboardRepository(db), access, SQLUnitOfWork(db))
 
 
 def make_planning(db: Session, objects: LocalObjects) -> PlanningService:

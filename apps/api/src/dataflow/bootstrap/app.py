@@ -13,6 +13,7 @@ from starlette.responses import Response
 from dataflow.bootstrap.schemas import ErrorResponse
 from dataflow.modules.analytics.presentation import router as analytics_router
 from dataflow.modules.cleaning.presentation import router as cleaning_router
+from dataflow.modules.dashboards.presentation import router as dashboards_router
 from dataflow.modules.executions.presentation import router as executions_router
 from dataflow.modules.identity.presentation import router as identity_router
 from dataflow.modules.ingestion.presentation import analysis_router
@@ -30,7 +31,7 @@ logger = logging.getLogger("dataflow.http")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 app = FastAPI(
     title="DataFlow AI API",
-    version="0.11.0",
+    version="0.12.0",
     description="Identidad y proyectos del monolito modular.",
     responses={
         status: {"model": ErrorResponse}
@@ -150,3 +151,4 @@ app.include_router(planning_router)
 app.include_router(cleaning_router)
 app.include_router(quality_router)
 app.include_router(analytics_router)
+app.include_router(dashboards_router)
