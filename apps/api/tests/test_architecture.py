@@ -115,3 +115,17 @@ def test_analytics_compute_path_has_no_database_access() -> None:
     for name in ["engine.py", "processor.py", "domain.py", "contracts.py"]:
         for module in imports(ast.parse((root / name).read_text(encoding="utf-8"))):
             assert not module.startswith(forbidden), (name, module)
+
+
+def test_dashboards_depend_only_on_their_ports() -> None:
+    # Un dashboard no calcula ni planifica: bootstrap le da planes, ejecuciones y versiones.
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "dashboards"
+    files = list(root.rglob("*.py"))
+    assert files
+    for file in files:
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            if module.startswith("dataflow.modules.") and not module.startswith(
+                "dataflow.modules.dashboards"
+            ):
+                assert module == "dataflow.modules.audit.public", (file, module)
+            assert not module.startswith(("polars", "duckdb")), (file, module)

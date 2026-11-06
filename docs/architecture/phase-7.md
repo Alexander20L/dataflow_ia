@@ -174,7 +174,6 @@ Bloque «Comparar y ordenar» en Análisis. La tabla añade «Posición» (un «
 
 2026-11-06, Python 3.12.10. Backend: 352 pruebas (60 nuevas en 7B), Ruff y mypy strict sin errores, contrato exportado sin diferencias y `contracts:check` correcto. Web: typecheck, lint, format y build correctos. E2E en serie: 17/17. En la línea base, recién reiniciado el equipo, las dos E2E de Limpieza agotaban su límite de 30 s mientras el servidor terminaba con éxito segundos después; con 60 s pasan (23,6 s y 19,5 s en esta verificación).
 
-## Pendiente para la Fase 8
+## Pendientes para la Fase 8 (resueltos)
 
-- **Historial de ejecuciones**: `execution-panel.tsx` todavía no muestra resultados `analysis_result`; sólo la etapa Análisis los muestra (decisión 7B-6).
-- **Gráficos** de los resultados de análisis.
+Resueltos en la [Fase 8](phase-8.md): el historial de ejecuciones muestra los resultados `analysis_result` con su procedencia, y los gráficos llegan con los dashboards persistidos.

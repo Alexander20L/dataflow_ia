@@ -14,6 +14,8 @@ import {
 } from "./api";
 import { RulesReport } from "@/features/quality/report";
 import { runHasStep, useQualityRulesReport } from "@/features/quality/api";
+import { useAnalysisResult } from "@/features/analytics/api";
+import { Results } from "@/features/analytics/results";
 
 const labels = {
   queued: "En cola",
@@ -60,6 +62,13 @@ export function ExecutionPanel({
     run,
     runHasStep(run, "quality.evaluate@2"),
   );
+  // Resultados de análisis (analytics.query@1 o @2) también en el historial (Fase 8).
+  const analysis = useAnalysisResult(
+    run?.id ?? null,
+    run?.state === "succeeded" &&
+      (runHasStep(run, "analytics.query@1") ||
+        runHasStep(run, "analytics.query@2")),
+  );
   return (
     <section
       className="execution-panel"
@@ -77,7 +86,7 @@ export function ExecutionPanel({
             de la carga.
           </p>
         </div>
-        <span className="badge neutral">Catálogo analysis-v4</span>
+        <span className="badge neutral">Catálogo analysis-v6</span>
       </div>
       <PlanEditor
         projectId={projectId}
@@ -196,6 +205,20 @@ export function ExecutionPanel({
                 </div>
               )}
               {rules.data && <RulesReport report={rules.data} />}
+              {analysis.isError && (
+                <p className="auth-error" role="alert">
+                  {errorMessage(analysis.error)}
+                </p>
+              )}
+              {run && analysis.data && (
+                <div
+                  className="execution-analysis"
+                  aria-label="Resultado del análisis de esta ejecución"
+                >
+                  <h4>Resultado del análisis</h4>
+                  <Results result={analysis.data} runId={run.id} />
+                </div>
+              )}
               {quality.isError && (
                 <p className="auth-error" role="alert">
                   {errorMessage(quality.error)}

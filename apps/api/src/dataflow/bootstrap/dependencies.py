@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from dataflow.bootstrap.services import (
     make_analysis,
     make_cleaning,
+    make_dashboards,
     make_datasets,
     make_executions,
     make_ingestion,
@@ -18,6 +19,7 @@ from dataflow.bootstrap.services import (
 )
 from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.cleaning.application import CleaningService
+from dataflow.modules.dashboards.application import DashboardService
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.datasets.public import Datasets
 from dataflow.modules.executions.public import Executions
@@ -131,6 +133,13 @@ def metric_service(db: Db, objects: Objects) -> MetricService:
 
 
 Metrics = Annotated[MetricService, Depends(metric_service)]
+
+
+def dashboard_service(db: Db, objects: Objects) -> DashboardService:
+    return make_dashboards(db, objects)
+
+
+Dashboards = Annotated[DashboardService, Depends(dashboard_service)]
 
 
 def planning_service(db: Db, objects: Objects) -> PlanningService:

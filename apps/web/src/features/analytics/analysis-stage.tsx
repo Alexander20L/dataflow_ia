@@ -29,6 +29,7 @@ import {
   type Grain,
 } from "./labels";
 import { Results } from "./results";
+import { AddToDashboard } from "@/features/dashboards/add-to-dashboard";
 
 type Column = { id: string; name: string; type: string };
 
@@ -503,7 +504,25 @@ function Builder({
             {run.data.error_code}: {run.data.error_message}
           </p>
         ) : result.data ? (
-          <Results result={result.data} runId={runId} />
+          <>
+            <Results result={result.data} runId={runId} />
+            {plan && !archived && (
+              <AddToDashboard
+                projectId={projectId}
+                planRevisionId={plan.id}
+                executionId={runId}
+                dimensions={dimensions.length}
+                grain={!!grain}
+                metrics={result.data.metrics.map((m) => ({
+                  key: m.key,
+                  label: m.label,
+                }))}
+                suggestedTitle={result.data.metrics
+                  .map((m) => m.label)
+                  .join(" y ")}
+              />
+            )}
+          </>
         ) : (
           <p className="empty-copy" role="status">
             <LoaderCircle className="spin" size={15} /> Calculando sobre todo el

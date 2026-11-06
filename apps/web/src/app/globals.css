@@ -460,6 +460,138 @@
 .compare-options small {
   grid-column: 1 / -1;
 }
+.dashboard-stage,
+.dashboard-board {
+  display: grid;
+  gap: 12px;
+  min-width: 0;
+}
+.dashboard-stage {
+  margin-top: 18px;
+}
+.dashboard-stage .section-heading p {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 6px;
+}
+.dashboard-picker {
+  display: grid;
+  gap: 4px;
+  font-size: 11px;
+  max-width: 360px;
+}
+.dashboard-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.dashboard-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 12px 12px;
+  min-width: 0;
+}
+.dashboard-filters legend {
+  padding: 0 6px;
+  font-size: 11px;
+}
+.filter-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  padding: 2px 10px;
+}
+.filter-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 12px;
+}
+.dashboard-card {
+  grid-column: span 3;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  align-content: start;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 12px 14px;
+  min-width: 0;
+}
+.dashboard-card.size-small {
+  grid-column: span 2;
+}
+.dashboard-card.size-large {
+  grid-column: 1 / -1;
+}
+.dashboard-card-head {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+  min-width: 0;
+}
+.dashboard-card-head > div {
+  min-width: 0;
+}
+.dashboard-card-head h4 {
+  font-size: 13px;
+  overflow-wrap: anywhere;
+}
+.card-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 2px;
+}
+.card-tools select {
+  font-size: 11px;
+  width: auto;
+  min-width: 0;
+}
+.card-problem {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  color: #ac8744;
+}
+.kpi-value {
+  font-size: 28px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: left;
+}
+.chart-figures summary {
+  font-size: 11px;
+  cursor: pointer;
+}
+.chart-figures ul {
+  display: grid;
+  gap: 2px;
+  margin-top: 6px;
+  font-size: 11px;
+}
+@media (max-width: 720px) {
+  .dashboard-card,
+  .dashboard-card.size-small {
+    grid-column: 1 / -1;
+  }
+}
 .tie-mark {
   color: var(--muted);
   font-weight: 600;

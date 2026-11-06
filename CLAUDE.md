@@ -18,7 +18,7 @@ de conversión §3, hash canónico §6), `docs/architecture/phase-N.md` y `docs/
 ## Arquitectura y reglas de módulos
 
 Módulos en `apps/api/src/dataflow/modules/`: identity, projects, audit, datasets, ingestion, understanding,
-quality, planning, executions, cleaning, analytics. Composición en `bootstrap/` (`bootstrap/operations.py` une
+quality, planning, executions, cleaning, analytics, dashboards. Composición en `bootstrap/` (`bootstrap/operations.py` une
 descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
 
 - Capas: domain (sin frameworks) → application (dominio + puertos) → infrastructure → presentation (HTTP/DTO).
@@ -95,19 +95,32 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 6B   | 0.9  | `feat/fase-6-conversiones`  | csv-quality-v2, conjuntos de reglas, quality.evaluate@2; migración 0008      |
 | 7A   | 0.10 | `feat/fase-7-analisis`      | métricas, analytics.query@1, evidencia por cifra; migración 0009; con commit |
 | 7B   | 0.11 | `feat/fase-7-analisis`      | analytics.query@2: comparaciones, ranking, % del total; `analysis-v6`        |
+| 8    | 0.12 | `feat/fase-8-dashboards`    | dashboards persistidos, «Actualizar» explícito, historial; migración 0010    |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
 no regenerar sus referencias para hacer pasar una prueba.
-Integración: `develop` contiene las Fases 4 a 7 (merge `--no-ff`). Fase 7 completa (7A y 7B): ADR-018 y
-ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`.
+Integración: `develop` contiene las Fases 4 a 8 (merge `--no-ff`). Fase 7 completa (7A y 7B): ADR-018 y
+ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa
+planning, executions ni analytics (puerto en `bootstrap/dashboards_access.py`, prueba AST).
 Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015); copiar reglas de calidad y
-métricas entre importaciones (ADR-017, ADR-018); para la Fase 8, resultados de análisis en el historial de
-ejecuciones y gráficos (sección «Pendiente para la Fase 8» de `phase-7.md`).
+métricas entre importaciones (ADR-017, ADR-018). Al añadir una migración, las pruebas de migraciones
+anteriores excluyen sus tablas nuevas (`LATER_TABLES`).
 
 ## Forma de trabajo
 
-- Plan antes de programar; esperar aprobación. Etapas pequeñas y verificables, una a la vez.
-- Al cerrar cada etapa, ejecutar la batería correspondiente y mostrar los resultados reales.
-- **Sin commits ni push sin permiso explícito.** Sin modificar contratos generados a mano.
-- Señalar contradicciones entre el diseño pedido y el código real antes de implementar.
+Ritmo desde la Fase 8 (para avanzar más rápido):
+
+- **1 o 2 etapas por fase.** Normalmente: etapa 1 = backend (dominio, migración, API, contrato y cliente
+  regenerados, pruebas); etapa 2 = interfaz, E2E y documentación.
+- **Una sola propuesta corta antes de programar**: contradicciones con el código real, plan de 1 o 2 etapas
+  y sólo las decisiones que bloqueen o no se puedan deshacer (cambios de contrato existente, borrado de
+  datos, dependencias nuevas). Las demás se toman con la opción recomendada y se registran en el ADR de
+  la fase. Si no hay decisiones bloqueantes, decirlo y esperar sólo el «adelante».
+- **Al final de cada etapa**: batería completa y resumen breve (qué se hizo, resultados, decisiones tomadas
+  por cuenta propia). Sin tablas de detalle salvo que algo falle.
+- **Al terminar la fase**: commits convencionales (puede ser uno por etapa), merge `--no-ff` en `develop` y
+  batería sobre `develop`. Pedir confirmación **una sola vez**, con el resumen final, antes del commit y
+  el merge. **Nunca push sin preguntar.**
+- No cambia: migraciones aditivas, OpenAPI y cliente regenerados con scripts (nunca a mano), regresión de
+  resultados existentes, reglas de módulos y señalar contradicciones entre el diseño pedido y el código.
