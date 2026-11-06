@@ -128,7 +128,17 @@ def test_0010_is_additive_and_dashboard_revisions_are_immutable(
         admin.dispose()
 
 
-LATER_TABLES = {"report_families", "report_revisions", "report_save_requests", "report_renders"}
+LATER_TABLES = {
+    "report_families",
+    "report_revisions",
+    "report_save_requests",
+    "report_renders",
+    "copilot_conversations",
+    "copilot_ai_calls",
+    "copilot_messages",
+    "copilot_action_links",
+    "copilot_requests",
+}
 
 
 def exists_at_0010(

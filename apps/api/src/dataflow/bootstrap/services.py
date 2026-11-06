@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
 from dataflow.bootstrap.cleaning_access import CleaningPlanAccess
+from dataflow.bootstrap.copilot_access import CopilotAccess
 from dataflow.bootstrap.dashboards_access import DashboardAccess
 from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry
 from dataflow.bootstrap.planning_access import PlanningTableAccess
@@ -15,6 +16,7 @@ from dataflow.bootstrap.reports_access import (
     WorkerRegistry,
 )
 from dataflow.bootstrap.semantic_access import SemanticRepresentationAccess
+from dataflow.integrations.ai import AIProvider
 from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.analytics.infrastructure import SQLMetricRepository
 from dataflow.modules.analytics.steps import AnalyticsQueryStep, MetricSource
@@ -36,6 +38,8 @@ from dataflow.modules.cleaning.steps import (
     PreviewFinalizer,
     TrimWhitespaceStep,
 )
+from dataflow.modules.copilot.application import CopilotConfig, CopilotService
+from dataflow.modules.copilot.infrastructure import SQLCopilotRepository
 from dataflow.modules.dashboards.application import DashboardService
 from dataflow.modules.dashboards.infrastructure import SQLDashboardRepository
 from dataflow.modules.datasets.application import Datasets
@@ -329,6 +333,24 @@ def make_dashboards(db: Session, objects: LocalObjects) -> DashboardService:
         ProjectPermissions(db),
     )
     return DashboardService(SQLDashboardRepository(db), access, SQLUnitOfWork(db))
+
+
+def make_copilot(
+    db: Session,
+    objects: LocalObjects,
+    provider: AIProvider | None,
+    config: CopilotConfig,
+) -> CopilotService:
+    require_ready(db)
+    access = CopilotAccess(
+        make_planning(db, objects),
+        make_executions(db),
+        make_datasets(db),
+        make_semantics(db, objects),
+        make_metrics(db, objects),
+        ProjectPermissions(db),
+    )
+    return CopilotService(SQLCopilotRepository(db), access, provider, config, SQLUnitOfWork(db))
 
 
 def make_planning(db: Session, objects: LocalObjects) -> PlanningService:

@@ -22,6 +22,13 @@ services:
     mem_limit: 768m
     environment:
       DATAFLOW_DATABASE_URL: postgresql+psycopg://dataflow:${POSTGRES_PASSWORD:-dataflow_local}@postgres:5432/dataflow
+      # Copiloto IA (Fase 10, ADR-022): desactivado salvo que se pida. La clave nunca va en una
+      # variable de este archivo: se monta como secreto de Docker.
+      DATAFLOW_AI_PROVIDER: ${DATAFLOW_AI_PROVIDER:-disabled}
+      DATAFLOW_AI_MODEL: ${DATAFLOW_AI_MODEL:-claude-opus-5-5}
+      DATAFLOW_AI_API_KEY_FILE: /run/secrets/ai_api_key
+    secrets:
+      - ai_api_key
     volumes:
       - objects_data:/app/.data/objects
     healthcheck:
@@ -72,3 +79,9 @@ services:
 volumes:
   postgres_data:
   objects_data:
+secrets:
+  # Sin clave, el archivo vacío versionado: el copiloto informa «sin clave» y todo lo demás
+  # funciona. Para activarlo: DATAFLOW_AI_API_KEY_SECRET_FILE=ruta/a/la/clave (fuera del repo
+  # o en ./secrets/, que git ignora) y DATAFLOW_AI_PROVIDER=anthropic.
+  ai_api_key:
+    file: ${DATAFLOW_AI_API_KEY_SECRET_FILE:-./secrets/ai_api_key.empty}
