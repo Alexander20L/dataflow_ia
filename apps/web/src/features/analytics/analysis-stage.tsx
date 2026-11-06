@@ -1,17 +1,9 @@
 "use client";
 import { useState } from "react";
-import {
-  BarChart3,
-  Calculator,
-  Info,
-  LoaderCircle,
-  Plus,
-  ShieldCheck,
-} from "lucide-react";
+import { BarChart3, Calculator, LoaderCircle, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
-import { number } from "@/lib/utils";
 import { useRepresentations } from "@/features/executions/api";
 import {
   problemLabels,
@@ -23,44 +15,22 @@ import { useUnderstanding } from "@/features/understanding/api";
 import {
   useAnalysisResult,
   useAnalysisRun,
-  useEvidence,
   useMetrics,
   useSaveMetric,
-  type AnalysisResult,
   type MetricRevision,
 } from "./api";
+import {
+  AGGREGATIONS,
+  COMPARISONS,
+  GRAINS,
+  OPERATORS,
+  type Aggregation,
+  type ComparisonKind,
+  type Grain,
+} from "./labels";
+import { Results } from "./results";
 
 type Column = { id: string; name: string; type: string };
-type Aggregation = MetricRevision["content"]["aggregation"];
-type Grain = "day" | "week" | "month" | "quarter" | "year";
-
-const AGGREGATIONS: { value: Aggregation; label: string; measured: boolean }[] =
-  [
-    { value: "sum", label: "Suma", measured: true },
-    { value: "avg", label: "Media", measured: true },
-    { value: "min", label: "Mínimo", measured: true },
-    { value: "max", label: "Máximo", measured: true },
-    { value: "count", label: "Número de valores", measured: false },
-    { value: "count_distinct", label: "Valores distintos", measured: false },
-  ];
-const GRAINS: { value: Grain; label: string }[] = [
-  { value: "day", label: "Día" },
-  { value: "week", label: "Semana ISO" },
-  { value: "month", label: "Mes" },
-  { value: "quarter", label: "Trimestre" },
-  { value: "year", label: "Año" },
-];
-const OPERATORS = {
-  eq: "igual a",
-  neq: "distinto de",
-  in: "en la lista",
-  gt: "mayor que",
-  gte: "mayor o igual que",
-  lt: "menor que",
-  lte: "menor o igual que",
-  is_null: "es nulo",
-  is_not_null: "no es nulo",
-} as const;
 
 export function AnalysisStage({
   projectId,
@@ -146,6 +116,11 @@ function Builder({
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
   const [avgScale, setAvgScale] = useState(4);
+  const [comparisons, setComparisons] = useState<ComparisonKind[]>([]);
+  const [rankBy, setRankBy] = useState("");
+  const [direction, setDirection] = useState<"desc" | "asc">("desc");
+  const [topN, setTopN] = useState(10);
+  const [shares, setShares] = useState<string[]>([]);
   const [creating, setCreating] = useState(false);
   const [plan, setPlan] = useState<Plan | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
@@ -156,6 +131,12 @@ function Builder({
   const applicable = metrics.filter((m) => m.applicable);
   const chosen = applicable.filter((m) => selected.includes(m.head.id));
   const busy = createPlan.isPending || execute.isPending;
+  const additive = chosen.filter(
+    (m) =>
+      AGGREGATIONS.find((a) => a.value === m.head.content.aggregation)
+        ?.additive,
+  );
+  const ranked = chosen.find((m) => m.head.id === rankBy);
 
   async function calculate() {
     setRunId(null);
@@ -169,7 +150,7 @@ function Builder({
           {
             id: "query",
             operation: "analytics.query",
-            version: 1,
+            version: 2,
             input: { kind: "input", alias: "source" },
             parameters: {
               metrics: chosen.map((m) => ({
@@ -185,6 +166,20 @@ function Builder({
                   : null,
               avg_scale: avgScale,
               max_result_rows: 1000,
+              comparisons: grain ? comparisons : [],
+              change_scale: 2,
+              ranking:
+                ranked && dimensions.length > 0
+                  ? {
+                      metric_revision_id: ranked.head.id,
+                      direction,
+                      top_n: topN,
+                    }
+                  : null,
+              share_of_total: additive
+                .filter((m) => shares.includes(m.head.id))
+                .map((m) => m.head.id),
+              share_scale: 2,
             },
           },
         ],
@@ -356,6 +351,109 @@ function Builder({
             />
           </label>
         )}
+        <fieldset className="compare-options" aria-label="Comparar y ordenar">
+          <legend>Comparar y ordenar</legend>
+          <div className="chip-options" aria-label="Comparaciones">
+            {COMPARISONS.map((c) => (
+              <label key={c.value} className="check-option">
+                <input
+                  type="checkbox"
+                  aria-label={`Comparar con ${c.label.toLowerCase()}`}
+                  disabled={!grain}
+                  checked={!!grain && comparisons.includes(c.value)}
+                  onChange={(e) =>
+                    setComparisons(
+                      e.target.checked
+                        ? [...comparisons, c.value]
+                        : comparisons.filter((k) => k !== c.value),
+                    )
+                  }
+                />
+                {c.label}
+              </label>
+            ))}
+          </div>
+          <small className="muted">
+            {grain
+              ? "Con comparaciones, el periodo debe empezar y terminar en límites completos (p. ej. del 1 de febrero al 31 de marzo por mes)."
+              : "Para comparar periodos, agrupa por tiempo."}
+          </small>
+          <label>
+            Top N por
+            <select
+              aria-label="Ordenar por"
+              value={ranked && dimensions.length > 0 ? rankBy : ""}
+              disabled={dimensions.length === 0 || chosen.length === 0}
+              onChange={(e) => setRankBy(e.target.value)}
+            >
+              <option value="">Sin ranking</option>
+              {chosen.map((m) => (
+                <option key={m.head.id} value={m.head.id}>
+                  {m.head.content.label}
+                </option>
+              ))}
+            </select>
+          </label>
+          {ranked && dimensions.length > 0 && (
+            <>
+              <label>
+                Orden
+                <select
+                  aria-label="Orden del ranking"
+                  value={direction}
+                  onChange={(e) =>
+                    setDirection(e.target.value as "desc" | "asc")
+                  }
+                >
+                  <option value="desc">De mayor a menor</option>
+                  <option value="asc">De menor a mayor</option>
+                </select>
+              </label>
+              <label>
+                Cuántos
+                <input
+                  type="number"
+                  aria-label="Top N"
+                  className="scale-input"
+                  min={1}
+                  max={1000}
+                  value={topN}
+                  onChange={(e) =>
+                    setTopN(
+                      Math.min(1000, Math.max(1, Number(e.target.value) || 1)),
+                    )
+                  }
+                />
+              </label>
+            </>
+          )}
+          {dimensions.length === 0 && (
+            <small className="muted">
+              Para un top N, agrupa por al menos una dimensión.
+            </small>
+          )}
+          {additive.length > 0 && (
+            <div className="chip-options" aria-label="Participación">
+              {additive.map((m) => (
+                <label key={m.head.id} className="check-option">
+                  <input
+                    type="checkbox"
+                    aria-label={`% del total de ${m.head.content.label}`}
+                    checked={shares.includes(m.head.id)}
+                    onChange={(e) =>
+                      setShares(
+                        e.target.checked
+                          ? [...shares, m.head.id]
+                          : shares.filter((id) => id !== m.head.id),
+                      )
+                    }
+                  />
+                  % del total de {m.head.content.label}
+                </label>
+              ))}
+            </div>
+          )}
+        </fieldset>
         <div className="form-footer">
           <Button
             disabled={archived || busy || chosen.length === 0}
@@ -609,163 +707,6 @@ function MetricDialog({
             Guardar métrica
           </Button>
         </div>
-      </div>
-    </Dialog>
-  );
-}
-
-function Results({ result, runId }: { result: AnalysisResult; runId: string }) {
-  const [cell, setCell] = useState<string | null>(null);
-  const unit = (key: string) => {
-    const m = result.metrics.find((d) => d.key === key);
-    return m?.currency ?? m?.unit ?? null;
-  };
-  return (
-    <div className="analysis-results">
-      <div className="table-scroll bordered">
-        <table aria-label="Resultado del análisis">
-          <thead>
-            <tr>
-              {result.dimensions.map((d) => (
-                <th key={d.key}>
-                  {d.name}
-                  {d.time_grain
-                    ? ` (${GRAINS.find((g) => g.value === d.time_grain)?.label.toLowerCase()})`
-                    : ""}
-                </th>
-              ))}
-              {result.metrics.map((m) => (
-                <th key={m.key}>
-                  {m.label}
-                  {unit(m.key) ? ` (${unit(m.key)})` : ""}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {result.rows.map((row, index) => (
-              <tr key={index}>
-                {result.dimensions.map((d) => (
-                  <td key={d.key}>{row.labels[d.key]}</td>
-                ))}
-                {result.metrics.map((m) => (
-                  <td key={m.key} className="metric-cell">
-                    <button
-                      className="text-link"
-                      aria-label={`De dónde sale ${m.label} ${result.dimensions.map((d) => row.labels[d.key]).join(" ")}`}
-                      onClick={() => setCell(row.evidence[m.key])}
-                    >
-                      {row.values[m.key] ?? "sin filas"}
-                    </button>
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="fine-print muted">
-        {result.row_count} fila(s) · selecciona una cifra para ver de dónde
-        sale.
-      </p>
-      {cell && (
-        <Provenance
-          runId={runId}
-          evidenceId={cell}
-          onClose={() => setCell(null)}
-        />
-      )}
-    </div>
-  );
-}
-
-function Provenance({
-  runId,
-  evidenceId,
-  onClose,
-}: {
-  runId: string;
-  evidenceId: string;
-  onClose: () => void;
-}) {
-  const evidence = useEvidence(runId, evidenceId);
-  const data = evidence.data;
-  return (
-    <Dialog title="De dónde sale este número" onClose={onClose}>
-      {evidence.isPending ? (
-        <p className="empty-copy">Cargando la evidencia…</p>
-      ) : evidence.isError || !data ? (
-        <p className="auth-error" role="alert">
-          {errorMessage(evidence.error)}
-        </p>
-      ) : (
-        <dl className="definition-list" aria-label="Procedencia de la cifra">
-          <dt>Cifra</dt>
-          <dd data-testid="evidence-value">
-            {data.value ?? "sin filas"}{" "}
-            {data.definition.currency ?? data.definition.unit ?? ""}
-          </dd>
-          <dt>Métrica</dt>
-          <dd>
-            {data.definition.label} ·{" "}
-            {
-              AGGREGATIONS.find((a) => a.value === data.definition.aggregation)
-                ?.label
-            }{" "}
-            de {data.definition.measure_column} · revisión{" "}
-            {data.definition.revision}
-          </dd>
-          <dt>Grupo</dt>
-          <dd>
-            {Object.values(data.labels).filter(Boolean).join(" · ") || "Total"}
-          </dd>
-          <dt>Filtros</dt>
-          <dd>
-            {[...data.reference.metric_filters, ...data.reference.query_filters]
-              .map(
-                (f) =>
-                  `${f.column_id.slice(0, 8)} ${OPERATORS[f.operator as keyof typeof OPERATORS] ?? f.operator} ${(f.values ?? []).join(", ")}`,
-              )
-              .join("; ") || "Ninguno"}
-            {data.reference.time_range
-              ? ` · periodo ${data.reference.time_range.start ?? "…"} – ${data.reference.time_range.end ?? "…"}`
-              : ""}
-          </dd>
-          <dt>Nulos</dt>
-          <dd>Excluidos (no cuentan como cero)</dd>
-          <dt>Filas</dt>
-          <dd data-testid="evidence-counts">
-            {number(data.definition.counts.input_rows)} de entrada ·{" "}
-            {number(data.definition.counts.excluded_by_filters)} excluidas por
-            filtros · {number(data.definition.counts.excluded_by_nulls)}{" "}
-            excluidas por nulos · {number(data.definition.counts.included_rows)}{" "}
-            incluidas
-          </dd>
-          <dt>Versión de datos</dt>
-          <dd className="mono">
-            versión {data.reference.input.version_id.slice(0, 8)} · tabla{" "}
-            {data.reference.input.artifact_sha256.slice(0, 16)}…
-          </dd>
-          <dt>Revisión semántica</dt>
-          <dd>
-            {data.reference.semantic_ref
-              ? `Revisión ${String(data.reference.semantic_ref.revision)}`
-              : "Ninguna"}
-          </dd>
-          <dt>Evidencia</dt>
-          <dd className="mono" title={data.reference.evidence_id}>
-            {data.reference.evidence_id.slice(0, 24)}…
-          </dd>
-        </dl>
-      )}
-      <p className="fine-print muted">
-        <Info size={13} /> El identificador de evidencia es estable: el mismo
-        cálculo sobre los mismos datos produce la misma referencia.
-      </p>
-      <div className="form-footer">
-        <span className="badge calculated">
-          <ShieldCheck size={13} /> Calculado, no estimado
-        </span>
       </div>
     </Dialog>
   );
