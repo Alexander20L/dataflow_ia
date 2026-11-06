@@ -6,7 +6,7 @@ texto se conservan literalmente, de modo que el hash de las tablas de texto no c
 """
 
 from datetime import date
-from decimal import Decimal
+from decimal import Decimal, localcontext
 from typing import Any, cast
 
 import polars as pl
@@ -43,7 +43,10 @@ def frame_types(frame: pl.DataFrame) -> list[tuple[DataType, dict[str, Any]]]:
 
 
 def canonical_decimal(value: Decimal, scale: int) -> str:
-    quantized = value.quantize(Decimal(1).scaleb(-scale))
+    # Contexto amplio: el de Python (28 dígitos) no basta para Decimal(38, s).
+    with localcontext() as context:
+        context.prec = 4 * MAX_DECIMAL_PRECISION
+        quantized = value.quantize(Decimal(1).scaleb(-scale), rounding="ROUND_HALF_EVEN")
     if quantized.is_zero():
         quantized = abs(quantized)  # Sin cero negativo.
     return format(quantized, "f")
