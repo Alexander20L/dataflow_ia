@@ -14,6 +14,8 @@ async function state(page: Page, run: string) {
 test("limpiar espacios en una columna: vista previa, aprobación y versión derivada con v1 intacta", async ({
   page,
 }) => {
+  // Vista previa, aplicación y diagnóstico de v2 en el worker: ~30 s en un equipo cargado.
+  test.setTimeout(60_000);
   const registered = await page.request.post("/api/v1/auth/register", {
     headers: { Origin: "http://127.0.0.1:3100" },
     data: {

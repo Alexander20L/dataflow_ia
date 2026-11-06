@@ -47,6 +47,8 @@ async function versionCount(page: Page) {
 test("una conversión con valores inválidos bloquea la publicación; corregida crea v2 tipada", async ({
   page,
 }) => {
+  // Dos vistas previas, aplicación y diagnóstico de v2 en el worker: ~30 s en un equipo cargado.
+  test.setTimeout(60_000);
   await prepare(page, "Conversión de importes");
   await openStage(page, "Limpieza");
   const stage = page.getByRole("region", { name: "Limpieza supervisada" });
