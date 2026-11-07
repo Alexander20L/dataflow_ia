@@ -4,6 +4,7 @@ lo inicia al publicarse una importación."""
 from typing import Any
 from uuid import UUID, uuid5
 
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 from dataflow.modules.analysis_sessions.public import AnalysisSessionService
@@ -27,9 +28,25 @@ LIMIT_REASON = {
 }
 
 
+def automation_available(db: Session) -> bool:
+    """Con un esquema anterior a la Fase 11C (p. ej. durante una migración o su prueba) no hay
+    tablas de automatización: no se inicia nada. `to_regclass` no falla ni aborta la
+    transacción de publicación si la tabla no existe."""
+    return bool(
+        db.scalar(
+            text(
+                "SELECT to_regclass('automation_policy_families') IS NOT NULL"
+                " AND to_regclass('automation_runs') IS NOT NULL"
+            )
+        )
+    )
+
+
 def start_pipeline(db: Session, owner: UUID, project: UUID, version: UUID) -> None:
     """Dentro de la transacción que publica la importación: si el proyecto tiene una política
     activa, crea el pipeline con la revisión vigente fijada. Idempotente por versión."""
+    if not automation_available(db):
+        return
     policy = SQLPolicyRepository(db).head(owner, project)
     if policy is None or not policy.content.enabled:
         return
