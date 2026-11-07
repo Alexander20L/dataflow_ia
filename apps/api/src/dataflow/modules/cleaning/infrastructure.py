@@ -35,17 +35,22 @@ def attach_lineage(frame: pl.DataFrame) -> pl.DataFrame:
     return frame.with_columns(pl.Series(SOURCE_ROW, range(1, frame.height + 1), dtype=pl.Int64))
 
 
-def text_column(frame: pl.DataFrame, name: str) -> pl.Series:
+def any_column(frame: pl.DataFrame, name: str) -> pl.Series:
+    """Columna de cualquier tipo admitido (texto, entero, decimal, fecha o booleano)."""
     if name not in frame.columns or name == SOURCE_ROW:
         raise ApplicationError("UNKNOWN_COLUMN", "La columna no existe en la tabla.", 422)
-    series = frame.get_column(name)
+    # Los métodos de Series se evalúan internamente como pl.col(nombre): un nombre como "^id$"
+    # se trataría como regex. Se opera siempre con un alias neutro.
+    return frame.get_column(name).alias("value")
+
+
+def text_column(frame: pl.DataFrame, name: str) -> pl.Series:
+    series = any_column(frame, name)
     if series.dtype != pl.String:
         raise ApplicationError(
             "COLUMN_TYPE_MISMATCH", "Esta operación sólo admite columnas de texto.", 422
         )
-    # Los métodos de Series se evalúan internamente como pl.col(nombre): un nombre como "^id$"
-    # se trataría como regex. Se opera siempre con un alias neutro.
-    return series.alias("value")
+    return series
 
 
 def trimmed(series: pl.Series, name: str) -> pl.Series:
@@ -72,8 +77,9 @@ def trim_whitespace(frame: pl.DataFrame, names: list[str]) -> pl.DataFrame:
 def filter_rows(
     frame: pl.DataFrame, names: list[str], predicate: Predicate, match: Match
 ) -> pl.DataFrame:
+    # is_null admite cualquier tipo (como valida el contrato); is_whitespace_only sólo texto.
     masks = [
-        text_column(frame, name).is_null()
+        any_column(frame, name).is_null()
         if predicate == "is_null"
         else whitespace_only(text_column(frame, name))
         for name in names
