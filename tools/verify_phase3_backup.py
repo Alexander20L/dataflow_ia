@@ -76,7 +76,12 @@ def main() -> None:
         )
         run(["docker", "volume", "create", volume])
         vol_created = True
-        code = "import tarfile;t=tarfile.open('/backup/objects.tar.gz');t.extractall('/restore',filter='data');t.close()"
+        code = (
+            "import tarfile;"
+            "t=tarfile.open('/backup/objects.tar.gz');"
+            "t.extractall('/restore',filter='data');"
+            "t.close()"
+        )
         run(
             [
                 "docker",
@@ -129,7 +134,8 @@ def main() -> None:
             encoding="utf-8",
         )
         print(
-            "Restauración 0003 → 0004 verificada: mismos datos/artefactos y cero confirmaciones inventadas."
+            "Restauración 0003 → 0004 verificada: mismos datos/artefactos "
+            "y cero confirmaciones inventadas."
         )
     finally:
         if db_created:

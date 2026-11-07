@@ -84,7 +84,12 @@ def main() -> None:
         dump,
     )
     run(["docker", "export", container], rootfs)
-    code = "import sys,tarfile;t=tarfile.open(fileobj=sys.stdout.buffer,mode='w|gz');t.add('/objects',arcname='objects');t.close()"
+    code = (
+        "import sys,tarfile;"
+        "t=tarfile.open(fileobj=sys.stdout.buffer,mode='w|gz');"
+        "t.add('/objects',arcname='objects');"
+        "t.close()"
+    )
     run(
         [
             "docker",
@@ -102,12 +107,18 @@ def main() -> None:
     )
     objects = json.loads(
         sql(
-            "SELECT COALESCE(json_agg(t),'[]'::json) FROM (SELECT id::text AS object_id, sha256, byte_size FROM dataset_objects ORDER BY id) t"
+            "SELECT COALESCE(json_agg(t),'[]'::json) FROM ("
+            "SELECT id::text AS object_id, sha256, byte_size "
+            "FROM dataset_objects ORDER BY id) t"
         )
     )
     counts = json.loads(
         sql(
-            "SELECT json_build_object('versions',(SELECT count(*) FROM dataset_version_records),'executions',(SELECT count(*) FROM execution_runs),'artifacts',(SELECT count(*) FROM execution_artifacts),'plans',(SELECT count(*) FROM execution_plan_revisions))"
+            "SELECT json_build_object("
+            "'versions',(SELECT count(*) FROM dataset_version_records),"
+            "'executions',(SELECT count(*) FROM execution_runs),"
+            "'artifacts',(SELECT count(*) FROM execution_artifacts),"
+            "'plans',(SELECT count(*) FROM execution_plan_revisions))"
         )
     )
     identity = hashlib.sha256(
