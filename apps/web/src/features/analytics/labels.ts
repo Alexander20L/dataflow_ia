@@ -57,8 +57,21 @@ export const COMPARISONS: { value: ComparisonKind; label: string }[] = [
 export const comparisonLabel = (kind: string) =>
   COMPARISONS.find((c) => c.value === kind)?.label ?? kind;
 
+/** Agregaciones de analytics.query@3 (Fase 11E): las crean los moldes, no este formulario. */
+const QUERY_V3_LABELS: Record<string, string> = {
+  sum_product: "Suma de productos",
+};
+
 export const aggregationLabel = (value: string) =>
-  AGGREGATIONS.find((a) => a.value === value)?.label ?? value;
+  AGGREGATIONS.find((a) => a.value === value)?.label ??
+  QUERY_V3_LABELS[value] ??
+  value;
+
+/** Métricas que sólo calcula analytics.query@3: suma de productos o último corte. */
+export const requiresQueryV3 = (content: {
+  aggregation: string;
+  semi_additive?: string | null;
+}) => content.aggregation === "sum_product" || !!content.semi_additive;
 
 /** Por qué una base no tiene valor: nunca se muestra 0 en su lugar. */
 export const BASE_STATUS: Record<string, string> = {

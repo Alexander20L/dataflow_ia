@@ -17,6 +17,7 @@ from dataflow.modules.automation.infrastructure import (
     AutomationPolicySaveRequest,
 )
 from dataflow.modules.automation.pipeline_infrastructure import (
+    AutomationRunAnalysisRecord,
     AutomationRunInterpretationRecord,
     AutomationRunRecord,
     AutomationStepAttemptRecord,
@@ -138,6 +139,7 @@ __all__ = [
     "AutomationApprovalRecord",
     "AutomationRunRecord",
     "AutomationRunInterpretationRecord",
+    "AutomationRunAnalysisRecord",
     "AutomationStepAttemptRecord",
     "TemplateMappingFamilyRecord",
     "TemplateMappingRevisionRecord",

@@ -3,7 +3,7 @@
 from uuid import UUID
 
 from dataflow.modules.dashboards.contracts import (
-    CARD_OPERATION,
+    CARD_OPERATIONS,
     Card,
     CardStatus,
     ExecutionFacts,
@@ -21,10 +21,10 @@ def query_shape(plan: PlanFacts) -> tuple[list[UUID], str | None, int]:
 
 
 def card_problems(card: Card, plan: PlanFacts) -> list[str]:
-    """Una tarjeta sólo muestra `analytics.query@2` y su forma debe encajar con la consulta:
+    """Una tarjeta sólo muestra `analytics.query@2` (o `@3`, Fase 11E) y su forma debe encajar:
     KPI de una sola fila, líneas con agrupación temporal y barras con un único eje."""
-    if plan.operations != [CARD_OPERATION]:
-        return ["La tarjeta debe mostrar un análisis de un solo paso (analytics.query@2)."]
+    if len(plan.operations) != 1 or plan.operations[0] not in CARD_OPERATIONS:
+        return ["La tarjeta debe mostrar un análisis de un solo paso (analytics.query@2 o @3)."]
     dimensions, grain, metrics = query_shape(plan)
     problems = []
     if int(card.metric[1:]) >= metrics:

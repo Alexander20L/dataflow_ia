@@ -331,6 +331,9 @@ export function CsvWorkspace({
             onShowVersion={(versionId) =>
               requestChange({ kind: "version", value: versionId })
             }
+            onShowDashboard={() =>
+              requestChange({ kind: "stage", value: DASHBOARD_STAGE })
+            }
           />
           <AutomationNotices
             projectId={projectId}

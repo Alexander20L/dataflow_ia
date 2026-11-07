@@ -9,8 +9,9 @@ from collections.abc import Callable
 from typing import Any, Literal
 
 from dataflow.modules.analytics.contracts import (
-    AnalysisResult,
     AnalysisResultV2,
+    AnalysisResultV3,
+    AnyAnalysisResult,
     ComparisonCell,
     ResultRow,
     ResultRowV2,
@@ -96,9 +97,9 @@ def share_of(key: str, evidence: bool) -> Getter:
     return get
 
 
-def analysis_csv(result: AnalysisResult | AnalysisResultV2, profile: CsvProfile) -> bytes:
+def analysis_csv(result: AnyAnalysisResult, profile: CsvProfile) -> bytes:
     columns: list[tuple[str, Getter, Kind]] = []
-    v2 = result if isinstance(result, AnalysisResultV2) else None
+    v2 = result if isinstance(result, AnalysisResultV2 | AnalysisResultV3) else None
     if v2 and v2.ranking:
         columns.append(("Posición", rank_of(False), "plain"))
         columns.append(("Posición · evidence_id", rank_of(True), "plain"))

@@ -1,6 +1,6 @@
 # Fase 11 — Automatización determinista
 
-Estado: **11.0 a 11D implementadas** (propuesta de limpieza en el backend, sesión de análisis con fuente única, aprobación por política, pipeline automático durable y moldes con interpretación reutilizable). 11E–11F son plan objetivo y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
+Estado: **11.0 a 11E implementadas** (propuesta de limpieza en el backend, sesión de análisis con fuente única, aprobación por política, pipeline automático durable, moldes con interpretación reutilizable y dashboard automático). 11F se entrega en su propio PR y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
 
 ## Objetivo
 
@@ -373,15 +373,34 @@ Pruebas: `test_templates.py` (candidatos de ventas e inventario, validación, co
 
 Cada molde genera **planes analíticos y una configuración visual versionados**, reutilizando métricas y consultas de `analytics`, la evidencia por cifra y la persistencia de dashboards (Fase 8, `cause: template`). El resultado visual mantiene tres niveles: `kpis`, `charts`, `table_detail`. Procedencia y advertencias son metadatos de la ejecución.
 
-### Ampliaciones de `analytics` necesarias
+### Ampliaciones de `analytics` necesarias (implementadas)
 
-| Necesidad                                     | Estado                                    | Propuesta (`analytics.query@3`)                                                              |
-| --------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Valor del inventario = Σ(cantidad × costo)    | No existe: una métrica agrega una columna | Agregación `sum_product` sobre dos medidas, aritmética exacta y evidencia como `sum`         |
-| No sumar cortes de inventario entre fechas    | No existe: `sum` suma todos los periodos  | Medida **semi-aditiva**: «último corte» por periodo (`last_snapshot`), declarada en el molde |
-| Ventas por mes, top N, % del total, variación | Existe (`analytics.query@2`, Fase 7B)     | —                                                                                            |
+| Necesidad                                     | Estado                                | `analytics.query@3`                                                                             |
+| --------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Valor del inventario = Σ(cantidad × costo)    | **Implementada**                      | Agregación `sum_product` sobre dos medidas, aritmética exacta y evidencia como `sum`            |
+| No sumar cortes de inventario entre fechas    | **Implementada**                      | Medida **semi-aditiva** `last_snapshot`: último corte de cada periodo, común a todos sus grupos |
+| Ventas por mes, top N, % del total, variación | Existe (`analytics.query@2`, Fase 7B) | Igual en `@3`                                                                                   |
 
-`analytics.query@1` y `@2` no cambian; referencias congeladas como en la Fase 7B.
+`analytics.query@1` y `@2` no cambian (modelo, motor y resultado; la referencia congelada de `@1` sigue intacta) y **rechazan** las métricas nuevas: planning con `METRIC_UNSUPPORTED` («necesita analytics.query@3») y el motor con el mismo código si un plan llegara a ejecutarse. Catálogo **`analysis-v7`** con los tres descriptores.
+
+**Métrica.** Dos campos opcionales en el contenido de la métrica (sin migración: las métricas se guardan como contenido JSON en `analytics_metric_revisions`):
+
+| Campo                      | Contenido                                                                                          |
+| -------------------------- | -------------------------------------------------------------------------------------------------- |
+| `second_measure_column_id` | segunda medida; obligatoria con `sum_product` y sólo con ella                                      |
+| `semi_additive`            | `last_snapshot` o nulo; sólo con `sum` y `sum_product` y con columna temporal (la fecha del corte) |
+
+Sin usarse, los dos campos quedan **fuera del hash** (`MetricContent.hashed()`): toda métrica guardada antes conserva su `content_sha256` y las referencias exactas de los planes siguen siendo válidas.
+
+**`sum_product`.** Σ(medida × segunda medida) fila a fila, en `int`/`Decimal` dentro del contexto único `exact_context()` (11.0): el producto de dos valores de 38 dígitos y su suma nunca se redondean. Un nulo en cualquiera de las dos medidas excluye la fila y se cuenta en `excluded_by_nulls`. Escala del resultado = suma de las escalas (entero × decimal(3) → 3; decimal(3) × decimal(3) → 6; entero × entero → entero); más de 38 dígitos → `RESULT_PRECISION_EXCEEDED`. Requisito semántico: **ambas** columnas numéricas y confirmadas como `measure`. Unidad: una cantidad por un costo unitario da la moneda del costo; dos unidades, su producto («kg×m»); **dos monedas no se multiplican** (`UNIT_MISMATCH`). Es sumable entre grupos: admite % del total.
+
+**`last_snapshot`.** El corte de un periodo es la última fecha de negocio con filas incluidas (filtros y nulos ya aplicados) **dentro del periodo**, o de todo el resultado si no se agrupa por tiempo. Es **común a todos los grupos del periodo**: cada grupo suma sólo sus filas de esa fecha, de modo que la suma de los grupos coincide con el total sin dimensiones (dashboard coherente) y nunca se suman cortes de fechas distintas. Un grupo que sólo tiene filas de cortes anteriores existe pero vale **nulo** («sin filas en el corte»), nunca 0. Una fila sin fecha no pertenece a ningún corte: se excluye y se cuenta como nulo. Las filas de fechas anteriores al corte se declaran en `snapshot.superseded_rows` (las que forman el valor son `included_rows − superseded_rows`); en las comparaciones, la base usa el último corte del periodo base (`snapshot.base_superseded_rows`). Exige la columna temporal confirmada como `business_date` aunque la consulta no agrupe por tiempo.
+
+**Resultado y evidencia.** `AnalysisResultV3` (`operation: analytics.query@3`) es el de `@2` con `MetricDefinitionV3` (segunda medida, `semi_additive`, `snapshot`) y filas con `snapshots` (métrica → fecha del corte usado). La dirección de `value` no cambia (misma fórmula que `@1` y `@2`); `GET /evidence` devuelve además `snapshot`. Con métricas de `@2`, `@3` calcula exactamente las mismas cifras, conteos y `evidence_id` que `@2`.
+
+**API e interfaz.** Cambios aditivos (agregación `sum_product`, campos opcionales de métrica, `AnalysisResultV3`, `METRIC_UNSUPPORTED`, `analysis-v7`). La interfaz crea `@3` cuando alguna métrica elegida lo necesita y muestra «Suma de productos»; el formulario «Nueva métrica» no ofrece todavía las agregaciones nuevas (las crean los moldes de 11E) y «Añadir a un dashboard» sigue limitado a `@2` hasta que los dashboards admitan `@3`. Sin migración; API y worker se despliegan juntos (un worker anterior no tiene ejecutor para `analytics.query@3`).
+
+Pruebas: `tests/test_analytics_query_v3.py` (motor: escalas y exactitud de `sum_product`, nulos en cualquiera de las medidas, más de 38 dígitos, último corte por periodo y sin agrupar, corte común a los grupos y suma coherente, rango y filtros, comparación con la base de su último corte, % del total, evidencia, `@3` igual a `@2` en los 8 casos de la referencia congelada, `@1`/`@2` que rechazan las métricas nuevas, validación de la métrica y hash de las métricas anteriores), `tests/test_planning_domain.py` (versión mínima, ambas medidas confirmadas, unidades, fecha de corte confirmada) y `tests/test_analytics_query_v3_runner.py` (de punta a punta con PostgreSQL: métrica por la API, plan `@2` rechazado, `@3` ejecutado, evidencia con corte y CSV).
 
 ### Reglas
 
@@ -393,6 +412,21 @@ Cada molde genera **planes analíticos y una configuración visual versionados**
 - Publicar un dashboard coherente; si se admite un resultado parcial, identificar exactamente qué falta.
 
 Cierre: el mismo input, configuración y entorno lógico producen el mismo contenido calculado, excluyendo IDs y fechas operativas.
+
+### Implementación del dashboard automático (11E)
+
+Tras `interpret`, el pipeline sigue con `analyze` y `publish` (migración **0017**, aditiva: `automation_run_analyses`, 1:1 con el pipeline).
+
+- **Especificación por molde** (`modules/templates/analysis.py`, `template-analysis@1`, datos puros): métricas, consultas y tarjetas en orden estable.
+  - **Ventas** (`analytics.query@2`): KPI de ventas totales, operaciones y ticket promedio; línea de ventas por mes; barras con el top 10 por la dimensión y su % del total; tabla de detalle con el top 20.
+  - **Inventario** (`analytics.query@3`): unidades con **último corte** (`last_snapshot`, nunca suma cortes entre fechas) y productos distintos; valor del inventario (`sum_product` cantidad × costo, último corte) en su **propia consulta** para no mezclar unidad y moneda (`UNIT_MISMATCH`); top 10 de productos; detalle de menor stock por ubicación o producto.
+  - **Genérico:** sin dashboard.
+- **`analyze`:** crea las métricas sobre la tabla limpia (familias nuevas: cada importación tiene otros IDs de columna), los planes con la revisión semántica confirmada fijada y lanza las consultas **respetando la capacidad** del propietario (`QUEUE_LIMIT`, 3 trabajos activos): las pendientes se lanzan en reconciliaciones siguientes. Claves idempotentes por pasada y consulta.
+- **`publish`:** cuando todas las consultas terminaron, crea el dashboard del molde la primera vez y, en cargas siguientes, guarda una **revisión nueva del mismo dashboard** (IDs de tarjeta estables), de modo que el historial conserva cada carga. Una tarjeta fallida conserva su estado (`failed`, `insufficient_data`…) sin romper las demás.
+- **Dashboards** aceptan ahora tarjetas de `analytics.query@3` además de `@2`.
+- **Interfaz:** al terminar, la franja del pipeline ofrece «Ver dashboard».
+
+Pruebas: `test_automation_dashboard.py` (especificación estable de ventas; inventario con último corte y moneda separada; pipeline que publica el dashboard con sus 6 tarjetas listas y, con una segunda carga, revisa el mismo dashboard) y `test_migration_0017.py`.
 
 ## 11F · Auditoría textual IA
 

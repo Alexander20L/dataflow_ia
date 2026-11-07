@@ -77,6 +77,20 @@ class AutomationRunInterpretationRecord(Base):
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class AutomationRunAnalysisRecord(Base):
+    """Fase 11E (migración 0017): métricas, planes, ejecuciones y tarjetas del dashboard
+    automático de un pipeline, y la revisión de dashboard que publicó."""
+
+    __tablename__ = "automation_run_analyses"
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("automation_runs.id"), primary_key=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    template: Mapped[str] = mapped_column(String(32))
+    content: Mapped[dict[str, Any]] = mapped_column(JSON)
+    dashboard_family_id: Mapped[UUID | None] = mapped_column(Uuid)
+    dashboard_revision_id: Mapped[UUID | None] = mapped_column(Uuid)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 class AutomationStepAttemptRecord(Base):
     __tablename__ = "automation_step_attempts"
     __table_args__ = (
@@ -237,6 +251,13 @@ class SQLRunRepository:
         )
         self.db.flush()
 
+    def dashboard_of(self, run: UUID) -> dict[str, UUID | None]:
+        record = self.db.get(AutomationRunAnalysisRecord, run)
+        return {
+            "dashboard_family_id": record.dashboard_family_id if record else None,
+            "dashboard_revision_id": record.dashboard_revision_id if record else None,
+        }
+
     def interpretation(self, run: UUID) -> dict[str, Any]:
         link = self.db.get(AutomationRunInterpretationRecord, run)
         if link is None:
@@ -284,6 +305,7 @@ class SQLRunRepository:
             reasons=[PipelineReason.model_validate(item) for item in record.reasons],
             **{name: getattr(record, name) for name in REFERENCES},
             **self.interpretation(record.id),
+            **self.dashboard_of(record.id),
             created_at=record.created_at.astimezone(UTC),
             updated_at=record.updated_at.astimezone(UTC),
             finished_at=utc(record.finished_at),
@@ -339,3 +361,54 @@ class SQLRunRepository:
             .limit(limit)
         )
         return [self.to_view(record, attempts=False) for record in records]
+
+    # --- Fase 11E: dashboard automático ---
+
+    def analysis(self, run: UUID) -> dict[str, Any] | None:
+        record = self.db.get(AutomationRunAnalysisRecord, run, populate_existing=True)
+        if record is None:
+            return None
+        return {
+            **record.content,
+            "template": record.template,
+            "dashboard_family_id": str(record.dashboard_family_id)
+            if record.dashboard_family_id
+            else None,
+            "dashboard_revision_id": str(record.dashboard_revision_id)
+            if record.dashboard_revision_id
+            else None,
+        }
+
+    def save_analysis(self, run: UUID, project: UUID, data: dict[str, Any]) -> None:
+        record = self.db.get(AutomationRunAnalysisRecord, run)
+        content = {
+            k: v
+            for k, v in data.items()
+            if k not in {"template", "dashboard_family_id", "dashboard_revision_id"}
+        }
+        family, revision = data.get("dashboard_family_id"), data.get("dashboard_revision_id")
+        now = datetime.now(UTC)
+        if record is None:
+            record = AutomationRunAnalysisRecord(
+                run_id=run, project_id=project, template=data["template"], updated_at=now
+            )
+            self.db.add(record)
+        record.content = content
+        record.dashboard_family_id = UUID(family) if family else None
+        record.dashboard_revision_id = UUID(revision) if revision else None
+        record.updated_at = now
+        self.db.flush()
+
+    def dashboard_family(self, project: UUID, template: str) -> UUID | None:
+        """Dashboard automático ya publicado para este proyecto y molde (se revisa, no se
+        duplica)."""
+        return self.db.scalar(
+            select(AutomationRunAnalysisRecord.dashboard_family_id)
+            .where(
+                AutomationRunAnalysisRecord.project_id == project,
+                AutomationRunAnalysisRecord.template == template,
+                AutomationRunAnalysisRecord.dashboard_family_id.is_not(None),
+            )
+            .order_by(AutomationRunAnalysisRecord.updated_at.desc())
+            .limit(1)
+        )

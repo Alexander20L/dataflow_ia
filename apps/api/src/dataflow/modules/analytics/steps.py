@@ -1,4 +1,4 @@
-"""Ejecutor de analytics.query@1 y @2: de sólo lectura, se ejecutan como plan normal."""
+"""Ejecutor de analytics.query@1, @2 y @3: de sólo lectura, se ejecutan como plan normal."""
 
 import json
 from pathlib import Path
@@ -8,11 +8,15 @@ from uuid import UUID, uuid4
 from dataflow.modules.analytics.contracts import (
     AnalysisResult,
     AnalysisResultV2,
+    AnalysisResultV3,
+    AnyAnalysisResult,
     BaseTable,
     EvidenceScope,
     MetricRevision,
     QueryParameters,
     QueryParametersV2,
+    QueryParametersV3,
+    product_unit,
 )
 from dataflow.modules.datasets.public import ObjectStore
 from dataflow.modules.executions.public import (
@@ -31,8 +35,8 @@ MODULE = "dataflow.modules.analytics.processor"
 
 def query_parameters(step: PlanStepSpec) -> QueryParameters:
     """Parámetros según la versión del paso: @1 conserva su modelo y su resultado."""
-    model = QueryParametersV2 if step.version == 2 else QueryParameters
-    return model.model_validate(step.parameters)
+    models: dict[int, type[QueryParameters]] = {2: QueryParametersV2, 3: QueryParametersV3}
+    return models.get(step.version, QueryParameters).model_validate(step.parameters)
 
 
 class MetricSource(Protocol):
@@ -69,6 +73,14 @@ class AnalyticsQueryStep:
                     "METRIC_REFERENCE_MISMATCH", "La métrica no coincide con su hash.", 409
                 )
             unit, currency = units.get(revision.content.measure_column_id, (None, None))
+            second = revision.content.second_measure_column_id
+            if second is not None:
+                combined = product_unit((unit, currency), units.get(second, (None, None)))
+                if combined is None:
+                    raise ApplicationError(
+                        "UNIT_MISMATCH", "sum_product no multiplica dos monedas.", 422
+                    )
+                unit, currency = combined
             metrics.append(
                 {
                     "reference": reference.model_dump(mode="json"),
@@ -135,8 +147,10 @@ class AnalyticsQueryStep:
             min(timeout, plan.config.timeout_seconds),
         )
         report = files["analysis.json"]
-        parsed: AnalysisResult | AnalysisResultV2 = (
-            AnalysisResultV2.model_validate_json(report)
+        parsed: AnyAnalysisResult = (
+            AnalysisResultV3.model_validate_json(report)
+            if step.version == 3
+            else AnalysisResultV2.model_validate_json(report)
             if step.version == 2
             else AnalysisResult.model_validate_json(report)
         )

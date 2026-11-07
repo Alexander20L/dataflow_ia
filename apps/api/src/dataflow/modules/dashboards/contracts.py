@@ -26,6 +26,8 @@ CardStatus = Literal[
 ]
 RevisionCause = Literal["create", "edit", "refresh"]
 CARD_OPERATION = "analytics.query@2"
+# Fase 11E: también @3 (sum_product y último corte) para los dashboards automáticos.
+CARD_OPERATIONS = ("analytics.query@2", "analytics.query@3")
 MAX_CARDS = 24
 MAX_FILTERS = 5
 

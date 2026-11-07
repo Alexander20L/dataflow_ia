@@ -1,4 +1,4 @@
-"""Motor de analytics.query@1 y @2 (subproceso aislado, sin base de datos).
+"""Motor de analytics.query@1, @2 y @3 (subproceso aislado, sin base de datos).
 
 Polars lee la tabla publicada; la agregación se calcula en Python con aritmética exacta
 (`int` y `Decimal`), porque la media de Polars sobre decimales devuelve un float. Sumas con la
@@ -7,6 +7,10 @@ grupos con valor nulo explícitos y orden estable por todas las dimensiones.
 
 @2 calcula el periodo consultado exactamente como @1 y, para cada comparación, hace una segunda
 pasada sin el filtro de periodo, limitada a los periodos base que hacen falta.
+
+@3 (11E) es @2 más dos clases de métrica: `sum_product` (Σ medida × segunda medida por fila,
+escala = suma de escalas) y la medida semi-aditiva `last_snapshot` (sólo las filas del último
+corte de cada periodo, común a todos los grupos; nunca se suman cortes de fechas distintas).
 """
 
 import json
@@ -23,6 +27,7 @@ from dataflow.modules.analytics.contracts import (
     SHAREABLE,
     AnalysisResult,
     AnalysisResultV2,
+    AnalysisResultV3,
     BaseCounts,
     ChangeStatus,
     ComparisonCell,
@@ -32,20 +37,24 @@ from dataflow.modules.analytics.contracts import (
     MetricCounts,
     MetricDefinition,
     MetricDefinitionV2,
+    MetricDefinitionV3,
     MetricReference,
     QueryParameters,
     QueryParametersV2,
+    QueryParametersV3,
     RankCell,
     RankingPartition,
     RankingSummary,
     ResultColumn,
     ResultRow,
     ResultRowV2,
+    ResultRowV3,
     ShareCell,
     ShareTotal,
+    SnapshotCounts,
 )
 from dataflow.modules.analytics.domain import parse_value
-from dataflow.modules.analytics.periods import ComparisonKind, period, shift
+from dataflow.modules.analytics.periods import ComparisonKind, TimeGrain, period, shift
 from dataflow.platform.canonical import digest
 from dataflow.platform.data_types import MAX_DECIMAL_PRECISION, DataType
 from dataflow.platform.decimal_context import exact_context
@@ -203,6 +212,7 @@ class Tally:
     filtered: int = 0
     outside: int = 0
     nulls: int = 0
+    superseded: int = 0  # @3: filas de fechas anteriores al último corte de su periodo
 
 
 @dataclass
@@ -210,6 +220,28 @@ class Grouped:
     groups: dict[str, dict[str, Any]]
     accumulators: dict[tuple[str, str], Accumulator]
     tallies: list[Tally]
+    # @3: (partición, métrica) → fecha del último corte. Partición: el periodo de la fila
+    # (`partition_key`) o todo el resultado si no se agrupa por tiempo.
+    cuts: dict[tuple[str, int], date] = field(default_factory=dict)
+
+
+def partition_key(day: date, grain: TimeGrain | None) -> str:
+    """Partición del último corte: el periodo de la fila o todo el resultado."""
+    if grain is None:
+        return "null"
+    return json.dumps({"grain": grain, "start": period(day, grain)[0].isoformat()}, sort_keys=True)
+
+
+def require_query_v3(metrics: list[Metric], version: int) -> None:
+    """@1 y @2 no cambian: rechazan las métricas que sólo calcula @3."""
+    for metric in metrics:
+        if metric.content.requires_query_v3:
+            raise ApplicationError(
+                "METRIC_UNSUPPORTED",
+                f"«{metric.content.label}» usa sum_product o el último corte: se calcula con "
+                f"analytics.query@3 (esta consulta es @{version}).",
+                422,
+            )
 
 
 def aggregate(
@@ -242,6 +274,7 @@ def accumulate(
     groups: dict[str, dict[str, Any]] = {}
     accumulators: dict[tuple[str, str], Accumulator] = {}
     tallies: list[Tally] = []
+    cuts: dict[tuple[str, int], date] = {}
     base = [table.accepted(row, query_filters) for row in rows]
 
     for number, metric in enumerate(metrics):
@@ -249,8 +282,22 @@ def accumulate(
         content = metric.content
         measure = table.position(content.measure_column_id)
         measure_type = table.kinds[content.measure_column_id]
+        second = (
+            None
+            if content.second_measure_column_id is None
+            else table.position(content.second_measure_column_id)
+        )
+        snapshot_position: int | None = None
+        if content.semi_additive is not None:
+            assert content.time_column_id is not None
+            snapshot_position = table.position(content.time_column_id)
+            if table.kinds[content.time_column_id] != "date":
+                raise ApplicationError(
+                    "COLUMN_TYPE_MISMATCH", "La columna del corte no es fecha.", 422
+                )
         tally = Tally()
         tallies.append(tally)
+        candidates: list[tuple[Sequence[Any], Any]] = []
         for row, keep in zip(rows, base, strict=True):
             if not (keep and table.accepted(row, content.filters)):
                 tally.filtered += 1
@@ -262,9 +309,24 @@ def accumulate(
                     tally.outside += 1
                     continue
             value = row[measure]
-            if value is None:
+            if second is not None:
+                # sum_product: un nulo en cualquiera de las dos medidas excluye la fila; el
+                # producto es exacto (contexto de `aggregate`).
+                factor = row[second]
+                value = None if value is None or factor is None else value * factor
+            if value is None or (snapshot_position is not None and row[snapshot_position] is None):
+                # El último corte necesita la fecha: una fila sin fecha no pertenece a ninguno.
                 tally.nulls += 1
                 continue
+            candidates.append((row, value))
+        if snapshot_position is not None:
+            # Último corte de cada periodo, común a todos los grupos de ese periodo.
+            for row, _ in candidates:
+                day = row[snapshot_position]
+                cut = (partition_key(day, parameters.time_grain), number)
+                if cut not in cuts or day > cuts[cut]:
+                    cuts[cut] = day
+        for row, value in candidates:
             components: list[Any] = [
                 canonical_key(
                     row[d],
@@ -286,9 +348,16 @@ def accumulate(
             group = group_id(components)
             if group not in groups:
                 groups[group] = {"components": components, "sort": sort_values, "row": row}
+            if snapshot_position is not None:
+                day = row[snapshot_position]
+                if day != cuts[(partition_key(day, parameters.time_grain), number)]:
+                    # Corte anterior: la fila está incluida y el grupo existe, pero el valor
+                    # sólo suma el último corte; un grupo sin filas en él vale nulo, no 0.
+                    tally.superseded += 1
+                    continue
             acc = accumulators.setdefault((group, key_name), Accumulator())
             acc.count += 1
-            if content.aggregation in {"sum", "avg"}:
+            if content.aggregation in {"sum", "avg", "sum_product"}:
                 acc.total += value
             elif content.aggregation in {"min", "max"}:
                 acc.minimum = value if acc.minimum is None else min(acc.minimum, value)
@@ -299,13 +368,27 @@ def accumulate(
                         canonical_cell(value, measure_type, table.params[content.measure_column_id])
                     )
                 )
-    return Grouped(groups, accumulators, tallies)
+    return Grouped(groups, accumulators, tallies, cuts)
+
+
+def column_scale(table: Table, column: UUID) -> int:
+    """Escala de una columna numérica: la del decimal o 0 para enteros."""
+    if table.kinds[column] == "decimal":
+        return int(table.params[column].get("scale") or 0)
+    return 0
 
 
 def result_scale(table: Table, metric: Metric, avg_scale: int) -> int | None:
     content = metric.content
     if content.aggregation == "avg":
         return avg_scale
+    if content.aggregation == "sum_product":
+        assert content.second_measure_column_id is not None
+        columns = (content.measure_column_id, content.second_measure_column_id)
+        if all(table.kinds[column] == "integer" for column in columns):
+            return None
+        # Producto exacto: la escala del resultado es la suma de las escalas.
+        return sum(column_scale(table, column) for column in columns)
     if table.kinds[content.measure_column_id] == "decimal":
         scale = table.params[content.measure_column_id].get("scale")
         return None if scale is None else int(scale)
@@ -374,6 +457,10 @@ def metric_value(
             if kind == "integer"
             else canonical_decimal(Decimal(acc.total), int(parameters_of["scale"]))
         )
+    elif content.aggregation == "sum_product":
+        scale = result_scale(table, metric, avg_scale)
+        total = Decimal(acc.total)
+        text = str(int(total)) if scale is None else canonical_decimal(total, scale)
     else:
         chosen = acc.minimum if content.aggregation == "min" else acc.maximum
         text = display_cell(chosen, kind, parameters_of) or ""
@@ -485,6 +572,7 @@ def run_query(
     parameters: QueryParameters,
     scope: EvidenceScope,
 ) -> AnalysisResult:
+    require_query_v3(metrics, 1)
     table = load_table(headers, rows, columns)
     time_column = resolve_time_column(table, metrics, parameters)
     grouped = aggregate(
@@ -601,6 +689,7 @@ def compute_shares(
     metrics: list[Metric],
     parameters: QueryParametersV2,
     fields: list[dict[str, Any]],
+    shareable: frozenset[str] = SHAREABLE,
 ) -> tuple[dict[tuple[str, int], tuple[str | None, ShareStatus]], list[ShareTotal]]:
     """Participación de cada grupo sobre el total de su partición, calculado sobre todos los
     grupos (antes del top N y del presupuesto). Cada porcentaje se redondea por separado con
@@ -613,7 +702,7 @@ def compute_shares(
         if metric.reference.revision_id not in wanted:
             continue
         content = metric.content
-        if content.aggregation not in SHAREABLE:
+        if content.aggregation not in shareable:
             raise ApplicationError(
                 "SHARE_NOT_ADDITIVE",
                 f"La participación sólo se calcula para sumas y conteos; «{content.label}» "
@@ -714,6 +803,73 @@ def run_query_v2(
     parameters: QueryParametersV2,
     scope: EvidenceScope,
 ) -> AnalysisResultV2:
+    require_query_v3(metrics, 2)
+    result = run_extended(headers, rows, columns, metrics, parameters, scope, 2)
+    assert isinstance(result, AnalysisResultV2)
+    return result
+
+
+# Agregaciones que se pueden sumar entre grupos en @3: las de @2 y `sum_product`.
+SHAREABLE_V3: frozenset[str] = SHAREABLE | {"sum_product"}
+
+
+def run_query_v3(
+    headers: list[str],
+    rows: Sequence[Sequence[Any]],
+    columns: list[dict[str, Any]],
+    metrics: list[Metric],
+    parameters: QueryParametersV3,
+    scope: EvidenceScope,
+) -> AnalysisResultV3:
+    """@2 con las métricas `sum_product` y `last_snapshot`. Con las métricas de @2 calcula las
+    mismas cifras, conteos y `evidence_id`."""
+    result = run_extended(headers, rows, columns, metrics, parameters, scope, 3)
+    assert isinstance(result, AnalysisResultV3)
+    return result
+
+
+def snapshot_fields(
+    table: Table, metric: Metric, tally: Tally, bases: list["Base"], number: int
+) -> dict[str, Any]:
+    """Campos de @3 en la definición: segunda medida, último corte y sus filas superadas."""
+    content = metric.content
+    second = content.second_measure_column_id
+    return {
+        "second_measure_column_id": second,
+        "second_measure_column": None if second is None else table.headers[table.position(second)],
+        "semi_additive": content.semi_additive,
+        "snapshot": None
+        if content.semi_additive is None
+        else SnapshotCounts(
+            superseded_rows=tally.superseded,
+            base_superseded_rows={
+                base.kind: base.grouped.tallies[number].superseded for base in bases
+            },
+        ),
+    }
+
+
+def row_snapshots(grouped: Grouped, part: RowParts, metrics: list[Metric]) -> dict[str, str]:
+    """Fecha del corte usado en el periodo de la fila, por métrica semi-aditiva."""
+    snapshots: dict[str, str] = {}
+    for number, metric in enumerate(metrics):
+        if metric.content.semi_additive is None:
+            continue
+        cut = grouped.cuts.get((partition_of(part), number))
+        if cut is not None:
+            snapshots[f"m{number}"] = cut.isoformat()
+    return snapshots
+
+
+def run_extended(
+    headers: list[str],
+    rows: Sequence[Sequence[Any]],
+    columns: list[dict[str, Any]],
+    metrics: list[Metric],
+    parameters: QueryParametersV2,
+    scope: EvidenceScope,
+    version: Literal[2, 3],
+) -> AnalysisResultV2 | AnalysisResultV3:
     table = load_table(headers, rows, columns)
     time_column = resolve_time_column(table, metrics, parameters)
     grouped = aggregate(
@@ -728,7 +884,9 @@ def run_query_v2(
     # Todas las filas (sin evidencia): la participación y el ranking se calculan sobre todos
     # los grupos, antes de recortar.
     every = row_parts(table, grouped, metrics, parameters, time_column, scope, False)
-    shares, share_totals = compute_shares(every, metrics, parameters, fields)
+    shares, share_totals = compute_shares(
+        every, metrics, parameters, fields, SHAREABLE_V3 if version == 3 else SHAREABLE
+    )
     summary: RankingSummary | None = None
     if parameters.ranking is not None:
         ranked, summary = rank_parts(every, metrics, parameters)
@@ -751,9 +909,15 @@ def run_query_v2(
             comparison_base(table, metrics, parameters, time_column, grouped, kind)
             for kind in parameters.comparisons
         ]
+    definition_model = MetricDefinitionV3 if version == 3 else MetricDefinitionV2
     definitions = [
-        MetricDefinitionV2(
+        definition_model(
             **fields[n],
+            **(
+                snapshot_fields(table, metrics[n], grouped.tallies[n], bases, n)
+                if version == 3
+                else {}
+            ),
             base_counts={
                 base.kind: BaseCounts(
                     input_rows=len(rows),
@@ -770,7 +934,7 @@ def run_query_v2(
         )
         for n in range(len(metrics))
     ]
-    result_rows: list[ResultRowV2] = []
+    result_rows: list[ResultRowV2 | ResultRowV3] = []
     for part, position in ranked:
         comparisons: dict[str, dict[ComparisonKind, ComparisonCell]] = {}
         share: dict[str, ShareCell] = {}
@@ -814,30 +978,36 @@ def run_query_v2(
                     rank_detail(parameters.ranking.direction, parameters.ranking.top_n, tied),
                 ),
             )
+        cells_of_row: dict[str, Any] = {
+            "key": part.key,
+            "labels": part.labels,
+            "values": part.values,
+            "evidence": part.evidence,
+            "comparisons": comparisons,
+            "share": share,
+            "rank": rank,
+        }
         result_rows.append(
-            ResultRowV2(
-                key=part.key,
-                labels=part.labels,
-                values=part.values,
-                evidence=part.evidence,
-                comparisons=comparisons,
-                share=share,
-                rank=rank,
-            )
+            ResultRowV3(**cells_of_row, snapshots=row_snapshots(grouped, part, metrics))
+            if version == 3
+            else ResultRowV2(**cells_of_row)
         )
-    return AnalysisResultV2(
-        scope=scope,
-        avg_scale=parameters.avg_scale,
-        comparisons=parameters.comparisons,
-        change_scale=parameters.change_scale,
-        share_scale=parameters.share_scale,
-        shares=share_totals,
-        ranking=summary,
-        dimensions=result_dimensions(table, parameters, time_column),
-        metrics=definitions,
-        rows=result_rows,
-        row_count=len(result_rows),
-    )
+    common: dict[str, Any] = {
+        "scope": scope,
+        "avg_scale": parameters.avg_scale,
+        "comparisons": parameters.comparisons,
+        "change_scale": parameters.change_scale,
+        "share_scale": parameters.share_scale,
+        "shares": share_totals,
+        "ranking": summary,
+        "dimensions": result_dimensions(table, parameters, time_column),
+        "metrics": definitions,
+        "rows": result_rows,
+        "row_count": len(result_rows),
+    }
+    if version == 3:
+        return AnalysisResultV3(**common)
+    return AnalysisResultV2(**common)
 
 
 def comparison_cell(

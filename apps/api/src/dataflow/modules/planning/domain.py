@@ -271,8 +271,17 @@ def metric_problems(
                 "coincide.",
             )
             continue
+        if descriptor.version < requirement.min_query_version:
+            problem(
+                "METRIC_UNSUPPORTED",
+                f"La métrica {reference.revision_id} usa sum_product o el último corte: "
+                f"necesita {descriptor.name}@{requirement.min_query_version}.",
+            )
+            continue
+        second = requirement.second_measure_column_id
+        measures = [requirement.measure_column_id, *([second] if second else [])]
         columns = [
-            requirement.measure_column_id,
+            *measures,
             *requirement.filter_column_ids,
             *([requirement.time_column_id] if requirement.time_column_id else []),
         ]
@@ -284,24 +293,25 @@ def metric_problems(
             )
             continue
         resolved.append(requirement)
-        actual = schema.get(requirement.measure_column_id) if schema is not None else None
-        if actual is not None and actual not in requirement.measure_types:
-            problem(
-                "COLUMN_TYPE_MISMATCH",
-                f"La métrica necesita una columna {', '.join(sorted(requirement.measure_types))}; "
-                f"{requirement.measure_column_id} es «{actual}». Conviértela en Limpieza.",
-            )
-        if requirement.requires_measure_role and (
-            not facts.semantic_pinned
-            or facts.confirmed_roles.get(requirement.measure_column_id) != "measure"
-        ):
-            problem(
-                "SEMANTIC_REQUIREMENT_MISSING",
-                f"La columna {requirement.measure_column_id} debe estar confirmada como medida "
-                "(«measure») en la revisión semántica fijada.",
-                "understanding",
-            )
-        if uses_time and requirement.time_column_id is not None:
+        for measure in measures:
+            actual = schema.get(measure) if schema is not None else None
+            if actual is not None and actual not in requirement.measure_types:
+                problem(
+                    "COLUMN_TYPE_MISMATCH",
+                    "La métrica necesita una columna "
+                    f"{', '.join(sorted(requirement.measure_types))}; {measure} es «{actual}». "
+                    "Conviértela en Limpieza.",
+                )
+            if requirement.requires_measure_role and (
+                not facts.semantic_pinned or facts.confirmed_roles.get(measure) != "measure"
+            ):
+                problem(
+                    "SEMANTIC_REQUIREMENT_MISSING",
+                    f"La columna {measure} debe estar confirmada como medida («measure») en la "
+                    "revisión semántica fijada.",
+                    "understanding",
+                )
+        if (uses_time or requirement.requires_time_role) and requirement.time_column_id is not None:
             time_type = schema.get(requirement.time_column_id) if schema is not None else None
             if time_type is not None and time_type != "date":
                 problem(
@@ -341,9 +351,21 @@ def metric_problems(
                     )
                 )
     if facts.semantic_pinned:
-        units = {
-            facts.column_units.get(r.measure_column_id) for r in resolved if r.requires_measure_role
-        }
+        units: set[str | None] = set()
+        for r in resolved:
+            if not r.requires_measure_role:
+                continue
+            unit = facts.column_units.get(r.measure_column_id)
+            if r.second_measure_column_id is not None:
+                valid, unit = product_unit(unit, facts.column_units.get(r.second_measure_column_id))
+                if not valid:
+                    problem(
+                        "UNIT_MISMATCH",
+                        "sum_product no multiplica dos monedas: una de las medidas debe ser una "
+                        "cantidad.",
+                    )
+                    continue
+            units.add(unit)
         if len(units) > 1:
             shown = ", ".join(sorted(unit or "sin unidad" for unit in units))
             problem(
@@ -351,6 +373,20 @@ def metric_problems(
                 f"Las métricas combinadas deben compartir unidad o moneda; hay: {shown}.",
             )
     return problems
+
+
+def product_unit(first: str | None, second: str | None) -> tuple[bool, str | None]:
+    """Unidad de Σ(medida × segunda medida), con las claves de `column_units`: una cantidad por
+    un costo unitario da la moneda («currency:COP»); dos unidades, su producto («unit:kg×m»);
+    dos monedas no se multiplican (no válido). Misma regla que
+    `analytics.contracts.product_unit`."""
+    currencies = [u for u in (first, second) if u is not None and u.startswith("currency:")]
+    if len(currencies) == 2:
+        return False, None
+    if currencies:
+        return True, currencies[0]
+    units = [u.removeprefix("unit:") for u in (first, second) if u is not None]
+    return True, f"unit:{'×'.join(units)}" if units else None
 
 
 def ruleset_problems(

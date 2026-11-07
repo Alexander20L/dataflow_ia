@@ -23,6 +23,8 @@ Step = Literal[
     "quality_rules",
     "select",
     "interpret",
+    "analyze",
+    "publish",
     "done",
 ]
 TERMINAL: set[str] = {"needs_review", "completed", "failed", "cancelled"}
@@ -67,6 +69,8 @@ class AutomationRunView(PipelineModel):
     mapping_revision_id: UUID | None = None
     semantic_revision_id: UUID | None = None
     pass_number: int = 1
+    dashboard_family_id: UUID | None = None
+    dashboard_revision_id: UUID | None = None
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None
@@ -133,6 +137,27 @@ class PipelinePort(Protocol):
     ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]: ...
     def mapping_match(self, owner: UUID, project: UUID, artifact: UUID) -> MatchResult: ...
     def apply_mapping(self, owner: UUID, mapping_revision: UUID, artifact: UUID) -> UUID: ...
+    def start_analysis(
+        self, owner: UUID, project: UUID, mapping_revision: UUID, artifact: UUID, key: UUID
+    ) -> dict[str, Any] | None:
+        """Métricas y planes del dashboard del molde, sin ejecutar (None: molde genérico)."""
+        ...
+
+    def start_query(self, owner: UUID, plan_revision: UUID, key: UUID) -> UUID | None:
+        """Ejecuta una consulta; None si no hay capacidad todavía."""
+        ...
+
+    def publish_dashboard(
+        self,
+        owner: UUID,
+        project: UUID,
+        family: UUID | None,
+        analysis: dict[str, Any],
+        key: UUID,
+    ) -> tuple[UUID, UUID]:
+        """Crea el dashboard del molde o una revisión nueva; devuelve (familia, revisión)."""
+        ...
+
     def create_plan(
         self,
         owner: UUID,
@@ -177,3 +202,6 @@ class RunRepository(Protocol):
     def page(self, owner: UUID, project: UUID, limit: int, offset: int) -> AutomationRunPage: ...
     def for_version(self, owner: UUID, version: UUID) -> AutomationRunView | None: ...
     def attention(self, owner: UUID, limit: int) -> list[AutomationRunView]: ...
+    def analysis(self, run: UUID) -> dict[str, Any] | None: ...
+    def save_analysis(self, run: UUID, project: UUID, data: dict[str, Any]) -> None: ...
+    def dashboard_family(self, project: UUID, template: str) -> UUID | None: ...

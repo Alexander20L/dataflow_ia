@@ -27,6 +27,7 @@ import {
   type Aggregation,
   type ComparisonKind,
   type Grain,
+  requiresQueryV3,
 } from "./labels";
 import { Results } from "./results";
 import { AddToDashboard } from "@/features/dashboards/add-to-dashboard";
@@ -151,7 +152,10 @@ function Builder({
           {
             id: "query",
             operation: "analytics.query",
-            version: 2,
+            // Suma de productos o último corte: sólo @3 las calcula (Fase 11E).
+            version: chosen.some((m) => requiresQueryV3(m.head.content))
+              ? 3
+              : 2,
             input: { kind: "input", alias: "source" },
             parameters: {
               metrics: chosen.map((m) => ({
@@ -506,22 +510,25 @@ function Builder({
         ) : result.data ? (
           <>
             <Results result={result.data} runId={runId} />
-            {plan && !archived && (
-              <AddToDashboard
-                projectId={projectId}
-                planRevisionId={plan.id}
-                executionId={runId}
-                dimensions={dimensions.length}
-                grain={!!grain}
-                metrics={result.data.metrics.map((m) => ({
-                  key: m.key,
-                  label: m.label,
-                }))}
-                suggestedTitle={result.data.metrics
-                  .map((m) => m.label)
-                  .join(" y ")}
-              />
-            )}
+            {/* Las tarjetas de dashboard muestran analytics.query@2 (Fase 8); @3 llega con 11E. */}
+            {plan &&
+              !archived &&
+              result.data.operation !== "analytics.query@3" && (
+                <AddToDashboard
+                  projectId={projectId}
+                  planRevisionId={plan.id}
+                  executionId={runId}
+                  dimensions={dimensions.length}
+                  grain={!!grain}
+                  metrics={result.data.metrics.map((m) => ({
+                    key: m.key,
+                    label: m.label,
+                  }))}
+                  suggestedTitle={result.data.metrics
+                    .map((m) => m.label)
+                    .join(" y ")}
+                />
+              )}
           </>
         ) : (
           <p className="empty-copy" role="status">
