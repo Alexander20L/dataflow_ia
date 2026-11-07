@@ -8,9 +8,14 @@ from typing import Any
 from uuid import UUID
 
 from dataflow.modules.copilot.contracts import (
+    AuditAlert,
+    AuditContent,
+    AuditoriaTextual,
     ClarificationTopic,
     CleaningStepProposal,
     ColumnFact,
+    DashboardCardFact,
+    DashboardFacts,
     MetricFact,
     MetricProposal,
     NamedRef,
@@ -113,6 +118,96 @@ def result_context(result: ResultFacts) -> dict[str, Any]:
         ],
         "cifras_omitidas": max(0, result.total_cells - len(result.cells)),
     }
+
+
+# --- Auditoría textual de un dashboard (11F) --------------------------------------------------
+
+MAX_AUDIT_CELLS_PER_CARD = 40  # cifras por tarjeta que se envían al proveedor
+
+
+def audit_context(
+    dashboard: DashboardFacts, audited: list[tuple[DashboardCardFact, ResultFacts]], skipped: int
+) -> dict[str, Any]:
+    """Contexto de la auditoría: sólo resultados publicados (agregados con su evidencia) y
+    etiquetas autorizadas; nunca filas de detalle. Títulos y etiquetas son textos de personas o
+    del dataset (no confiables)."""
+    return {
+        "dashboard": {
+            "titulo": untrusted(dashboard.title),
+            "descripcion": untrusted(dashboard.description),
+        },
+        "tarjetas": [
+            {
+                "titulo": untrusted(card.title),
+                "metrica_dibujada": card.metric,
+                "resultado": result_context(result),
+            }
+            for card, result in audited
+        ],
+        "tarjetas_sin_resultado": skipped,
+    }
+
+
+def audited_result(
+    dashboard: DashboardFacts, audited: list[tuple[DashboardCardFact, ResultFacts]]
+) -> dict[str, Any]:
+    """Lo auditado, para su hash: cifras y evidencias de cada tarjeta y los textos que las
+    acompañan. Una cifra distinta (otra ejecución, otro valor) es otro resultado."""
+    return {
+        "title": dashboard.title,
+        "description": dashboard.description,
+        "cards": [
+            {
+                "card_id": str(card.id),
+                "title": card.title,
+                "metric": card.metric,
+                "execution_id": str(result.execution_id),
+                "operation": result.operation,
+                "cells": [[c.evidence_id, c.cell, c.value] for c in result.cells],
+                "total_cells": result.total_cells,
+            }
+            for card, result in audited
+        ],
+    }
+
+
+def verify_audit(
+    output: AuditoriaTextual, cells: dict[str, ResultCell], executions: dict[str, UUID]
+) -> tuple[AuditContent | None, list[str]]:
+    """Aplica la regla única de cifras a cada texto de la auditoría: {{evidence:id}} se sustituye
+    por el valor exacto (con la ejecución de su tarjeta), un número libre se retira y se cuenta, y
+    una referencia inexistente o ajena anula TODA la auditoría (devuelve None y las referencias)."""
+    invalid: list[str] = []
+    removed = 0
+
+    def verified(text: str) -> list[Segment]:
+        nonlocal removed
+        segments, numbers, wrong = verify_explanation(text, cells, UUID(int=0))
+        invalid.extend(wrong)
+        removed += numbers
+        return [
+            segment.model_copy(update={"execution_id": executions[segment.evidence_id]})
+            if segment.kind == "evidence" and segment.evidence_id
+            else segment
+            for segment in segments
+        ]
+
+    content = AuditContent(
+        resumen_ejecutivo=verified(output.resumen_ejecutivo),
+        alertas_criticas=[
+            AuditAlert(
+                titulo=verified(alert.titulo),
+                detalle=verified(alert.detalle),
+                severidad=alert.severidad,
+            )
+            for alert in output.alertas_criticas
+        ],
+        recomendaciones=[verified(text) for text in output.recomendaciones],
+        unverified_numbers=0,
+    )
+    if invalid:
+        return None, invalid
+    return content.model_copy(update={"unverified_numbers": removed}), []
 
 
 def serialize(context: dict[str, Any]) -> str:

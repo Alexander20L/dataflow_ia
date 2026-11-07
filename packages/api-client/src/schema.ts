@@ -350,6 +350,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/dashboard-revisions/{revision_id}/text-audits": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List Text Audits */
+        get: operations["listTextAudits"];
+        put?: never;
+        /**
+         * Request Text Audit
+         * @description Auditoría textual de una revisión de dashboard publicada (Fase 11F): la guardada si su
+         *     clave de contenido ya existe (`reused`), o una nueva. No modifica el dashboard.
+         */
+        post: operations["requestTextAudit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/dashboards/{family_id}": {
         parameters: {
             query?: never;
@@ -2002,6 +2024,51 @@ export interface components {
             started_at: string;
             /** State */
             state: string;
+        };
+        /** AuditAlert */
+        AuditAlert: {
+            /** Detalle */
+            detalle: components["schemas"]["Segment"][];
+            /**
+             * Severidad
+             * @enum {string}
+             */
+            severidad: "alta" | "media" | "baja";
+            /** Titulo */
+            titulo: components["schemas"]["Segment"][];
+        };
+        /**
+         * AuditCard
+         * @description Tarjeta del dashboard y si entró en la auditoría (sólo resultados terminados).
+         */
+        AuditCard: {
+            /**
+             * Card Id
+             * Format: uuid
+             */
+            card_id: string;
+            /** Execution Id */
+            execution_id: string | null;
+            /** Included */
+            included: boolean;
+            /** Reason */
+            reason?: ("not_executed" | "not_ready") | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * AuditContent
+         * @description Auditoría ya verificada: cada cifra es un segmento con su evidencia y su ejecución.
+         */
+        AuditContent: {
+            /** Alertas Criticas */
+            alertas_criticas: components["schemas"]["AuditAlert"][];
+            /** Recomendaciones */
+            recomendaciones: components["schemas"]["Segment"][][];
+            /** Resumen Ejecutivo */
+            resumen_ejecutivo: components["schemas"]["Segment"][];
+            /** Unverified Numbers */
+            unverified_numbers: number;
         };
         /** AutomationRunPage */
         AutomationRunPage: {
@@ -5671,6 +5738,64 @@ export interface components {
              */
             template: "sales@1" | "inventory@1" | "generic@1";
         };
+        /**
+         * TextAudit
+         * @description Auditoría guardada. `audit_key` deriva del resultado auditado (`result_sha256`: cifras y
+         *     evidencias), proveedor y modelo, versión del prompt y configuración: la misma clave sobre la
+         *     misma revisión devuelve esta auditoría sin otra llamada.
+         */
+        TextAudit: {
+            /** Audit Key */
+            audit_key: string;
+            /** Cards */
+            cards: components["schemas"]["AuditCard"][];
+            /** Config */
+            config: {
+                [key: string]: unknown;
+            };
+            content: components["schemas"]["AuditContent"];
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /**
+             * Dashboard Revision Id
+             * Format: uuid
+             */
+            dashboard_revision_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Model */
+            model: string;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Prompt Id */
+            prompt_id: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Provider */
+            provider: string;
+            /** Result Sha256 */
+            result_sha256: string;
+        };
+        /** TextAuditResponse */
+        TextAuditResponse: {
+            audit: components["schemas"]["TextAudit"];
+            /** Reused */
+            reused: boolean;
+        };
         /** TextBlock */
         TextBlock: {
             /**
@@ -8351,6 +8476,253 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardRevision"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    listTextAudits: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextAudit"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    requestTextAudit: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TextAuditResponse"];
                 };
             };
             /** @description Bad Request */

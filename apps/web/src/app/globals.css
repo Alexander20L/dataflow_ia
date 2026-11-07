@@ -4579,6 +4579,36 @@ tbody tr:hover {
     max-width: 100%;
   }
 }
+
+/* Auditoría textual IA de un dashboard (Fase 11F): sólo texto, no altera las tarjetas. */
+.text-audit {
+  margin-top: 16px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-secondary);
+}
+.text-audit .section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+}
+.text-audit h4 {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0;
+}
+.text-audit-body h5 {
+  margin: 12px 0 4px;
+}
+.text-audit-body ul,
+.text-audit-body ol {
+  margin: 0;
+  padding-left: 20px;
+}
 /* Fase 11B: política de automatización */
 .panel-lite {
   margin: 0 0 14px;

@@ -366,6 +366,7 @@ def make_copilot(
         make_semantics(db, objects),
         make_metrics(db, objects),
         ProjectPermissions(db),
+        make_dashboards(db, objects),
     )
     return CopilotService(SQLCopilotRepository(db), access, provider, config, SQLUnitOfWork(db))
 

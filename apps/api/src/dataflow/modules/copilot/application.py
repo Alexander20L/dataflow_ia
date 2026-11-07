@@ -12,8 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Literal, Protocol
-from uuid import UUID, uuid5
+from typing import Any, Literal, NoReturn, Protocol
+from uuid import UUID, uuid4, uuid5
 
 from pydantic import BaseModel
 
@@ -30,6 +30,9 @@ from dataflow.modules.copilot.contracts import (
     ActionLink,
     ActionResult,
     AssistantContent,
+    AuditCard,
+    AuditContent,
+    AuditoriaTextual,
     CallRecord,
     ClarificationCard,
     CleaningCard,
@@ -39,19 +42,27 @@ from dataflow.modules.copilot.contracts import (
     CopilotSources,
     CopilotStatus,
     CopilotUsage,
+    DashboardCardFact,
     ExplainOutput,
     MetricCard,
     MetricFact,
     ProposalProblem,
     QueryCard,
+    ResultCell,
+    ResultFacts,
     Segment,
     TableContext,
+    TextAudit,
+    TextAuditResponse,
     TurnOutput,
     TurnResponse,
 )
 from dataflow.modules.copilot.domain import (
+    MAX_AUDIT_CELLS_PER_CARD,
     MAX_HISTORY,
     MAX_RESULT_CELLS,
+    audit_context,
+    audited_result,
     authorized_context,
     clarification_target,
     plain_text,
@@ -60,6 +71,7 @@ from dataflow.modules.copilot.domain import (
     resolve_query,
     result_context,
     serialize,
+    verify_audit,
     verify_explanation,
 )
 from dataflow.platform.canonical import digest
@@ -349,6 +361,240 @@ class CopilotService:
             record,
             correlation,
         )
+
+    # --- Auditoría textual de un dashboard publicado (11F) --------------------------------------
+
+    def text_audits(self, owner: UUID, revision: UUID) -> list[TextAudit]:
+        dashboard = self.sources.dashboard(owner, revision)
+        self.sources.require_project(owner, dashboard.project_id)
+        return self.repository.audits(owner, revision)
+
+    def text_audit(
+        self, owner: UUID, revision: UUID, key: UUID, correlation: str
+    ) -> TextAuditResponse:
+        """Auditoría textual de una revisión de dashboard publicada. Sólo explica resultados ya
+        calculados: no propone acciones ni toca el dashboard. La respuesta se guarda con una clave
+        derivada del resultado, el proveedor y el modelo, la versión del prompt y la
+        configuración: la misma clave sobre la misma revisión la devuelve sin otra llamada. Si la
+        IA falla, se registra la llamada y no se guarda nada (el dashboard no cambia)."""
+        fingerprint = digest("copilot_text_audit", {"revision": str(revision)})
+        try:
+            dashboard = self.sources.dashboard(owner, revision)
+            self.sources.require_project(owner, dashboard.project_id, writable=True)
+            replayed = self.repository.replay(owner, revision, key, fingerprint)
+            if replayed:
+                self.uow.rollback()
+                return TextAuditResponse(audit=self.repository.audit(owner, replayed), reused=True)
+            provider = self.available(owner, dashboard.project_id)
+            audited, cards = self.audited_cards(owner, dashboard.project_id, dashboard.cards)
+            if not audited:
+                raise ApplicationError(
+                    "RESULT_NOT_READY",
+                    "El dashboard no tiene resultados terminados que auditar.",
+                    409,
+                )
+            context = audit_context(dashboard, audited, len(cards) - len(audited))
+            result_sha256 = digest("copilot_audit_result", audited_result(dashboard, audited))
+            config = {
+                "max_output_tokens": self.config.max_output_tokens,
+                "cells_per_card": MAX_AUDIT_CELLS_PER_CARD,
+                "parameters": provider.parameters(),
+            }
+            audit_key = digest(
+                "copilot_audit",
+                {
+                    "result_sha256": result_sha256,
+                    "provider": provider.name,
+                    "model": provider.model,
+                    "prompt": f"{prompts.AUDIT_ID}@{prompts.AUDIT_VERSION}",
+                    "config": config,
+                },
+            )
+            saved = self.repository.audit_by_key(revision, audit_key)
+            if saved is not None:
+                # Misma clave: la auditoría guardada, sin otra llamada al proveedor.
+                self.repository.remember(owner, revision, key, fingerprint, saved.id)
+                self.uow.commit()
+                return TextAuditResponse(audit=saved, reused=True)
+            self.uow.rollback()  # ningún bloqueo mientras responde el proveedor
+        except Exception:
+            self.uow.rollback()
+            raise
+        cells: dict[str, ResultCell] = {}
+        executions: dict[str, UUID] = {}
+        for _, result in audited:
+            for cell in result.cells:
+                cells[cell.evidence_id] = cell
+                executions[cell.evidence_id] = result.execution_id
+        request = AIRequest(
+            task="text_audit",
+            prompt_id=prompts.AUDIT_ID,
+            prompt_version=prompts.AUDIT_VERSION,
+            system=prompts.AUDIT_SYSTEM,
+            messages=[self.final(context, "Audita los resultados de este dashboard.")],
+            output_schema=AuditoriaTextual,
+            max_output_tokens=self.config.max_output_tokens,
+            context={"contexto": context, "peticion": "auditoria"},
+        )
+        common: dict[str, Any] = {
+            "owner_id": owner,
+            "project_id": dashboard.project_id,
+            "conversation_id": None,
+            "task": request.task,
+            "provider": provider.name,
+            "parameters": {**provider.parameters(), "max_output_tokens": request.max_output_tokens},
+            "prompt_id": request.prompt_id,
+            "prompt_version": request.prompt_version,
+            "context_sha256": hashlib.sha256(serialize(context).encode()).hexdigest(),
+        }
+        try:
+            answer = provider.complete(request)
+        except AIProviderError as exc:
+            model = exc.model or provider.model
+            self.log_and_fail(
+                CallRecord(
+                    **common,
+                    model=model,
+                    input_tokens=exc.usage.input_tokens,
+                    output_tokens=exc.usage.output_tokens,
+                    cache_read_tokens=exc.usage.cache_read_tokens,
+                    cache_write_tokens=exc.usage.cache_write_tokens,
+                    cost_usd=estimated_cost(model, exc.usage),
+                    latency_ms=exc.latency_ms,
+                    outcome="provider_error",
+                    error_code=exc.code,
+                ),
+                ApplicationError(exc.code, f"La auditoría no se pudo generar: {exc.message}", 502),
+            )
+        content, invalid = verify_audit(answer.output, cells, executions)
+        if content is not None:
+            # Cada cifra citada se resuelve como GET /evidence: se recalcula su dirección.
+            invalid = [
+                segment.evidence_id
+                for segment in audit_segments(content)
+                if segment.kind == "evidence"
+                and segment.evidence_id
+                and segment.execution_id
+                and self.sources.evidence_value(owner, segment.execution_id, segment.evidence_id)
+                != cells[segment.evidence_id].value
+            ]
+        usage: dict[str, Any] = {
+            **common,
+            "model": answer.model,
+            "input_tokens": answer.usage.input_tokens,
+            "output_tokens": answer.usage.output_tokens,
+            "cache_read_tokens": answer.usage.cache_read_tokens,
+            "cache_write_tokens": answer.usage.cache_write_tokens,
+            "cost_usd": estimated_cost(answer.model, answer.usage),
+            "latency_ms": answer.latency_ms,
+        }
+        if content is None or invalid:
+            self.log_and_fail(
+                CallRecord(
+                    **usage,
+                    outcome="rejected",
+                    validation={"status": "rejected", "invalid_references": len(invalid)},
+                    error_code="INVALID_EVIDENCE_REFERENCE",
+                ),
+                ApplicationError(
+                    "INVALID_EVIDENCE_REFERENCE",
+                    "La auditoría citaba cifras que no pertenecen a este dashboard y se anuló.",
+                    422,
+                ),
+            )
+        assert content is not None
+        try:
+            call = self.repository.log_call(
+                CallRecord(
+                    **usage,
+                    outcome="accepted",
+                    validation={
+                        "status": "ok",
+                        "unverified_numbers": content.unverified_numbers,
+                        "evidence_references": sum(
+                            1 for s in audit_segments(content) if s.kind == "evidence"
+                        ),
+                        "alerts": len(content.alertas_criticas),
+                    },
+                )
+            )
+            audit = self.repository.save_audit(
+                TextAudit(
+                    id=uuid4(),
+                    dashboard_revision_id=revision,
+                    project_id=dashboard.project_id,
+                    audit_key=audit_key,
+                    result_sha256=result_sha256,
+                    provider=provider.name,
+                    model=answer.model,
+                    prompt_id=prompts.AUDIT_ID,
+                    prompt_version=prompts.AUDIT_VERSION,
+                    config=config,
+                    cards=cards,
+                    content=content,
+                    created_by=owner,
+                    created_at=self.clock(),
+                ),
+                call,
+                correlation,
+            )
+            if self.repository.replay(owner, revision, key, fingerprint) is None:
+                self.repository.remember(owner, revision, key, fingerprint, audit.id)
+            self.uow.commit()
+            return TextAuditResponse(audit=audit, reused=False)
+        except Exception:
+            self.uow.rollback()
+            raise
+
+    def audited_cards(
+        self, owner: UUID, project: UUID, cards: list[DashboardCardFact]
+    ) -> tuple[list[tuple[DashboardCardFact, ResultFacts]], list[AuditCard]]:
+        """Sólo resultados publicados: tarjetas con ejecución terminada del mismo proyecto."""
+        audited: list[tuple[DashboardCardFact, ResultFacts]] = []
+        summary: list[AuditCard] = []
+        for card in cards:
+            if card.execution_id is None:
+                summary.append(
+                    AuditCard(
+                        card_id=card.id,
+                        title=card.title,
+                        execution_id=None,
+                        included=False,
+                        reason="not_executed",
+                    )
+                )
+                continue
+            run = self.sources.execution(owner, card.execution_id)
+            if run.state != "succeeded" or run.project_id != project:
+                summary.append(
+                    AuditCard(
+                        card_id=card.id,
+                        title=card.title,
+                        execution_id=card.execution_id,
+                        included=False,
+                        reason="not_ready",
+                    )
+                )
+                continue
+            audited.append(
+                (card, self.sources.result(owner, card.execution_id, MAX_AUDIT_CELLS_PER_CARD))
+            )
+            summary.append(
+                AuditCard(
+                    card_id=card.id, title=card.title, execution_id=card.execution_id, included=True
+                )
+            )
+        return audited, summary
+
+    def log_and_fail(self, record: CallRecord, error: ApplicationError) -> NoReturn:
+        """La llamada se registra siempre (costo y causa); una auditoría fallida no se guarda."""
+        try:
+            self.repository.log_call(record)
+            self.uow.commit()
+        except Exception:
+            self.uow.rollback()
+            raise
+        raise error
 
     # --- Acciones explícitas sobre una propuesta ----------------------------------------------
 
@@ -672,6 +918,16 @@ class CopilotService:
             error_code="INVALID_PROPOSAL_PAYLOAD",
             source_text=source,
         )
+
+
+def audit_segments(content: AuditContent) -> list[Segment]:
+    """Todos los segmentos de una auditoría verificada, en orden de lectura."""
+    segments = list(content.resumen_ejecutivo)
+    for alert in content.alertas_criticas:
+        segments += alert.titulo + alert.detalle
+    for recommendation in content.recomendaciones:
+        segments += recommendation
+    return segments
 
 
 def validation_summary(content: AssistantContent) -> dict[str, Any]:

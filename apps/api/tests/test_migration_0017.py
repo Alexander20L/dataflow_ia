@@ -6,7 +6,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from migration_support import TABLES_AFTER_0012
+from migration_support import TABLES_AFTER_0017
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
@@ -20,9 +20,9 @@ from dataflow.platform.database import Base
 def exists_at_0017(
     obj: object, name: str | None, type_: str, reflected: bool, other: object
 ) -> bool:
-    # En 0017 ya existen todas las tablas de la Fase 11 hasta 11E.
+    # En 0017 existen todas las tablas de la Fase 11 hasta 11E (no las de 11F).
     table = name if type_ == "table" else getattr(getattr(obj, "table", None), "name", None)
-    return table not in TABLES_AFTER_0012 - TABLES_AFTER_0012
+    return table not in TABLES_AFTER_0017
 
 
 def test_0017_is_additive_and_reversible_without_dashboards(

@@ -1187,6 +1187,137 @@
         "title": "AttemptResponse",
         "type": "object"
       },
+      "AuditAlert": {
+        "additionalProperties": false,
+        "properties": {
+          "detalle": {
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            },
+            "title": "Detalle",
+            "type": "array"
+          },
+          "severidad": {
+            "enum": [
+              "alta",
+              "media",
+              "baja"
+            ],
+            "title": "Severidad",
+            "type": "string"
+          },
+          "titulo": {
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            },
+            "title": "Titulo",
+            "type": "array"
+          }
+        },
+        "required": [
+          "titulo",
+          "detalle",
+          "severidad"
+        ],
+        "title": "AuditAlert",
+        "type": "object"
+      },
+      "AuditCard": {
+        "additionalProperties": false,
+        "description": "Tarjeta del dashboard y si entró en la auditoría (sólo resultados terminados).",
+        "properties": {
+          "card_id": {
+            "format": "uuid",
+            "title": "Card Id",
+            "type": "string"
+          },
+          "execution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
+          },
+          "included": {
+            "title": "Included",
+            "type": "boolean"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "enum": [
+                  "not_executed",
+                  "not_ready"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "card_id",
+          "title",
+          "execution_id",
+          "included"
+        ],
+        "title": "AuditCard",
+        "type": "object"
+      },
+      "AuditContent": {
+        "additionalProperties": false,
+        "description": "Auditoría ya verificada: cada cifra es un segmento con su evidencia y su ejecución.",
+        "properties": {
+          "alertas_criticas": {
+            "items": {
+              "$ref": "#/components/schemas/AuditAlert"
+            },
+            "title": "Alertas Criticas",
+            "type": "array"
+          },
+          "recomendaciones": {
+            "items": {
+              "items": {
+                "$ref": "#/components/schemas/Segment"
+              },
+              "type": "array"
+            },
+            "title": "Recomendaciones",
+            "type": "array"
+          },
+          "resumen_ejecutivo": {
+            "items": {
+              "$ref": "#/components/schemas/Segment"
+            },
+            "title": "Resumen Ejecutivo",
+            "type": "array"
+          },
+          "unverified_numbers": {
+            "title": "Unverified Numbers",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "resumen_ejecutivo",
+          "alertas_criticas",
+          "recomendaciones",
+          "unverified_numbers"
+        ],
+        "title": "AuditContent",
+        "type": "object"
+      },
       "AutomationRunPage": {
         "additionalProperties": false,
         "properties": {
@@ -10783,6 +10914,112 @@
         "title": "TemplateCandidate",
         "type": "object"
       },
+      "TextAudit": {
+        "additionalProperties": false,
+        "description": "Auditoría guardada. `audit_key` deriva del resultado auditado (`result_sha256`: cifras y\nevidencias), proveedor y modelo, versión del prompt y configuración: la misma clave sobre la\nmisma revisión devuelve esta auditoría sin otra llamada.",
+        "properties": {
+          "audit_key": {
+            "title": "Audit Key",
+            "type": "string"
+          },
+          "cards": {
+            "items": {
+              "$ref": "#/components/schemas/AuditCard"
+            },
+            "title": "Cards",
+            "type": "array"
+          },
+          "config": {
+            "additionalProperties": true,
+            "title": "Config",
+            "type": "object"
+          },
+          "content": {
+            "$ref": "#/components/schemas/AuditContent"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "dashboard_revision_id": {
+            "format": "uuid",
+            "title": "Dashboard Revision Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "prompt_id": {
+            "title": "Prompt Id",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "result_sha256": {
+            "title": "Result Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "dashboard_revision_id",
+          "project_id",
+          "audit_key",
+          "result_sha256",
+          "provider",
+          "model",
+          "prompt_id",
+          "prompt_version",
+          "config",
+          "cards",
+          "content",
+          "created_by",
+          "created_at"
+        ],
+        "title": "TextAudit",
+        "type": "object"
+      },
+      "TextAuditResponse": {
+        "additionalProperties": false,
+        "properties": {
+          "audit": {
+            "$ref": "#/components/schemas/TextAudit"
+          },
+          "reused": {
+            "title": "Reused",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "audit",
+          "reused"
+        ],
+        "title": "TextAuditResponse",
+        "type": "object"
+      },
       "TextBlock": {
         "additionalProperties": false,
         "properties": {
@@ -14737,6 +14974,347 @@
         "summary": "Get Revision",
         "tags": [
           "Dashboards"
+        ]
+      }
+    },
+    "/api/v1/dashboard-revisions/{revision_id}/text-audits": {
+      "get": {
+        "operationId": "listTextAudits",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "items": {
+                    "$ref": "#/components/schemas/TextAudit"
+                  },
+                  "title": "Response Listtextaudits",
+                  "type": "array"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "List Text Audits",
+        "tags": [
+          "Copiloto"
+        ]
+      },
+      "post": {
+        "description": "Auditoría textual de una revisión de dashboard publicada (Fase 11F): la guardada si su\nclave de contenido ya existe (`reused`), o una nueva. No modifica el dashboard.",
+        "operationId": "requestTextAudit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TextAuditResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Request Text Audit",
+        "tags": [
+          "Copiloto"
         ]
       }
     },

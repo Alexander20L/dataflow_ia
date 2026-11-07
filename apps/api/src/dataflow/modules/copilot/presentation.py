@@ -12,6 +12,8 @@ from dataflow.modules.copilot.contracts import (
     CreateConversationRequest,
     ExplainRequest,
     SendMessageRequest,
+    TextAudit,
+    TextAuditResponse,
     TurnResponse,
 )
 
@@ -138,3 +140,31 @@ def cleaning_plan(
     message_id: UUID, request: Request, identity: CurrentIdentity, service: Copilot
 ) -> ActionResult:
     return service.cleaning_plan(identity.user.id, message_id, request.state.correlation_id)
+
+
+@router.post(
+    "/dashboard-revisions/{revision_id}/text-audits",
+    response_model=TextAuditResponse,
+    operation_id="requestTextAudit",
+)
+def request_text_audit(
+    revision_id: UUID,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Copilot,
+    key: IdempotencyKey,
+) -> TextAuditResponse:
+    """Auditoría textual de una revisión de dashboard publicada (Fase 11F): la guardada si su
+    clave de contenido ya existe (`reused`), o una nueva. No modifica el dashboard."""
+    return service.text_audit(identity.user.id, revision_id, key, request.state.correlation_id)
+
+
+@router.get(
+    "/dashboard-revisions/{revision_id}/text-audits",
+    response_model=list[TextAudit],
+    operation_id="listTextAudits",
+)
+def list_text_audits(
+    revision_id: UUID, identity: CurrentIdentity, service: Copilot
+) -> list[TextAudit]:
+    return service.text_audits(identity.user.id, revision_id)

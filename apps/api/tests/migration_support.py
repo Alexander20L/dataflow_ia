@@ -24,7 +24,13 @@ TABLES_AFTER_0012 = {
     "automation_run_interpretations",
     # 0017: dashboard automático de cada pipeline (11E)
     "automation_run_analyses",
+    # 0018: auditorías textuales guardadas (11F)
+    "copilot_text_audits",
 }
+
+
+# Tablas posteriores a 0017 (para la prueba de 0017).
+TABLES_AFTER_0017 = {"copilot_text_audits"}
 
 
 def exists_at_0012(

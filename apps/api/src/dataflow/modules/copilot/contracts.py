@@ -90,6 +90,25 @@ class ExplainOutput(OutputModel):
     text: str
 
 
+Severity = Literal["alta", "media", "baja"]
+
+
+class Alerta(OutputModel):
+    titulo: str = Field(max_length=120)
+    detalle: str = Field(
+        max_length=600, description="Cifras sólo como {{evidence:<evidencia>}}, nunca escritas."
+    )
+    severidad: Severity
+
+
+class AuditoriaTextual(OutputModel):
+    """Auditoría textual de un dashboard publicado (Fase 11F, `copilot-audit@v1`)."""
+
+    resumen_ejecutivo: str = Field(max_length=1500)
+    alertas_criticas: list[Alerta] = Field(max_length=3)
+    recomendaciones: list[str] = Field(min_length=2, max_length=2)
+
+
 # --- (2) Vistas de la API -------------------------------------------------------------------
 
 
@@ -256,6 +275,57 @@ class ActionResult(CopilotModel):
     link: ActionLink
 
 
+class AuditAlert(CopilotModel):
+    titulo: list[Segment]
+    detalle: list[Segment]
+    severidad: Severity
+
+
+class AuditContent(CopilotModel):
+    """Auditoría ya verificada: cada cifra es un segmento con su evidencia y su ejecución."""
+
+    resumen_ejecutivo: list[Segment]
+    alertas_criticas: list[AuditAlert]
+    recomendaciones: list[list[Segment]]
+    unverified_numbers: int  # números escritos por el modelo que se retiraron
+
+
+class AuditCard(CopilotModel):
+    """Tarjeta del dashboard y si entró en la auditoría (sólo resultados terminados)."""
+
+    card_id: UUID
+    title: str
+    execution_id: UUID | None
+    included: bool
+    reason: Literal["not_executed", "not_ready"] | None = None
+
+
+class TextAudit(CopilotModel):
+    """Auditoría guardada. `audit_key` deriva del resultado auditado (`result_sha256`: cifras y
+    evidencias), proveedor y modelo, versión del prompt y configuración: la misma clave sobre la
+    misma revisión devuelve esta auditoría sin otra llamada."""
+
+    id: UUID
+    dashboard_revision_id: UUID
+    project_id: UUID
+    audit_key: str
+    result_sha256: str
+    provider: str
+    model: str  # el modelo que respondió
+    prompt_id: str
+    prompt_version: str
+    config: dict[str, Any]
+    cards: list[AuditCard]
+    content: AuditContent
+    created_by: UUID
+    created_at: datetime
+
+
+class TextAuditResponse(CopilotModel):
+    audit: TextAudit
+    reused: bool  # True: guardada antes, sin otra llamada al proveedor
+
+
 # --- (3) Puertos ------------------------------------------------------------------------------
 
 
@@ -333,6 +403,25 @@ class ResultCell:
 
 
 @dataclass(frozen=True)
+class DashboardCardFact:
+    id: UUID
+    title: str
+    metric: str  # m0, m1… métrica que dibuja la tarjeta
+    execution_id: UUID | None
+
+
+@dataclass(frozen=True)
+class DashboardFacts:
+    """Revisión publicada de un dashboard, sin importar el módulo dashboards."""
+
+    revision_id: UUID
+    project_id: UUID
+    title: str
+    description: str | None
+    cards: list[DashboardCardFact]
+
+
+@dataclass(frozen=True)
 class ResultFacts:
     execution_id: UUID
     operation: str
@@ -365,6 +454,10 @@ class CopilotSources(Protocol):
     def result(self, owner: UUID, execution: UUID, limit: int) -> ResultFacts: ...
     def evidence_value(self, owner: UUID, execution: UUID, evidence_id: str) -> str | None:
         """Recalcula la dirección de la cifra (como GET /evidence) y devuelve su valor."""
+        ...
+
+    def dashboard(self, owner: UUID, revision: UUID) -> DashboardFacts:
+        """Revisión exacta de un dashboard del propietario (ajena o inexistente: 404)."""
         ...
 
 
@@ -417,3 +510,9 @@ class CopilotRepository(Protocol):
     def log_call(self, record: CallRecord) -> UUID: ...
     def user_tokens_since(self, owner: UUID, since: datetime) -> int: ...
     def project_cost_since(self, project: UUID, since: datetime) -> Decimal: ...
+    def audit_by_key(self, revision: UUID, key: str) -> TextAudit | None: ...
+    def audit(self, owner: UUID, audit: UUID) -> TextAudit: ...
+    def audits(self, owner: UUID, revision: UUID) -> list[TextAudit]: ...
+    def save_audit(self, audit: TextAudit, call: UUID, correlation: str) -> TextAudit:
+        """Inserta la auditoría o, si otra petición guardó la misma clave, devuelve aquélla."""
+        ...

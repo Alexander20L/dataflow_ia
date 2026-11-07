@@ -227,3 +227,51 @@ export const UNAVAILABLE: Record<string, string> = {
   budget_exhausted:
     "Se alcanzó el límite de uso del copiloto. Se renueva automáticamente.",
 };
+
+// --- Auditoría textual de un dashboard publicado (Fase 11F) --------------------------------
+
+export type TextAudit = Schemas["TextAudit"];
+export type AuditContent = Schemas["AuditContent"];
+
+export function useTextAudits(revisionId: string) {
+  return useQuery({
+    queryKey: ["text-audits", revisionId],
+    queryFn: async ({ signal }) =>
+      requireData(
+        await api.GET("/api/v1/dashboard-revisions/{revision_id}/text-audits", {
+          signal,
+          params: { path: { revision_id: revisionId } },
+        }),
+      ),
+  });
+}
+
+/** Pide la auditoría: el servidor devuelve la guardada si su clave de contenido ya existe. */
+export function useRequestTextAudit(projectId: string, revisionId: string) {
+  const keys = useKeys();
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const { key, done } = keys.get({ revisionId });
+      const result = requireData(
+        await api.POST(
+          "/api/v1/dashboard-revisions/{revision_id}/text-audits",
+          {
+            params: {
+              path: { revision_id: revisionId },
+              header: { "Idempotency-Key": key },
+            },
+          },
+        ),
+      );
+      done();
+      return result;
+    },
+    onSettled: () => {
+      void client.invalidateQueries({ queryKey: ["text-audits", revisionId] });
+      void client.invalidateQueries({
+        queryKey: ["copilot-status", projectId],
+      });
+    },
+  });
+}
