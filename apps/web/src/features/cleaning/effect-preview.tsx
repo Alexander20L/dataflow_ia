@@ -9,6 +9,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/api";
+import {
+  ApprovalOriginNote,
+  PolicyApproveButton,
+} from "@/features/automation/policy-approval";
 import { ApprovalDialog } from "./approval-dialog";
 import { BeforeAfter } from "./before-after";
 import {
@@ -296,11 +300,18 @@ function Effect({
           {approval
             ? `Aprobada el ${new Date(approval.approved_at).toLocaleString("es-ES")}`
             : "Revisa el efecto antes de aprobarlo."}
+          {approval && <ApprovalOriginNote approvalId={approval.id} />}
         </span>
         {!approval ? (
-          <Button disabled={archived} onClick={() => setApproving(true)}>
-            <Wand2 size={16} /> Aprobar efecto…
-          </Button>
+          <>
+            <PolicyApproveButton
+              executionId={preview.execution_id}
+              disabled={archived}
+            />
+            <Button disabled={archived} onClick={() => setApproving(true)}>
+              <Wand2 size={16} /> Aprobar efecto…
+            </Button>
+          </>
         ) : (
           <>
             {(!applied || applied.state === "queued") && (

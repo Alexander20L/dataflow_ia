@@ -328,6 +328,32 @@
 .version-lineage > svg {
   color: var(--primary);
 }
+.active-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 8px 23px 0;
+  padding: 8px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.active-source-label {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.active-source-label > svg {
+  color: var(--primary);
+}
+.active-source-history {
+  flex-basis: 100%;
+  margin: 4px 0 0 18px;
+  display: grid;
+  gap: 4px;
+}
 .cleaning-stage {
   display: grid;
   gap: 14px;
@@ -4582,4 +4608,89 @@ tbody tr:hover {
 .text-audit-body ol {
   margin: 0;
   padding-left: 20px;
+}
+/* Fase 11B: política de automatización */
+.panel-lite {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.panel-lite > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.policy-editor[open] {
+  display: grid;
+  gap: 10px;
+}
+.policy-presets,
+.policy-limits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.policy-operations {
+  display: grid;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+}
+.policy-operation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.policy-reasons {
+  display: grid;
+  gap: 6px;
+  flex-basis: 100%;
+}
+.policy-reasons ul {
+  margin: 0;
+  padding-left: 18px;
+}
+/* Fase 11C: pipeline automático */
+.automation-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 8px 23px 0;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.automation-status.needs_review,
+.automation-status.failed {
+  border-color: #f59e0b66;
+}
+.automation-review ul,
+.automation-notices ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.automation-notices {
+  margin: 8px 23px 0;
+  font-size: 13px;
+}
+.automation-notices > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+/* Fase 11D: interpretación */
+.interpretation-editor {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
 }

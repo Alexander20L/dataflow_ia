@@ -88,6 +88,23 @@ def metric_problems(draft: MetricDraft, columns: list[dict[str, Any]]) -> list[M
                 f"«{names[draft.measure_column_id]}» es {measure}. Conviértela en Limpieza.",
             )
         )
+    if draft.second_measure_column_id is not None:
+        second = types.get(draft.second_measure_column_id)
+        if second is None:
+            problems.append(
+                MetricProblem(
+                    code="UNKNOWN_COLUMN", message="La segunda medida no existe en la tabla."
+                )
+            )
+        elif second not in measure_types(draft.aggregation):
+            problems.append(
+                MetricProblem(
+                    code="COLUMN_TYPE_MISMATCH",
+                    message=f"«{draft.aggregation}» necesita dos columnas numéricas; "
+                    f"«{names[draft.second_measure_column_id]}» es {second}. "
+                    "Conviértela en Limpieza.",
+                )
+            )
     if draft.time_column_id is not None:
         time_type = types.get(draft.time_column_id)
         if time_type is None:

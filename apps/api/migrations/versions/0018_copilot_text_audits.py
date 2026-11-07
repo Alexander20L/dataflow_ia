@@ -1,14 +1,13 @@
 """copilot: saved text audits of published dashboard revisions (Fase 11F)
 
-`down_revision` apunta a 0012 mientras las entregas 11A–11D (0013–0017) se integran: al fusionar,
-la sesión principal la vuelve a encadenar detrás del head real.
+Encadenada detrás de 0017 (Fase 11E) al integrarse con las entregas 11A–11E.
 """
 
 import sqlalchemy as sa
 from alembic import op
 
-revision = "0020"
-down_revision = "0012"
+revision = "0018"
+down_revision = "0017"
 branch_labels = None
 depends_on = None
 

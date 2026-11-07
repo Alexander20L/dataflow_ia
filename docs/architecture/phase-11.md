@@ -1,6 +1,6 @@
 # Fase 11 — Automatización determinista
 
-Estado: **11.0 implementada**; de 11A, la **propuesta de limpieza en el backend** está implementada y la sesión de análisis no. El resto (11A–11F) es plan objetivo y no describe funcionalidades implementadas. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
+Estado: **11.0 a 11E implementadas** (propuesta de limpieza en el backend, sesión de análisis con fuente única, aprobación por política, pipeline automático durable, moldes con interpretación reutilizable y dashboard automático). 11F se entrega en su propio PR y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
 
 ## Objetivo
 
@@ -124,6 +124,24 @@ Reglas:
 
 Persistencia: `analysis_sessions` (selección vigente: referencia mutable, con `revision` y control de concurrencia) y `analysis_session_input_revisions` (cada selección, inmutable por trigger).
 
+**Implementado** (módulo `analysis_sessions`, migración **0013**, sólo aditiva):
+
+- Una versión está **lista** cuando su procesamiento terminó bien y tiene tabla publicada (`AnalysisSessionInputs` en bootstrap). Seleccionar una en cola o en proceso responde 409 `INPUT_NOT_READY`; una que falló o se canceló, 409 `INPUT_INVALID`; una de otro proyecto, 404 `INPUT_NOT_FOUND`. En los tres casos la fuente activa no cambia.
+- Cada selección guarda la versión, su número, tipo y nombre de archivo, y la **tabla exacta** (artefacto y SHA-256), con autor y fecha. Seleccionar la misma tabla activa no crea revisión; una `expected_revision` antigua responde 409 `ANALYSIS_SESSION_CONFLICT`. Auditoría: `analysis_session.input_selected`.
+- Proyecto archivado: se puede consultar la sesión, no cambiar la fuente (409 `PROJECT_ARCHIVED`).
+- Los planes, ejecuciones y resultados ya fijan su tabla de entrada (Fases 2 y 4): cambiar la fuente activa no los altera y un resultado que termina después conserva su entrada original.
+- El módulo sólo usa sus puertos y `audit` (prueba AST); las pruebas de migraciones anteriores excluyen las tablas nuevas mediante `tests/migration_support.py`, que cada migración de la Fase 11 amplía.
+
+| Ruta                                    | Función                                                          |
+| --------------------------------------- | ---------------------------------------------------------------- |
+| POST `/projects/{id}/analysis-sessions` | Crea la sesión del proyecto (201) o devuelve la existente (200)  |
+| GET `/projects/{id}/analysis-session`   | Sesión del proyecto (404 si todavía no existe)                   |
+| GET `/analysis-sessions/{id}`           | Fuente activa, revisión y estado (`empty` o `ready`)             |
+| POST `/analysis-sessions/{id}/inputs`   | Selecciona una versión lista (`version_id`, `expected_revision`) |
+| GET `/analysis-sessions/{id}/inputs`    | Historial de selecciones, de la más reciente a la más antigua    |
+
+Pruebas: `tests/test_analysis_sessions.py` (una sesión por proyecto, candidata inválida o en cola que no sustituye a la activa, cambio de fuente con historial, plan anterior intacto, conflicto, sin cambios sin revisión, accesos y archivado) y `tests/test_migration_0013.py` (ida y vuelta, comparación de esquema, inmutabilidad y downgrade bloqueado).
+
 ### Propuesta de limpieza en el backend (implementada)
 
 El borrador inicial se armaba en el frontend (`initialDraft` y `draftSteps` en `features/cleaning/proposal.tsx`). Ahora es una función pura del backend, `modules/cleaning/proposal.py`:
@@ -149,6 +167,8 @@ Pruebas: `tests/test_cleaning_proposal.py` reproduce las reglas del frontend ant
 ### Frontend
 
 Indicador visible de fuente activa; sustitución explícita de fuente; aviso de cambios sin guardar (hook compartido existente); historial de entradas utilizadas.
+
+**Implementado** (`features/analysis-sessions`): bajo la franja de la versión, «Fuente activa: vN · archivo» con «Es la que estás viendo» o «Ver fuente activa»; en una versión procesada que no es la activa, «Usar vN como fuente activa» abre una confirmación que explica que planes y resultados no cambian; «Historial (N)» lista las selecciones. Cambiar la fuente no navega, así que no puede perder borradores; cambiar de versión sigue pasando por el aviso de cambios sin guardar. E2E: `analysis-session.spec.ts`.
 
 Cierre: subir CSV A; intentar un CSV B inválido y comprobar que A sigue activo; cambiar después a C sin alterar los análisis de A.
 
@@ -217,6 +237,30 @@ Sin fila en `automation_approvals`, la aprobación es humana. Desactivar o susti
 
 Cierre: una transformación autorizada publica una derivada; la misma operación fuera de sus límites se detiene con un motivo verificable y permite continuar manualmente.
 
+### Implementación (11B)
+
+Módulo `automation` (sólo sus puertos y `audit`, prueba AST), `PolicyCleaningAccess` en bootstrap y migración **0014**, sólo aditiva: `automation_policy_families`, `automation_policy_revisions`, `automation_policy_save_requests` y `automation_approvals` (las tres últimas inmutables por trigger).
+
+- **Columnas por nombre exacto.** Los IDs cambian en cada importación (Fase 6B); la política nombra columnas para aplicarse a cualquier carga con esos nombres. Una operación autorizada **sin alcance** no autoriza ninguna columna.
+- **Desglose por columna** (`column_effects` de la vista previa): celdas modificadas y nulos creados por columna, calculados con el mismo criterio que los totales. Se guarda junto al manifiesto, **fuera** de él: el `effect_sha256` no cambia y la aplicación compara el efecto completo como siempre. Una vista previa anterior no tiene desglose y se bloquea con `EFFECT_BREAKDOWN_MISSING`.
+- **Barreras exactas:** `excluidas × 100 > límite × entrada` en enteros y `Decimal`. Los nulos creados se comprueban sobre el total de celdas **y por columna** (sobre las filas de entrada), para que una columna muy afectada no se diluya.
+- **Aprobación:** si la política autoriza el efecto, `CleaningService.approve` crea la aprobación normal y, en la misma transacción (`before_commit`), `automation_approvals` registra la revisión exacta de la política, el efecto, la evaluación y el ejecutor (`manual` hoy; `pipeline` en 11C). Si ya hay una aprobación vigente del mismo efecto, se reutiliza.
+- **Revocación:** guardar una revisión nueva revoca, cada una en su transacción, las aprobaciones automáticas del proyecto aún no aplicadas; las aplicadas o en curso no cambian.
+
+| Ruta                                             | Función                                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| GET `/projects/{id}/automation-policy`           | Revisión vigente (`revision: null` si no hay política)                         |
+| POST `/projects/{id}/automation-policy`          | Nueva revisión (`expected_revision`, `Idempotency-Key`); sin cambios, la misma |
+| GET `/automation-policies/{revision_id}`         | Revisión exacta                                                                |
+| POST `/previews/{execution_id}/policy-approvals` | Evalúa con la política vigente; si autoriza, aprueba el efecto exacto          |
+| GET `/approvals/{approval_id}/origin`            | Si una aprobación la concedió una política, con su revisión y evaluación       |
+
+Códigos de evaluación: `POLICY_MISSING`, `POLICY_DISABLED`, `PLAN_INVALID`, `EFFECT_NOT_READY`, `EFFECT_BREAKDOWN_MISSING`, `OPERATION_NOT_AUTHORIZED`, `COLUMN_NOT_AUTHORIZED`, `TOKENS_NOT_AUTHORIZED`, `IDENTIFIER_CONVERSION`, `EXCLUDED_ROWS_ABOVE_LIMIT`, `NULLS_CREATED_ABOVE_LIMIT`, `ROUNDED_CELLS_ABOVE_LIMIT`, `OUTPUT_ROWS_BELOW_MINIMUM`. Un efecto bloqueado no cambia nada; la persona puede aprobarlo con «Aprobar efecto…».
+
+**Interfaz:** en la etapa Limpieza, «Modo automático» (editor de la política con perfiles Conservador y Tipado que sólo rellenan el formulario); en la vista previa, «Aprobar con la política» muestra los motivos si bloquea y, si aprueba, la aprobación lleva «Aprobada automáticamente por la política rev N».
+
+Pruebas: `test_automation_policy.py` (16 casos de la evaluación pura: valores por defecto, alcance, marcadores, identificadores, barreras en el límite exacto, nulos globales y por columna, plan y efecto), `test_automation_api.py` (revisiones, conflicto, validación, bloqueo y aprobación del efecto exacto, origen, reutilización, aplicación, revocación al cambiar la política, accesos), `test_cleaning_ops.py` (el desglose suma los totales) y `test_migration_0014.py`.
+
 ## 11C · Orquestación durable
 
 Estados: `running`, `needs_review`, `completed`, `failed`, `cancelled`.
@@ -258,6 +302,32 @@ Configurables por instalación: tamaño máximo de fuente, pipelines simultáneo
 
 Cierre: el pipeline se recupera tras reiniciar el worker y no duplica derivadas, aprobaciones ni ejecuciones aunque un evento se procese dos veces.
 
+### Implementación (11C)
+
+Migración **0015**, sólo aditiva: `automation_runs` (un pipeline por versión importada; estado, paso y referencias a lo que creó) y `automation_step_attempts` (registro de transiciones, inmutable por trigger).
+
+- **Inicio.** Al publicarse una importación (`DatasetPublication.published`, `csv_import`), si el proyecto tiene una política activa se crea el pipeline en **la misma transacción**, con la revisión de la política fijada. Es idempotente por versión (restricción única). Superado `DATAFLOW_AUTOMATION_MAX_RUNNING_PER_OWNER` (5 por defecto), la carga queda en `needs_review` con `AUTOMATION_LIMIT`.
+- **Avance.** `PipelineService` (`modules/automation/pipeline.py`) encadena casos de uso existentes a través de `PipelineAccess` (bootstrap): propuesta (11A) → plan → vista previa → aprobación por política (11B, ejecutor `pipeline`) → aplicación → diagnóstico de la derivada → reglas de calidad (conjunto aplicable o aviso `RULESET_NOT_APPLICABLE`) → fuente activa de la sesión (11A). Sin nada que limpiar, se activa la versión importada.
+- **Durabilidad.** El worker reconcilia después de cada trabajo y en cada vuelta en reposo (`reconcile`): avanza los pipelines `running`, también los que quedaron a medias por una caída. Cada paso usa una clave idempotente `uuid5(pipeline, paso)` en planning, cleaning y quality, así que repetirlo devuelve lo mismo; un lock de sesión por pipeline (`pg_try_advisory_lock`) evita que dos workers lo avancen a la vez. Se usó el encolado transaccional existente: no hizo falta un outbox aparte.
+- **Sin reintentos.** Un fallo de ejecución, un bloqueo de la política, un cambio de política (`POLICY_CHANGED`) o un caso de uso que rechaza el paso (`STEP_ERROR`) detiene el pipeline en `needs_review` con motivos; el reconciliador no lo vuelve a intentar.
+- **Cancelar** detiene el pipeline y cancela su vista previa o aplicación si siguen en cola.
+
+| Ruta                                 | Función                                            |
+| ------------------------------------ | -------------------------------------------------- |
+| GET `/projects/{id}/automation-runs` | Pipelines del proyecto, paginados                  |
+| GET `/automation-runs/{id}`          | Pipeline con su registro de pasos                  |
+| POST `/automation-runs/{id}/cancel`  | Cancelar                                           |
+| GET `/versions/{id}/automation-run`  | Pipeline de una versión (o `null`)                 |
+| GET `/notifications`                 | Pipelines en `needs_review` o `failed` del usuario |
+
+La ruta prevista `/analysis-sessions/{id}/automation-runs` se implementó por proyecto (una sesión por proyecto en 11A).
+
+**Interfaz:** bajo la fuente activa, el estado del pipeline de la versión que se ve (paso en curso con «Cancelar», «Revisión necesaria» con motivos, o «listo» con «Ver la versión limpia») y la bandeja «N cargas automáticas esperan revisión».
+
+**Pendiente:** la retención de derivadas automáticas no activas y el aviso por correo quedan para un incremento posterior; hoy la bandeja de avisos está sólo en la aplicación.
+
+Pruebas: `test_automation_pipeline.py` (pipeline completo de `ventas_calidad.csv` hasta la derivada activa con aprobación `pipeline`, bloqueo por política sin cambios, nada que limpiar, política desactivada, reconciliaciones repetidas sin duplicar vistas previas, cancelación, cambio de política a mitad, límite de pipelines y privacidad) y `test_migration_0015.py`.
+
 ## 11D · Moldes e interpretación reutilizable
 
 ### Moldes iniciales
@@ -285,19 +355,52 @@ La igualdad de nombres o del hash de esquema **no** es prueba de equivalencia de
 
 Cierre: la primera carga pide las definiciones necesarias; otra carga compatible reutiliza el mapeo sin preguntar; una incompatible pide revisión en vez de inventar significado.
 
+### Implementación (11D)
+
+Módulo `templates` (sólo sus puertos y `audit`, prueba AST), `TemplateTablesAccess` en bootstrap y migración **0016**, sólo aditiva: `template_mapping_families` (una por proyecto y molde), `template_mapping_revisions` y `template_mapping_save_requests` (inmutables), y `automation_run_interpretations` (1:1 con el pipeline: mapeo aplicado, revisión semántica y número de pasada; tabla aparte para no añadir columnas a `automation_runs`, como en los ADR-014 y ADR-015).
+
+- **Candidatos** (`GET /representations/{id}/template-candidates`): reglas por nombre y tipo; la sugerencia de rol del perfil sólo se usa donde no es ambigua (fechas, importe y dimensión de Ventas, fecha de corte de Inventario), para que un CSV de ventas no parezca un inventario completo. Si el proyecto ya tiene un mapeo de ese molde, se indica si es compatible con la tabla.
+- **Mapeo confirmado** (`POST /projects/{id}/template-mappings`, revisiones con `expected_revision` e `Idempotency-Key`): rol → columna por nombre, tipo destino (y escala), moneda (roles de importe), unidad (cantidad) y grano (Ventas: `venta`, `pedido` o `linea`). Se valida contra el molde (422 `TEMPLATE_MAPPING_INVALID`).
+- **Compatibilidad:** columnas por nombre; mismo tipo y escala, o texto que se convierte con la conversión confirmada; un tipo distinto o una columna ausente es incompatible.
+- **En el pipeline:** antes de proponer, un mapeo incompatible detiene (`MAPPING_INCOMPATIBLE`) sin limpiar nada; uno compatible añade sus **conversiones confirmadas** a la propuesta (`cleaning-proposal@1` admite `casts`; la UI no las envía). Tras activar la versión limpia, el paso `interpret` guarda una revisión semántica normal que confirma los roles, la moneda o unidad y el grano. Sin mapeo, se detiene con `MAPPING_REQUIRED` (la versión limpia ya es la fuente activa).
+- **Reanudar** (`POST /automation-runs/{id}/resume`): sólo para paradas de interpretación. Desde `interpret` hace **otra pasada** sobre la importación original con la interpretación confirmada (claves idempotentes propias de la pasada), así la nueva versión limpia queda tipada; la anterior se conserva en el historial.
+
+**Interfaz:** cuando un pipeline pide la interpretación, la franja muestra el editor (molde candidato, columna y tipo por rol, moneda, unidad y grano); «Confirmar interpretación» guarda el mapeo y reanuda el pipeline.
+
+Pruebas: `test_templates.py` (candidatos de ventas e inventario, validación, compatibilidad, borrador semántico y API con revisiones, conflicto y compatibilidad) y `test_automation_interpretation.py` (primera carga que pide la interpretación y, al reanudar, reprocesa con conversiones y confirma la semántica; carga compatible sin preguntar; incompatible que se detiene antes de limpiar; sólo se reanudan paradas de interpretación), `test_migration_0016.py`.
+
 ## 11E · Dashboard automático determinista
 
 Cada molde genera **planes analíticos y una configuración visual versionados**, reutilizando métricas y consultas de `analytics`, la evidencia por cifra y la persistencia de dashboards (Fase 8, `cause: template`). El resultado visual mantiene tres niveles: `kpis`, `charts`, `table_detail`. Procedencia y advertencias son metadatos de la ejecución.
 
-### Ampliaciones de `analytics` necesarias
+### Ampliaciones de `analytics` necesarias (implementadas)
 
-| Necesidad                                     | Estado                                    | Propuesta (`analytics.query@3`)                                                              |
-| --------------------------------------------- | ----------------------------------------- | -------------------------------------------------------------------------------------------- |
-| Valor del inventario = Σ(cantidad × costo)    | No existe: una métrica agrega una columna | Agregación `sum_product` sobre dos medidas, aritmética exacta y evidencia como `sum`         |
-| No sumar cortes de inventario entre fechas    | No existe: `sum` suma todos los periodos  | Medida **semi-aditiva**: «último corte» por periodo (`last_snapshot`), declarada en el molde |
-| Ventas por mes, top N, % del total, variación | Existe (`analytics.query@2`, Fase 7B)     | —                                                                                            |
+| Necesidad                                     | Estado                                | `analytics.query@3`                                                                             |
+| --------------------------------------------- | ------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| Valor del inventario = Σ(cantidad × costo)    | **Implementada**                      | Agregación `sum_product` sobre dos medidas, aritmética exacta y evidencia como `sum`            |
+| No sumar cortes de inventario entre fechas    | **Implementada**                      | Medida **semi-aditiva** `last_snapshot`: último corte de cada periodo, común a todos sus grupos |
+| Ventas por mes, top N, % del total, variación | Existe (`analytics.query@2`, Fase 7B) | Igual en `@3`                                                                                   |
 
-`analytics.query@1` y `@2` no cambian; referencias congeladas como en la Fase 7B.
+`analytics.query@1` y `@2` no cambian (modelo, motor y resultado; la referencia congelada de `@1` sigue intacta) y **rechazan** las métricas nuevas: planning con `METRIC_UNSUPPORTED` («necesita analytics.query@3») y el motor con el mismo código si un plan llegara a ejecutarse. Catálogo **`analysis-v7`** con los tres descriptores.
+
+**Métrica.** Dos campos opcionales en el contenido de la métrica (sin migración: las métricas se guardan como contenido JSON en `analytics_metric_revisions`):
+
+| Campo                      | Contenido                                                                                          |
+| -------------------------- | -------------------------------------------------------------------------------------------------- |
+| `second_measure_column_id` | segunda medida; obligatoria con `sum_product` y sólo con ella                                      |
+| `semi_additive`            | `last_snapshot` o nulo; sólo con `sum` y `sum_product` y con columna temporal (la fecha del corte) |
+
+Sin usarse, los dos campos quedan **fuera del hash** (`MetricContent.hashed()`): toda métrica guardada antes conserva su `content_sha256` y las referencias exactas de los planes siguen siendo válidas.
+
+**`sum_product`.** Σ(medida × segunda medida) fila a fila, en `int`/`Decimal` dentro del contexto único `exact_context()` (11.0): el producto de dos valores de 38 dígitos y su suma nunca se redondean. Un nulo en cualquiera de las dos medidas excluye la fila y se cuenta en `excluded_by_nulls`. Escala del resultado = suma de las escalas (entero × decimal(3) → 3; decimal(3) × decimal(3) → 6; entero × entero → entero); más de 38 dígitos → `RESULT_PRECISION_EXCEEDED`. Requisito semántico: **ambas** columnas numéricas y confirmadas como `measure`. Unidad: una cantidad por un costo unitario da la moneda del costo; dos unidades, su producto («kg×m»); **dos monedas no se multiplican** (`UNIT_MISMATCH`). Es sumable entre grupos: admite % del total.
+
+**`last_snapshot`.** El corte de un periodo es la última fecha de negocio con filas incluidas (filtros y nulos ya aplicados) **dentro del periodo**, o de todo el resultado si no se agrupa por tiempo. Es **común a todos los grupos del periodo**: cada grupo suma sólo sus filas de esa fecha, de modo que la suma de los grupos coincide con el total sin dimensiones (dashboard coherente) y nunca se suman cortes de fechas distintas. Un grupo que sólo tiene filas de cortes anteriores existe pero vale **nulo** («sin filas en el corte»), nunca 0. Una fila sin fecha no pertenece a ningún corte: se excluye y se cuenta como nulo. Las filas de fechas anteriores al corte se declaran en `snapshot.superseded_rows` (las que forman el valor son `included_rows − superseded_rows`); en las comparaciones, la base usa el último corte del periodo base (`snapshot.base_superseded_rows`). Exige la columna temporal confirmada como `business_date` aunque la consulta no agrupe por tiempo.
+
+**Resultado y evidencia.** `AnalysisResultV3` (`operation: analytics.query@3`) es el de `@2` con `MetricDefinitionV3` (segunda medida, `semi_additive`, `snapshot`) y filas con `snapshots` (métrica → fecha del corte usado). La dirección de `value` no cambia (misma fórmula que `@1` y `@2`); `GET /evidence` devuelve además `snapshot`. Con métricas de `@2`, `@3` calcula exactamente las mismas cifras, conteos y `evidence_id` que `@2`.
+
+**API e interfaz.** Cambios aditivos (agregación `sum_product`, campos opcionales de métrica, `AnalysisResultV3`, `METRIC_UNSUPPORTED`, `analysis-v7`). La interfaz crea `@3` cuando alguna métrica elegida lo necesita y muestra «Suma de productos»; el formulario «Nueva métrica» no ofrece todavía las agregaciones nuevas (las crean los moldes de 11E) y «Añadir a un dashboard» sigue limitado a `@2` hasta que los dashboards admitan `@3`. Sin migración; API y worker se despliegan juntos (un worker anterior no tiene ejecutor para `analytics.query@3`).
+
+Pruebas: `tests/test_analytics_query_v3.py` (motor: escalas y exactitud de `sum_product`, nulos en cualquiera de las medidas, más de 38 dígitos, último corte por periodo y sin agrupar, corte común a los grupos y suma coherente, rango y filtros, comparación con la base de su último corte, % del total, evidencia, `@3` igual a `@2` en los 8 casos de la referencia congelada, `@1`/`@2` que rechazan las métricas nuevas, validación de la métrica y hash de las métricas anteriores), `tests/test_planning_domain.py` (versión mínima, ambas medidas confirmadas, unidades, fecha de corte confirmada) y `tests/test_analytics_query_v3_runner.py` (de punta a punta con PostgreSQL: métrica por la API, plan `@2` rechazado, `@3` ejecutado, evidencia con corte y CSV).
 
 ### Reglas
 
@@ -309,6 +412,21 @@ Cada molde genera **planes analíticos y una configuración visual versionados**
 - Publicar un dashboard coherente; si se admite un resultado parcial, identificar exactamente qué falta.
 
 Cierre: el mismo input, configuración y entorno lógico producen el mismo contenido calculado, excluyendo IDs y fechas operativas.
+
+### Implementación del dashboard automático (11E)
+
+Tras `interpret`, el pipeline sigue con `analyze` y `publish` (migración **0017**, aditiva: `automation_run_analyses`, 1:1 con el pipeline).
+
+- **Especificación por molde** (`modules/templates/analysis.py`, `template-analysis@1`, datos puros): métricas, consultas y tarjetas en orden estable.
+  - **Ventas** (`analytics.query@2`): KPI de ventas totales, operaciones y ticket promedio; línea de ventas por mes; barras con el top 10 por la dimensión y su % del total; tabla de detalle con el top 20.
+  - **Inventario** (`analytics.query@3`): unidades con **último corte** (`last_snapshot`, nunca suma cortes entre fechas) y productos distintos; valor del inventario (`sum_product` cantidad × costo, último corte) en su **propia consulta** para no mezclar unidad y moneda (`UNIT_MISMATCH`); top 10 de productos; detalle de menor stock por ubicación o producto.
+  - **Genérico:** sin dashboard.
+- **`analyze`:** crea las métricas sobre la tabla limpia (familias nuevas: cada importación tiene otros IDs de columna), los planes con la revisión semántica confirmada fijada y lanza las consultas **respetando la capacidad** del propietario (`QUEUE_LIMIT`, 3 trabajos activos): las pendientes se lanzan en reconciliaciones siguientes. Claves idempotentes por pasada y consulta.
+- **`publish`:** cuando todas las consultas terminaron, crea el dashboard del molde la primera vez y, en cargas siguientes, guarda una **revisión nueva del mismo dashboard** (IDs de tarjeta estables), de modo que el historial conserva cada carga. Una tarjeta fallida conserva su estado (`failed`, `insufficient_data`…) sin romper las demás.
+- **Dashboards** aceptan ahora tarjetas de `analytics.query@3` además de `@2`.
+- **Interfaz:** al terminar, la franja del pipeline ofrece «Ver dashboard».
+
+Pruebas: `test_automation_dashboard.py` (especificación estable de ventas; inventario con último corte y moneda separada; pipeline que publica el dashboard con sus 6 tarjetas listas y, con una segunda carga, revisa el mismo dashboard) y `test_migration_0017.py`.
 
 ## 11F · Auditoría textual IA
 
@@ -354,7 +472,7 @@ Cierre: si la IA falla, el dashboard sigue disponible; una cifra sin evidencia s
 
 **Reproducibilidad.** `result_sha256` = hash canónico de lo auditado (título y descripción del dashboard y, por tarjeta, título, métrica, ejecución, operación y cada cifra con su evidencia). `audit_key` = hash de `result_sha256`, proveedor, modelo, `copilot-audit@v1` y configuración (`max_output_tokens`, cifras por tarjeta y parámetros normalizados del proveedor). Con la misma clave sobre la misma revisión se devuelve la guardada (`reused: true`) **sin llamar al proveedor**; otra configuración u otro resultado es otra clave. Sólo se guarda una auditoría aceptada: un fallo del proveedor o una auditoría anulada se registran en `copilot_ai_calls` y no dejan nada guardado, así que un reintento vuelve a llamar. No se usan temperatura ni `seed` como promesa de determinismo.
 
-**Persistencia.** Migración **0020** (`down_revision = "0012"`; la sesión principal la re-encadena detrás de 0017 al integrar): tabla `copilot_text_audits`, inmutable por trigger, única por `(dashboard_revision_id, audit_key)` (dos peticiones simultáneas guardan una sola), con el modelo que respondió, el prompt, la configuración, las tarjetas, el contenido verificado y la llamada (`call_id`). La idempotencia de la petición reutiliza `copilot_requests` con la revisión como ámbito. Downgrade bloqueado si hay auditorías.
+**Persistencia.** Migración **0018** (`down_revision = "0012"`; la sesión principal la re-encadena detrás de 0017 al integrar): tabla `copilot_text_audits`, inmutable por trigger, única por `(dashboard_revision_id, audit_key)` (dos peticiones simultáneas guardan una sola), con el modelo que respondió, el prompt, la configuración, las tarjetas, el contenido verificado y la llamada (`call_id`). La idempotencia de la petición reutiliza `copilot_requests` con la revisión como ámbito. Downgrade bloqueado si hay auditorías.
 
 **Interfaz.** Panel «Auditoría textual (IA)» al pie del dashboard en la etapa Visualización: muestra la última auditoría de la revisión que se ve, pide una nueva o devuelve la guardada, enlaza cada cifra con su procedencia y avisa de las cifras retiradas y de las tarjetas no auditadas. No modifica tarjetas, filtros ni revisiones; si la IA falla, muestra el motivo y el dashboard sigue igual. Con la IA desactivada, el botón queda inactivo con el mismo aviso que el copiloto. El proveedor falso (`simulation.audit`) responde de forma determinista para pytest y E2E.
 

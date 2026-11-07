@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 from dataflow.bootstrap.ai import configured
 from dataflow.bootstrap.services import (
     make_analysis,
+    make_analysis_sessions,
+    make_automation,
     make_cleaning,
     make_cleaning_proposals,
     make_copilot,
@@ -16,13 +18,18 @@ from dataflow.bootstrap.services import (
     make_executions,
     make_ingestion,
     make_metrics,
+    make_pipeline,
     make_planning,
     make_reports,
     make_rulesets,
     make_semantics,
+    make_templates,
 )
 from dataflow.integrations.ai import AIProvider
+from dataflow.modules.analysis_sessions.application import AnalysisSessionService
 from dataflow.modules.analytics.application import MetricService
+from dataflow.modules.automation.application import AutomationService
+from dataflow.modules.automation.pipeline import PipelineService
 from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
 from dataflow.modules.copilot.application import CopilotConfig, CopilotService
 from dataflow.modules.dashboards.application import DashboardService
@@ -38,6 +45,7 @@ from dataflow.modules.projects.application import ProjectService
 from dataflow.modules.projects.infrastructure import SQLProjectRepository
 from dataflow.modules.quality.application import RulesetService
 from dataflow.modules.reports.application import ReportService
+from dataflow.modules.templates.application import TemplateService
 from dataflow.modules.understanding.public import SemanticService
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import get_db
@@ -190,3 +198,31 @@ def cleaning_proposal_service(db: Db, objects: Objects) -> CleaningProposals:
 
 
 CleaningProposalsDep = Annotated[CleaningProposals, Depends(cleaning_proposal_service)]
+
+
+def analysis_session_service(db: Db) -> AnalysisSessionService:
+    return make_analysis_sessions(db)
+
+
+AnalysisSessions = Annotated[AnalysisSessionService, Depends(analysis_session_service)]
+
+
+def automation_service(db: Db, objects: Objects) -> AutomationService:
+    return make_automation(db, objects)
+
+
+Automation = Annotated[AutomationService, Depends(automation_service)]
+
+
+def pipeline_service(db: Db, objects: Objects) -> PipelineService:
+    return make_pipeline(db, objects)
+
+
+Pipelines = Annotated[PipelineService, Depends(pipeline_service)]
+
+
+def template_service(db: Db, objects: Objects) -> TemplateService:
+    return make_templates(db, objects)
+
+
+Templates = Annotated[TemplateService, Depends(template_service)]

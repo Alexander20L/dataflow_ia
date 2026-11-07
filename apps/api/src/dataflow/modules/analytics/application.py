@@ -11,6 +11,8 @@ from uuid import UUID, uuid4
 from dataflow.modules.analytics.contracts import (
     AnalysisResult,
     AnalysisResultV2,
+    AnalysisResultV3,
+    AnyAnalysisResult,
     BaseTable,
     EvidenceReference,
     EvidenceView,
@@ -24,6 +26,7 @@ from dataflow.modules.analytics.contracts import (
     MetricSummary,
     ResultRow,
     ResultRowV2,
+    ResultRowV3,
     SaveMetricResponse,
     measure_types,
 )
@@ -57,7 +60,8 @@ class UnitOfWork(Protocol):
 
 
 def content_sha256(content: MetricContent) -> str:
-    return digest("analytics_metric", content.model_dump(mode="json"))
+    """Los campos de 11E no cuentan si no se usan: las métricas anteriores conservan su hash."""
+    return digest("analytics_metric", content.hashed())
 
 
 class MetricService:
@@ -116,7 +120,7 @@ class MetricService:
                 {
                     "family_id": str(family) if family else None,
                     "expected_revision": expected,
-                    "draft": draft.model_dump(mode="json"),
+                    "draft": draft.hashed(),
                     "base_table": base.model_dump(mode="json"),
                 },
             )
@@ -182,15 +186,20 @@ class MetricService:
             measure_types=sorted(measure_types(content.aggregation)),
             time_column_id=content.time_column_id,
             filter_column_ids=[f.column_id for f in content.filters],
+            second_measure_column_id=content.second_measure_column_id,
+            semi_additive=content.semi_additive,
+            requires_query_v3=content.requires_query_v3,
         )
 
-    def result(self, owner: UUID, execution: UUID) -> AnalysisResult | AnalysisResultV2:
+    def result(self, owner: UUID, execution: UUID) -> AnyAnalysisResult:
         content = self.tables.analysis_result(owner, execution)
         if content is None:
             raise ApplicationError(
                 "RESULT_NOT_READY", "El resultado del análisis no está disponible.", 409
             )
         data = json.loads(content)
+        if data.get("operation") == "analytics.query@3":
+            return AnalysisResultV3.model_validate(data)
         if data.get("operation") == "analytics.query@2":
             return AnalysisResultV2.model_validate(data)
         return AnalysisResult.model_validate(data)
@@ -228,6 +237,9 @@ class MetricService:
                     labels=row.labels,
                     operation=result.operation,
                     metric_value=row.values[cell.metric_key],
+                    snapshot=row.snapshots.get(cell.metric_key)
+                    if isinstance(row, ResultRowV3)
+                    else None,
                     **cell.context,
                 )
         raise ApplicationError("EVIDENCE_NOT_FOUND", "Esa cifra no existe en el resultado.", 404)
@@ -243,13 +255,13 @@ class AddressedCell:
     context: dict[str, Any]
 
 
-def addressed_cells(
-    result: AnalysisResult | AnalysisResultV2, row: ResultRow
-) -> Iterator[AddressedCell]:
+def addressed_cells(result: AnyAnalysisResult, row: ResultRow) -> Iterator[AddressedCell]:
     """Todas las cifras direccionables de una fila, con el detalle que las generó."""
     for key, identifier in row.evidence.items():
         yield AddressedCell(key, "value", identifier, None, row.values[key], {})
-    if not isinstance(result, AnalysisResultV2) or not isinstance(row, ResultRowV2):
+    if not isinstance(result, AnalysisResultV2 | AnalysisResultV3) or not isinstance(
+        row, ResultRowV2
+    ):
         return
     for key, comparisons in row.comparisons.items():
         for kind, comparison in comparisons.items():

@@ -139,6 +139,16 @@ class EffectCounts(BaseModel):
     created_nulls: int = Field(ge=0)
 
 
+class ColumnEffectCounts(BaseModel):
+    """Desglose por columna del efecto (Fase 11B). Se guarda junto al manifiesto, fuera de él:
+    el `effect_sha256` no cambia y la aplicación sigue comparando el efecto completo."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    column_id: str
+    modified_cells: int = Field(ge=0)
+    created_nulls: int = Field(ge=0)
+
+
 class EffectSample(BaseModel):
     """Ejemplo antes/después. `after` es None si el registro se excluye."""
 
@@ -249,6 +259,8 @@ class PreviewView(CleaningModel):
     approval: ApprovalView | None
     apply: ApplyStatus | None
     failure: PreviewFailure | None = None
+    # Fase 11B: None en vistas previas anteriores (sin desglose guardado).
+    column_effects: list[ColumnEffectCounts] | None = None
 
 
 class LineageOperation(CleaningModel):

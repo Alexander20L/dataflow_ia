@@ -1,11 +1,27 @@
 """Registro explícito de modelos exclusivamente en el límite de composición."""
 
+from dataflow.modules.analysis_sessions.infrastructure import (
+    AnalysisSessionInputRecord,
+    AnalysisSessionRecord,
+)
 from dataflow.modules.analytics.infrastructure import (
     MetricFamilyRecord,
     MetricRevisionRecord,
     MetricSaveRequest,
 )
 from dataflow.modules.audit.infrastructure import AuditRecord
+from dataflow.modules.automation.infrastructure import (
+    AutomationApprovalRecord,
+    AutomationPolicyFamilyRecord,
+    AutomationPolicyRevisionRecord,
+    AutomationPolicySaveRequest,
+)
+from dataflow.modules.automation.pipeline_infrastructure import (
+    AutomationRunAnalysisRecord,
+    AutomationRunInterpretationRecord,
+    AutomationRunRecord,
+    AutomationStepAttemptRecord,
+)
 from dataflow.modules.cleaning.repository import CleaningApprovalRecord
 from dataflow.modules.copilot.infrastructure import (
     ActionLinkRecord,
@@ -58,6 +74,11 @@ from dataflow.modules.reports.infrastructure import (
     ReportRenderRecord,
     ReportRevisionRecord,
     ReportSaveRequest,
+)
+from dataflow.modules.templates.infrastructure import (
+    TemplateMappingFamilyRecord,
+    TemplateMappingRevisionRecord,
+    TemplateMappingSaveRequest,
 )
 from dataflow.modules.understanding.semantic_repository import (
     SemanticFamilyRecord,
@@ -112,4 +133,17 @@ __all__ = [
     "TextAuditRecord",
     "ActionLinkRecord",
     "CopilotRequest",
+    "AnalysisSessionRecord",
+    "AnalysisSessionInputRecord",
+    "AutomationPolicyFamilyRecord",
+    "AutomationPolicyRevisionRecord",
+    "AutomationPolicySaveRequest",
+    "AutomationApprovalRecord",
+    "AutomationRunRecord",
+    "AutomationRunInterpretationRecord",
+    "AutomationRunAnalysisRecord",
+    "AutomationStepAttemptRecord",
+    "TemplateMappingFamilyRecord",
+    "TemplateMappingRevisionRecord",
+    "TemplateMappingSaveRequest",
 ]

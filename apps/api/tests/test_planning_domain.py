@@ -522,3 +522,111 @@ def test_share_of_total_requires_additive_metrics() -> None:
         ("SHARE_NOT_ADDITIVE", "share_of_total", "plan_steps")
     ]
     assert str(average) in found[0].message
+
+
+# --- Fase 11E: métricas de analytics.query@3 ---------------------------------------------
+
+QUANTITY = uuid4()
+V3_COLUMNS = {**TYPED_COLUMNS, QUANTITY: "integer"}
+
+
+def v3_problems(
+    requirement_: MetricRequirement,
+    version: int = 3,
+    roles: dict[UUID, str] | None = None,
+    units: dict[UUID, str | None] | None = None,
+    time_grain: str | None = None,
+) -> list[Problem]:
+    """Valida una consulta con una sola métrica como `fake.query@version`."""
+    metric = uuid4()
+    descriptor = OperationDescriptor(
+        "fake.query",
+        version,
+        "Consulta",
+        "table",
+        "analysis_result",
+        QueryParameters,
+        metric_reference="metrics",
+    )
+    parameters: dict[str, Any] = {
+        "metrics": [{"revision_id": str(metric), "content_sha256": "a" * 64}]
+    }
+    if time_grain:
+        parameters["time_grain"] = time_grain
+    draft = PlanDraft(
+        semantic_ref=SEMANTIC_REF, steps=[step("query", "fake.query", None, parameters)]
+    )
+    draft = draft.model_copy(
+        update={"steps": [draft.steps[0].model_copy(update={"version": version})]}
+    )
+    facts = PlanningFacts(
+        input_kind="table",
+        column_ids=frozenset(V3_COLUMNS),
+        semantic_pinned=True,
+        confirmed_roles=roles  # type: ignore[arg-type]
+        if roles is not None
+        else {AMOUNT: "measure", QUANTITY: "measure", DAY: "business_date"},
+        column_types=V3_COLUMNS,  # type: ignore[arg-type]
+        metrics={metric: requirement_},
+        column_units=units if units is not None else {AMOUNT: "currency:COP", QUANTITY: "unit:kg"},
+    )
+
+    class Catalog(FakeCatalog):
+        def descriptor(self, name: str, version_: int) -> OperationDescriptor | None:
+            if name == "fake.query" and version_ == version:
+                return descriptor
+            return super().descriptor(name, version_)
+
+    return validate_plan(draft, Catalog(), facts)
+
+
+def inventory_value(time: UUID | None = None, snapshot: bool = False) -> MetricRequirement:
+    return MetricRequirement(
+        "a" * 64,
+        QUANTITY,
+        NUMERIC,
+        True,
+        time,
+        (),
+        additive=True,
+        second_measure_column_id=AMOUNT,
+        requires_time_role=snapshot,
+        min_query_version=3,
+    )
+
+
+def test_v3_metrics_are_rejected_by_older_query_versions() -> None:
+    assert v3_problems(inventory_value(), version=3) == []
+    for version in (1, 2):
+        found = v3_problems(inventory_value(), version=version)
+        assert [(p.code, p.resolve_in) for p in found] == [("METRIC_UNSUPPORTED", "plan_steps")]
+        assert "fake.query@3" in found[0].message
+
+
+def test_sum_product_requires_both_measures_confirmed_and_numeric() -> None:
+    found = v3_problems(inventory_value(), roles={QUANTITY: "measure"})
+    assert [(p.code, p.resolve_in) for p in found] == [
+        ("SEMANTIC_REQUIREMENT_MISSING", "understanding")
+    ]
+    assert str(AMOUNT) in found[0].message
+    missing = MetricRequirement(
+        "a" * 64, QUANTITY, NUMERIC, True, None, (), second_measure_column_id=uuid4()
+    )
+    assert [p.code for p in v3_problems(missing)] == ["METRIC_REFERENCE_MISMATCH"]
+
+
+def test_sum_product_units_combine_and_two_currencies_are_rejected() -> None:
+    assert v3_problems(inventory_value(), units={AMOUNT: "currency:COP", QUANTITY: None}) == []
+    found = v3_problems(inventory_value(), units={AMOUNT: "currency:COP", QUANTITY: "currency:USD"})
+    assert [p.code for p in found] == ["UNIT_MISMATCH"]
+
+
+def test_last_snapshot_requires_a_confirmed_business_date_without_grouping_by_time() -> None:
+    snapshot = inventory_value(DAY, snapshot=True)
+    assert v3_problems(snapshot) == []
+    found = v3_problems(snapshot, roles={AMOUNT: "measure", QUANTITY: "measure"})
+    assert [(p.code, p.resolve_in) for p in found] == [
+        ("SEMANTIC_REQUIREMENT_MISSING", "understanding")
+    ]
+    # Una métrica sin último corte no exige la fecha si no se agrupa por tiempo (como en @2).
+    assert v3_problems(inventory_value(DAY), roles={AMOUNT: "measure", QUANTITY: "measure"}) == []

@@ -10,6 +10,7 @@ from typing import Any
 import polars as pl
 
 from dataflow.modules.cleaning.contracts import (
+    ColumnEffectCounts,
     EffectCounts,
     EffectSample,
     Match,
@@ -249,6 +250,48 @@ def rounded_cells(
     return total
 
 
+def column_change(
+    source: pl.DataFrame,
+    result: pl.DataFrame,
+    column: dict[str, Any],
+    output: dict[str, Any],
+    positions: pl.Series,
+) -> tuple[pl.Series, pl.Series, pl.Series, pl.Series]:
+    """Valores originales, antes y después (por fila de salida) y celdas modificadas: cambia de
+    valor o de tipo conservando un valor no nulo (contrato §6)."""
+    original = cell_strings(source, column)
+    before = original.gather(positions)
+    after = cell_strings(result, output)
+    retyped = column.get("technical_type", "string") != output.get("technical_type", "string")
+    both = before.is_not_null() & after.is_not_null()
+    modified = (
+        (before.is_null() != after.is_null()) | (both & ((before != after) | retyped))
+    ).fill_null(False)
+    return original, before, after, modified
+
+
+def column_effects(
+    source: pl.DataFrame,
+    result: pl.DataFrame,
+    columns: list[dict[str, Any]],
+    output_columns: list[dict[str, Any]],
+) -> list[ColumnEffectCounts]:
+    """Desglose por columna (Fase 11B) con el mismo criterio que `effect`: celdas modificadas y
+    nulos creados en las filas que se conservan. Las exclusiones se cuentan en el total."""
+    positions = result.get_column(SOURCE_ROW) - 1
+    breakdown: list[ColumnEffectCounts] = []
+    for column, output in zip(columns, output_columns, strict=True):
+        _, before, after, modified = column_change(source, result, column, output, positions)
+        breakdown.append(
+            ColumnEffectCounts(
+                column_id=str(column["id"]),
+                modified_cells=int(modified.sum()),
+                created_nulls=int((before.is_not_null() & after.is_null()).sum()),
+            )
+        )
+    return breakdown
+
+
 def effect(
     source: pl.DataFrame,
     result: pl.DataFrame,
@@ -278,15 +321,8 @@ def effect(
     sources: list[pl.Series] = []
     for column, output in zip(columns, outputs, strict=True):
         column_id = str(column["id"])
-        original = cell_strings(source, column)
+        original, before, after, modified = column_change(source, result, column, output, positions)
         sources.append(original)
-        before = original.gather(positions)
-        after = cell_strings(result, output)
-        retyped = column.get("technical_type", "string") != output.get("technical_type", "string")
-        both = before.is_not_null() & after.is_not_null()
-        modified = (
-            (before.is_null() != after.is_null()) | (both & ((before != after) | retyped))
-        ).fill_null(False)
         modified_cells += int(modified.sum())
         created_nulls += int((before.is_not_null() & after.is_null()).sum())
         modified_any = modified_any | modified

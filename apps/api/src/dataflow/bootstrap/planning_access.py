@@ -111,7 +111,10 @@ class PlanningTableAccess:
             facts.aggregation in MEASURED,
             facts.time_column_id,
             tuple(facts.filter_column_ids),
-            facts.aggregation in SHAREABLE,
+            facts.aggregation in SHAREABLE | {"sum_product"},
+            facts.second_measure_column_id,
+            facts.semi_additive is not None,
+            3 if facts.requires_query_v3 else 1,
         )
 
     def column_units(

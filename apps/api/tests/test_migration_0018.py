@@ -1,4 +1,4 @@
-"""Migración 0020 (Fase 11F): auditorías textuales guardadas, aditiva e inmutable."""
+"""Migración 0018 (Fase 11F): auditorías textuales guardadas, aditiva e inmutable."""
 
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -30,7 +30,7 @@ from dataflow.platform.config import get_settings
 from dataflow.platform.database import Base
 
 
-def test_0020_is_additive_and_text_audits_are_immutable(
+def test_0018_is_additive_and_text_audits_are_immutable(
     monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ) -> None:
     original_url = get_settings().database_url
@@ -47,7 +47,7 @@ def test_0020_is_additive_and_text_audits_are_immutable(
         command.upgrade(config, "0003")
         with Session(engine, expire_on_commit=False) as db:
             cutover(db, objects, apply=True)
-        command.upgrade(config, "0012")
+        command.upgrade(config, "0017")
         with Session(engine, expire_on_commit=False) as db:
             owner = uuid4()
             db.add(
@@ -91,9 +91,9 @@ def test_0020_is_additive_and_text_audits_are_immutable(
             )
             db.commit()
 
-        command.upgrade(config, "0020")
-        command.downgrade(config, "0012")  # sin auditorías: ida y vuelta
-        command.upgrade(config, "0020")
+        command.upgrade(config, "0018")
+        command.downgrade(config, "0017")  # sin auditorías: ida y vuelta
+        command.upgrade(config, "0018")
 
         with Session(engine, expire_on_commit=False) as db:
             with engine.connect() as connection:
@@ -160,7 +160,7 @@ def test_0020_is_additive_and_text_audits_are_immutable(
                     db.execute(text(statement))
                 db.rollback()
         with pytest.raises(RuntimeError, match="ROLL_FORWARD_REQUIRED"):
-            command.downgrade(config, "0012")
+            command.downgrade(config, "0017")
     finally:
         engine.dispose()
         with admin.begin() as connection:

@@ -62,7 +62,8 @@ export function Results({
   runId: string;
 }) {
   const [cell, setCell] = useState<string | null>(null);
-  const v2 = result.operation === "analytics.query@2" ? result : null;
+  // @3 tiene las mismas columnas derivadas que @2.
+  const v2 = result.operation === "analytics.query@1" ? null : result;
   const unit = (m: Definition) => m.currency ?? m.unit ?? null;
   const shared = new Set(v2?.shares.map((s) => s.metric) ?? []);
   const ranking = v2?.ranking ?? null;
