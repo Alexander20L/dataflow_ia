@@ -2,13 +2,14 @@ from uuid import UUID
 
 from dataflow.modules.automation.contracts import (
     ApprovalOrigin,
+    Evaluation,
     PolicyCleaning,
     PolicyContent,
     PolicyDecision,
     PolicyRepository,
     PolicyRevision,
 )
-from dataflow.modules.automation.domain import evaluate
+from dataflow.modules.automation.domain import evaluate, reason
 from dataflow.platform.canonical import digest
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.transactions import UnitOfWork
@@ -86,12 +87,16 @@ class AutomationService:
         correlation: str,
         executor: str = "manual",
         pipeline_run_id: UUID | None = None,
+        expected_policy: UUID | None = None,
     ) -> PolicyDecision:
-        """Evalúa la vista previa con la política vigente; si la autoriza, la aprueba."""
+        """Evalúa la vista previa con la política vigente; si la autoriza, la aprueba. Un
+        pipeline (11C) fija la revisión al iniciar: si cambió, se bloquea con POLICY_CHANGED."""
         facts = self.cleaning.preview_facts(owner, execution)
         self.cleaning.require_project(owner, facts.project_id, writable=True)
         policy = self.repository.head(owner, facts.project_id)
         evaluation = evaluate(policy.content if policy else None, facts)
+        if expected_policy is not None and (policy is None or policy.id != expected_policy):
+            evaluation = Evaluation(decision="blocked", reasons=[reason("POLICY_CHANGED")])
         decision = PolicyDecision(
             preview_execution_id=execution,
             effect_sha256=facts.effect_sha256,

@@ -1,6 +1,6 @@
 # Fase 11 — Automatización determinista
 
-Estado: **11.0, 11A y 11B implementadas** (propuesta de limpieza en el backend, sesión de análisis con fuente única y aprobación por política). 11C–11F son plan objetivo y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
+Estado: **11.0, 11A, 11B y 11C implementadas** (propuesta de limpieza en el backend, sesión de análisis con fuente única, aprobación por política y pipeline automático durable). 11D–11F son plan objetivo y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
 
 ## Objetivo
 
@@ -301,6 +301,32 @@ Un pipeline detenido no sirve si nadie lo ve. Bandeja de avisos en la aplicació
 Configurables por instalación: tamaño máximo de fuente, pipelines simultáneos por usuario y por proyecto, y **retención** de derivadas automáticas no activas (cada una añade un Parquet; la retención nunca borra una versión referenciada por un resultado, dashboard o informe).
 
 Cierre: el pipeline se recupera tras reiniciar el worker y no duplica derivadas, aprobaciones ni ejecuciones aunque un evento se procese dos veces.
+
+### Implementación (11C)
+
+Migración **0015**, sólo aditiva: `automation_runs` (un pipeline por versión importada; estado, paso y referencias a lo que creó) y `automation_step_attempts` (registro de transiciones, inmutable por trigger).
+
+- **Inicio.** Al publicarse una importación (`DatasetPublication.published`, `csv_import`), si el proyecto tiene una política activa se crea el pipeline en **la misma transacción**, con la revisión de la política fijada. Es idempotente por versión (restricción única). Superado `DATAFLOW_AUTOMATION_MAX_RUNNING_PER_OWNER` (5 por defecto), la carga queda en `needs_review` con `AUTOMATION_LIMIT`.
+- **Avance.** `PipelineService` (`modules/automation/pipeline.py`) encadena casos de uso existentes a través de `PipelineAccess` (bootstrap): propuesta (11A) → plan → vista previa → aprobación por política (11B, ejecutor `pipeline`) → aplicación → diagnóstico de la derivada → reglas de calidad (conjunto aplicable o aviso `RULESET_NOT_APPLICABLE`) → fuente activa de la sesión (11A). Sin nada que limpiar, se activa la versión importada.
+- **Durabilidad.** El worker reconcilia después de cada trabajo y en cada vuelta en reposo (`reconcile`): avanza los pipelines `running`, también los que quedaron a medias por una caída. Cada paso usa una clave idempotente `uuid5(pipeline, paso)` en planning, cleaning y quality, así que repetirlo devuelve lo mismo; un lock de sesión por pipeline (`pg_try_advisory_lock`) evita que dos workers lo avancen a la vez. Se usó el encolado transaccional existente: no hizo falta un outbox aparte.
+- **Sin reintentos.** Un fallo de ejecución, un bloqueo de la política, un cambio de política (`POLICY_CHANGED`) o un caso de uso que rechaza el paso (`STEP_ERROR`) detiene el pipeline en `needs_review` con motivos; el reconciliador no lo vuelve a intentar.
+- **Cancelar** detiene el pipeline y cancela su vista previa o aplicación si siguen en cola.
+
+| Ruta                                 | Función                                            |
+| ------------------------------------ | -------------------------------------------------- |
+| GET `/projects/{id}/automation-runs` | Pipelines del proyecto, paginados                  |
+| GET `/automation-runs/{id}`          | Pipeline con su registro de pasos                  |
+| POST `/automation-runs/{id}/cancel`  | Cancelar                                           |
+| GET `/versions/{id}/automation-run`  | Pipeline de una versión (o `null`)                 |
+| GET `/notifications`                 | Pipelines en `needs_review` o `failed` del usuario |
+
+La ruta prevista `/analysis-sessions/{id}/automation-runs` se implementó por proyecto (una sesión por proyecto en 11A).
+
+**Interfaz:** bajo la fuente activa, el estado del pipeline de la versión que se ve (paso en curso con «Cancelar», «Revisión necesaria» con motivos, o «listo» con «Ver la versión limpia») y la bandeja «N cargas automáticas esperan revisión».
+
+**Pendiente:** la retención de derivadas automáticas no activas y el aviso por correo quedan para un incremento posterior; hoy la bandeja de avisos está sólo en la aplicación.
+
+Pruebas: `test_automation_pipeline.py` (pipeline completo de `ventas_calidad.csv` hasta la derivada activa con aprobación `pipeline`, bloqueo por política sin cambios, nada que limpiar, política desactivada, reconciliaciones repetidas sin duplicar vistas previas, cancelación, cambio de política a mitad, límite de pipelines y privacidad) y `test_migration_0015.py`.
 
 ## 11D · Moldes e interpretación reutilizable
 

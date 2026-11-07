@@ -90,3 +90,45 @@ export function useApprovalOrigin(approvalId: string | null) {
       ),
   });
 }
+
+export type AutomationRun = components["schemas"]["AutomationRunView"];
+
+const active = (run?: AutomationRun | null) => run?.state === "running";
+
+/** Pipeline automático de una versión (Fase 11C); se consulta mientras está en curso. */
+export function useVersionRun(versionId: string) {
+  return useQuery({
+    queryKey: ["automation-run", versionId],
+    queryFn: async ({ signal }) =>
+      requireData(
+        await api.GET("/api/v1/versions/{version_id}/automation-run", {
+          signal,
+          params: { path: { version_id: versionId } },
+        }),
+      ).run,
+    refetchInterval: (query) => (active(query.state.data) ? 2000 : false),
+  });
+}
+
+/** Pipelines que necesitan a una persona (`needs_review` o `failed`). */
+export function useNotifications() {
+  return useQuery({
+    queryKey: ["automation-notifications"],
+    queryFn: async ({ signal }) =>
+      requireData(await api.GET("/api/v1/notifications", { signal })).items,
+    refetchInterval: 15000,
+  });
+}
+
+export function useCancelRun(versionId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (runId: string) =>
+      requireData(
+        await api.POST("/api/v1/automation-runs/{run_id}/cancel", {
+          params: { path: { run_id: runId } },
+        }),
+      ),
+    onSuccess: (run) => client.setQueryData(["automation-run", versionId], run),
+  });
+}
