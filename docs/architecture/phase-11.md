@@ -1,6 +1,6 @@
 # Fase 11 — Automatización determinista
 
-Estado: **11.0 a 11D implementadas** (propuesta de limpieza en el backend, sesión de análisis con fuente única, aprobación por política, pipeline automático durable y moldes con interpretación reutilizable). 11E–11F son plan objetivo y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
+Estado: **11.0 a 11E implementadas** (propuesta de limpieza en el backend, sesión de análisis con fuente única, aprobación por política, pipeline automático durable, moldes con interpretación reutilizable y dashboard automático). 11F se entrega en su propio PR y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
 
 ## Objetivo
 
@@ -412,6 +412,21 @@ Pruebas: `tests/test_analytics_query_v3.py` (motor: escalas y exactitud de `sum_
 - Publicar un dashboard coherente; si se admite un resultado parcial, identificar exactamente qué falta.
 
 Cierre: el mismo input, configuración y entorno lógico producen el mismo contenido calculado, excluyendo IDs y fechas operativas.
+
+### Implementación del dashboard automático (11E)
+
+Tras `interpret`, el pipeline sigue con `analyze` y `publish` (migración **0017**, aditiva: `automation_run_analyses`, 1:1 con el pipeline).
+
+- **Especificación por molde** (`modules/templates/analysis.py`, `template-analysis@1`, datos puros): métricas, consultas y tarjetas en orden estable.
+  - **Ventas** (`analytics.query@2`): KPI de ventas totales, operaciones y ticket promedio; línea de ventas por mes; barras con el top 10 por la dimensión y su % del total; tabla de detalle con el top 20.
+  - **Inventario** (`analytics.query@3`): unidades con **último corte** (`last_snapshot`, nunca suma cortes entre fechas) y productos distintos; valor del inventario (`sum_product` cantidad × costo, último corte) en su **propia consulta** para no mezclar unidad y moneda (`UNIT_MISMATCH`); top 10 de productos; detalle de menor stock por ubicación o producto.
+  - **Genérico:** sin dashboard.
+- **`analyze`:** crea las métricas sobre la tabla limpia (familias nuevas: cada importación tiene otros IDs de columna), los planes con la revisión semántica confirmada fijada y lanza las consultas **respetando la capacidad** del propietario (`QUEUE_LIMIT`, 3 trabajos activos): las pendientes se lanzan en reconciliaciones siguientes. Claves idempotentes por pasada y consulta.
+- **`publish`:** cuando todas las consultas terminaron, crea el dashboard del molde la primera vez y, en cargas siguientes, guarda una **revisión nueva del mismo dashboard** (IDs de tarjeta estables), de modo que el historial conserva cada carga. Una tarjeta fallida conserva su estado (`failed`, `insufficient_data`…) sin romper las demás.
+- **Dashboards** aceptan ahora tarjetas de `analytics.query@3` además de `@2`.
+- **Interfaz:** al terminar, la franja del pipeline ofrece «Ver dashboard».
+
+Pruebas: `test_automation_dashboard.py` (especificación estable de ventas; inventario con último corte y moneda separada; pipeline que publica el dashboard con sus 6 tarjetas listas y, con una segunda carga, revisa el mismo dashboard) y `test_migration_0017.py`.
 
 ## 11F · Auditoría textual IA
 

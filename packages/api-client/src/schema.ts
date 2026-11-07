@@ -2026,6 +2026,10 @@ export interface components {
              * Format: date-time
              */
             created_at: string;
+            /** Dashboard Family Id */
+            dashboard_family_id?: string | null;
+            /** Dashboard Revision Id */
+            dashboard_revision_id?: string | null;
             /** Derived Version Id */
             derived_version_id: string | null;
             /** Finished At */
@@ -2073,7 +2077,7 @@ export interface components {
              * Step
              * @enum {string}
              */
-            step: "propose" | "preview" | "approve" | "apply" | "diagnose" | "quality_rules" | "select" | "interpret" | "done";
+            step: "propose" | "preview" | "approve" | "apply" | "diagnose" | "quality_rules" | "select" | "interpret" | "analyze" | "publish" | "done";
             /**
              * Updated At
              * Format: date-time

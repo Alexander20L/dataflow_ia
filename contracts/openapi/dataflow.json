@@ -1249,6 +1249,30 @@
             "title": "Created At",
             "type": "string"
           },
+          "dashboard_family_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dashboard Family Id"
+          },
+          "dashboard_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dashboard Revision Id"
+          },
           "derived_version_id": {
             "anyOf": [
               {
@@ -1393,6 +1417,8 @@
               "quality_rules",
               "select",
               "interpret",
+              "analyze",
+              "publish",
               "done"
             ],
             "title": "Step",

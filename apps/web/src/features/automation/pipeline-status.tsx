@@ -29,10 +29,12 @@ export function PipelineStatus({
   projectId,
   versionId,
   onShowVersion,
+  onShowDashboard,
 }: {
   projectId: string;
   versionId: string;
   onShowVersion: (versionId: string) => void;
+  onShowDashboard?: () => void;
 }) {
   const run = useVersionRun(versionId);
   const cancel = useCancelRun(versionId);
@@ -89,6 +91,11 @@ export function PipelineStatus({
                 Ver la versión limpia
               </Button>
             )}
+          {current.dashboard_family_id && onShowDashboard && (
+            <Button size="sm" variant="outline" onClick={onShowDashboard}>
+              Ver dashboard
+            </Button>
+          )}
         </>
       ) : current.state === "cancelled" ? (
         <>

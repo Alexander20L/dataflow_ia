@@ -449,6 +449,8 @@ def make_pipeline(db: Session, objects: LocalObjects) -> PipelineService:
             make_templates(db, objects),
             make_template_tables(db, objects),
             make_semantics(db, objects),
+            make_metrics(db, objects),
+            make_dashboards(db, objects),
         ),
         SQLUnitOfWork(db),
     )

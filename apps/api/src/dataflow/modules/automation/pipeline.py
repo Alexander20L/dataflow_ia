@@ -358,10 +358,72 @@ class PipelineService:
             run.semantic_revision_id = self.port.apply_mapping(owner, match.revision_id, table[0])
             self.move(
                 run,
-                "done",
+                "analyze",
                 {
                     "mapping_revision_id": str(match.revision_id),
                     "semantic_revision_id": str(run.semantic_revision_id),
+                },
+            )
+        elif run.step == "analyze":
+            # 11E: métricas, consultas y ejecuciones del dashboard del molde.
+            assert run.result_version_id and run.mapping_revision_id
+            analysis = self.runs.analysis(run.id)
+            if analysis is None:
+                table = self.port.table_of(owner, run.result_version_id)
+                assert table
+                started = self.port.start_analysis(
+                    owner, run.project_id, run.mapping_revision_id, table[0], key(run, "analysis")
+                )
+                if started is None:  # molde genérico: sin dashboard
+                    self.move(run, "done", {"dashboard": "generic"})
+                    run.state = "completed"
+                    return
+                self.runs.save_analysis(run.id, run.project_id, started)
+                self.runs.log(run.id, "analyze", "started", {"queries": len(started["queries"])})
+                analysis = started
+            launched = False
+            for query in analysis["queries"]:
+                if query["execution_id"] is None:
+                    execution = self.port.start_query(
+                        owner,
+                        UUID(query["plan_revision_id"]),
+                        uuid5(key(run, "analysis"), query["name"]),
+                    )
+                    if execution is None:
+                        break  # sin capacidad: se lanza en la próxima reconciliación
+                    query["execution_id"], launched = str(execution), True
+            if launched:
+                self.runs.save_analysis(run.id, run.project_id, analysis)
+            for query in analysis["queries"]:
+                if query["execution_id"] is None:
+                    return
+                state, _ = self.port.execution_state(owner, UUID(query["execution_id"]))
+                if state in WAITING:
+                    return  # se publica un dashboard coherente cuando todas terminan
+            self.move(run, "publish")
+        elif run.step == "publish":
+            analysis = self.runs.analysis(run.id)
+            assert analysis
+            if not analysis.get("dashboard_revision_id"):
+                family, revision = self.port.publish_dashboard(
+                    owner,
+                    run.project_id,
+                    self.runs.dashboard_family(run.project_id, analysis["template"]),
+                    analysis,
+                    key(run, "dashboard"),
+                )
+                analysis = {
+                    **analysis,
+                    "dashboard_family_id": str(family),
+                    "dashboard_revision_id": str(revision),
+                }
+                self.runs.save_analysis(run.id, run.project_id, analysis)
+            self.move(
+                run,
+                "done",
+                {
+                    "dashboard_family_id": analysis["dashboard_family_id"],
+                    "dashboard_revision_id": analysis["dashboard_revision_id"],
                 },
             )
             run.state = "completed"

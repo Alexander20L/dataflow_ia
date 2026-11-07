@@ -22,6 +22,8 @@ TABLES_AFTER_0012 = {
     "template_mapping_revisions",
     "template_mapping_save_requests",
     "automation_run_interpretations",
+    # 0017: dashboard automático de cada pipeline (11E)
+    "automation_run_analyses",
 }
 
 
