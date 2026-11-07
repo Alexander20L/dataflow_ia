@@ -10,6 +10,7 @@ from dataflow.modules.cleaning.infrastructure import (
     SOURCE_ROW,
     attach_lineage,
     cast_column,
+    column_effects,
     deduplicate,
     effect,
     filter_rows,
@@ -88,6 +89,10 @@ def main() -> None:
                         "logical_content_sha256": table_digest(outputs, table),
                         "rounded_cells": rounded,
                         "row_lineage_sha256": lineage_sha256,
+                        "columns": [
+                            item.model_dump(mode="json")
+                            for item in column_effects(source, result, columns, outputs)
+                        ],
                     },
                     ensure_ascii=False,
                 ),

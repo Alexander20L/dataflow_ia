@@ -11,6 +11,7 @@ import { useRepresentations } from "@/features/executions/api";
 import type { DatasetVersion, Diagnostic } from "@/features/ingestion/api";
 import { useCreatePlan, type PlanStep } from "@/features/planning/api";
 import { useUnderstanding } from "@/features/understanding/api";
+import { PolicyEditor } from "@/features/automation/policy-editor";
 import { EffectPreview } from "./effect-preview";
 import {
   useCleaningProposal,
@@ -234,20 +235,23 @@ export function CleaningStage({
     };
   });
   return (
-    <Proposal
-      key={`${table.id}-${head?.id ?? "none"}-${proposal.data.semantic_revision?.id ?? "none"}`}
-      projectId={projectId}
-      table={{ id: table.id, sha256: table.sha256 }}
-      columns={columns}
-      proposal={proposal.data}
-      diagnostic={diagnostic}
-      semantic={head}
-      archived={archived}
-      onShowDerived={onShowDerived}
-      onDirtyChange={onDirtyChange}
-      copilotPlanId={copilotPlanId}
-      onDismissCopilotPlan={onDismissCopilotPlan}
-    />
+    <>
+      <PolicyEditor projectId={projectId} archived={archived} />
+      <Proposal
+        key={`${table.id}-${head?.id ?? "none"}-${proposal.data.semantic_revision?.id ?? "none"}`}
+        projectId={projectId}
+        table={{ id: table.id, sha256: table.sha256 }}
+        columns={columns}
+        proposal={proposal.data}
+        diagnostic={diagnostic}
+        semantic={head}
+        archived={archived}
+        onShowDerived={onShowDerived}
+        onDirtyChange={onDirtyChange}
+        copilotPlanId={copilotPlanId}
+        onDismissCopilotPlan={onDismissCopilotPlan}
+      />
+    </>
   );
 }
 

@@ -10,6 +10,12 @@ from dataflow.modules.analytics.infrastructure import (
     MetricSaveRequest,
 )
 from dataflow.modules.audit.infrastructure import AuditRecord
+from dataflow.modules.automation.infrastructure import (
+    AutomationApprovalRecord,
+    AutomationPolicyFamilyRecord,
+    AutomationPolicyRevisionRecord,
+    AutomationPolicySaveRequest,
+)
 from dataflow.modules.cleaning.repository import CleaningApprovalRecord
 from dataflow.modules.copilot.infrastructure import (
     ActionLinkRecord,
@@ -116,4 +122,8 @@ __all__ = [
     "CopilotRequest",
     "AnalysisSessionRecord",
     "AnalysisSessionInputRecord",
+    "AutomationPolicyFamilyRecord",
+    "AutomationPolicyRevisionRecord",
+    "AutomationPolicySaveRequest",
+    "AutomationApprovalRecord",
 ]

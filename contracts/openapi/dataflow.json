@@ -554,6 +554,95 @@
         "title": "ApplyStatus",
         "type": "object"
       },
+      "ApprovalOrigin": {
+        "additionalProperties": false,
+        "description": "Si una aprobación de limpieza la concedió una política: revisión exacta, ejecutor\n(`manual` si una persona pidió evaluar, `pipeline` en la Fase 11C) y evaluación.",
+        "properties": {
+          "approval_id": {
+            "format": "uuid",
+            "title": "Approval Id",
+            "type": "string"
+          },
+          "automatic": {
+            "title": "Automatic",
+            "type": "boolean"
+          },
+          "created_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Created At"
+          },
+          "evaluation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Evaluation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "executor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Executor"
+          },
+          "pipeline_run_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Pipeline Run Id"
+          },
+          "policy_revision": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Revision"
+          },
+          "policy_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Revision Id"
+          }
+        },
+        "required": [
+          "approval_id",
+          "automatic"
+        ],
+        "title": "ApprovalOrigin",
+        "type": "object"
+      },
       "ApprovalRequest": {
         "additionalProperties": false,
         "properties": {
@@ -1561,6 +1650,33 @@
         "title": "ColumnDraft",
         "type": "object"
       },
+      "ColumnEffectCounts": {
+        "additionalProperties": false,
+        "description": "Desglose por columna del efecto (Fase 11B). Se guarda junto al manifiesto, fuera de él:\nel `effect_sha256` no cambia y la aplicación sigue comparando el efecto completo.",
+        "properties": {
+          "column_id": {
+            "title": "Column Id",
+            "type": "string"
+          },
+          "created_nulls": {
+            "minimum": 0.0,
+            "title": "Created Nulls",
+            "type": "integer"
+          },
+          "modified_cells": {
+            "minimum": 0.0,
+            "title": "Modified Cells",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "column_id",
+          "modified_cells",
+          "created_nulls"
+        ],
+        "title": "ColumnEffectCounts",
+        "type": "object"
+      },
       "ColumnFacts": {
         "additionalProperties": false,
         "properties": {
@@ -1676,6 +1792,38 @@
           "examples"
         ],
         "title": "ColumnProfile",
+        "type": "object"
+      },
+      "ColumnScope": {
+        "additionalProperties": false,
+        "description": "Columnas (por nombre exacto) en las que se permite una operación; `*` = todas.",
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 128,
+            "minItems": 1,
+            "title": "Columns",
+            "type": "array"
+          },
+          "operation": {
+            "enum": [
+              "cleaning.normalize_null_tokens",
+              "cleaning.trim_whitespace",
+              "cleaning.cast",
+              "cleaning.filter_rows",
+              "cleaning.deduplicate"
+            ],
+            "title": "Operation",
+            "type": "string"
+          }
+        },
+        "required": [
+          "operation",
+          "columns"
+        ],
+        "title": "ColumnScope",
         "type": "object"
       },
       "ColumnSuggestion": {
@@ -2869,6 +3017,32 @@
           "correlation_id"
         ],
         "title": "ErrorResponse",
+        "type": "object"
+      },
+      "Evaluation": {
+        "additionalProperties": false,
+        "properties": {
+          "decision": {
+            "enum": [
+              "approved",
+              "blocked"
+            ],
+            "title": "Decision",
+            "type": "string"
+          },
+          "reasons": {
+            "items": {
+              "$ref": "#/components/schemas/Reason"
+            },
+            "title": "Reasons",
+            "type": "array"
+          }
+        },
+        "required": [
+          "decision",
+          "reasons"
+        ],
+        "title": "Evaluation",
         "type": "object"
       },
       "EvidenceReference": {
@@ -4886,6 +5060,32 @@
         "title": "NullTokenProposal",
         "type": "object"
       },
+      "NullTokens": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "tokens": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Tokens",
+            "type": "array"
+          }
+        },
+        "required": [
+          "column",
+          "tokens"
+        ],
+        "title": "NullTokens",
+        "type": "object"
+      },
       "NumericSummary": {
         "properties": {
           "count": {
@@ -5378,6 +5578,315 @@
         "title": "PlanView",
         "type": "object"
       },
+      "PolicyContent-Input": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_operations": {
+            "items": {
+              "enum": [
+                "cleaning.normalize_null_tokens",
+                "cleaning.trim_whitespace",
+                "cleaning.cast",
+                "cleaning.filter_rows",
+                "cleaning.deduplicate"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Operations",
+            "type": "array"
+          },
+          "column_scopes": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnScope"
+            },
+            "title": "Column Scopes",
+            "type": "array"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "evaluate_quality_rules": {
+            "default": true,
+            "title": "Evaluate Quality Rules",
+            "type": "boolean"
+          },
+          "max_excluded_rows_pct": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Max Excluded Rows Pct"
+          },
+          "max_nulls_created_pct": {
+            "anyOf": [
+              {
+                "maximum": 100.0,
+                "minimum": 0.0,
+                "type": "number"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "default": "0",
+            "title": "Max Nulls Created Pct"
+          },
+          "max_rounded_cells": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Max Rounded Cells",
+            "type": "integer"
+          },
+          "min_output_rows": {
+            "default": 1,
+            "minimum": 0.0,
+            "title": "Min Output Rows",
+            "type": "integer"
+          },
+          "null_tokens_by_column": {
+            "items": {
+              "$ref": "#/components/schemas/NullTokens"
+            },
+            "title": "Null Tokens By Column",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "automation-policy@1",
+            "default": "automation-policy@1",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "title": "PolicyContent",
+        "type": "object"
+      },
+      "PolicyContent-Output": {
+        "additionalProperties": false,
+        "properties": {
+          "allowed_operations": {
+            "items": {
+              "enum": [
+                "cleaning.normalize_null_tokens",
+                "cleaning.trim_whitespace",
+                "cleaning.cast",
+                "cleaning.filter_rows",
+                "cleaning.deduplicate"
+              ],
+              "type": "string"
+            },
+            "title": "Allowed Operations",
+            "type": "array"
+          },
+          "column_scopes": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnScope"
+            },
+            "title": "Column Scopes",
+            "type": "array"
+          },
+          "enabled": {
+            "default": false,
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "evaluate_quality_rules": {
+            "default": true,
+            "title": "Evaluate Quality Rules",
+            "type": "boolean"
+          },
+          "max_excluded_rows_pct": {
+            "default": "0",
+            "title": "Max Excluded Rows Pct",
+            "type": "string"
+          },
+          "max_nulls_created_pct": {
+            "default": "0",
+            "title": "Max Nulls Created Pct",
+            "type": "string"
+          },
+          "max_rounded_cells": {
+            "default": 0,
+            "minimum": 0.0,
+            "title": "Max Rounded Cells",
+            "type": "integer"
+          },
+          "min_output_rows": {
+            "default": 1,
+            "minimum": 0.0,
+            "title": "Min Output Rows",
+            "type": "integer"
+          },
+          "null_tokens_by_column": {
+            "items": {
+              "$ref": "#/components/schemas/NullTokens"
+            },
+            "title": "Null Tokens By Column",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": "automation-policy@1",
+            "default": "automation-policy@1",
+            "title": "Schema Version",
+            "type": "string"
+          }
+        },
+        "title": "PolicyContent",
+        "type": "object"
+      },
+      "PolicyDecision": {
+        "additionalProperties": false,
+        "description": "Resultado de evaluar una vista previa con la política vigente. Si se aprueba, existe una\naprobación normal del efecto exacto (`approval_id`) atribuida a quien guardó la política.",
+        "properties": {
+          "approval_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Approval Id"
+          },
+          "effect_sha256": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Effect Sha256"
+          },
+          "evaluation": {
+            "$ref": "#/components/schemas/Evaluation"
+          },
+          "policy_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Policy Revision Id"
+          },
+          "preview_execution_id": {
+            "format": "uuid",
+            "title": "Preview Execution Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "preview_execution_id",
+          "effect_sha256",
+          "policy_revision_id",
+          "evaluation",
+          "approval_id"
+        ],
+        "title": "PolicyDecision",
+        "type": "object"
+      },
+      "PolicyHead": {
+        "additionalProperties": false,
+        "description": "Política vigente del proyecto; `revision` es None si todavía no se guardó ninguna.",
+        "properties": {
+          "revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PolicyRevision"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "revision"
+        ],
+        "title": "PolicyHead",
+        "type": "object"
+      },
+      "PolicyRevision": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/PolicyContent-Output"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "created_by": {
+            "format": "uuid",
+            "title": "Created By",
+            "type": "string"
+          },
+          "family_id": {
+            "format": "uuid",
+            "title": "Family Id",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "previous_revision_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous Revision Id"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "family_id",
+          "project_id",
+          "revision",
+          "previous_revision_id",
+          "content",
+          "content_sha256",
+          "created_by",
+          "created_at"
+        ],
+        "title": "PolicyRevision",
+        "type": "object"
+      },
       "PreviewFailure": {
         "additionalProperties": false,
         "description": "Detalle de una vista previa fallida: conteo total exacto y hasta 50 casos.",
@@ -5497,6 +6006,20 @@
                 "type": "null"
               }
             ]
+          },
+          "column_effects": {
+            "anyOf": [
+              {
+                "items": {
+                  "$ref": "#/components/schemas/ColumnEffectCounts"
+                },
+                "type": "array"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column Effects"
           },
           "effect_sha256": {
             "anyOf": [
@@ -6485,6 +7008,84 @@
           "hidden_groups"
         ],
         "title": "RankingSummary",
+        "type": "object"
+      },
+      "Reason": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "enum": [
+              "POLICY_MISSING",
+              "POLICY_DISABLED",
+              "PLAN_INVALID",
+              "EFFECT_NOT_READY",
+              "EFFECT_BREAKDOWN_MISSING",
+              "OPERATION_NOT_AUTHORIZED",
+              "COLUMN_NOT_AUTHORIZED",
+              "TOKENS_NOT_AUTHORIZED",
+              "IDENTIFIER_CONVERSION",
+              "EXCLUDED_ROWS_ABOVE_LIMIT",
+              "NULLS_CREATED_ABOVE_LIMIT",
+              "ROUNDED_CELLS_ABOVE_LIMIT",
+              "OUTPUT_ROWS_BELOW_MINIMUM"
+            ],
+            "title": "Code",
+            "type": "string"
+          },
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit"
+          },
+          "measured": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measured"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          },
+          "step_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Step Id"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "Reason",
         "type": "object"
       },
       "RefreshDashboardRequest": {
@@ -7817,6 +8418,25 @@
           "changed"
         ],
         "title": "SaveMetricResponse",
+        "type": "object"
+      },
+      "SavePolicyRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "content": {
+            "$ref": "#/components/schemas/PolicyContent-Input"
+          },
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "content"
+        ],
+        "title": "SavePolicyRequest",
         "type": "object"
       },
       "SaveReportResponse": {
@@ -10017,6 +10637,171 @@
         ]
       }
     },
+    "/api/v1/approvals/{approval_id}/origin": {
+      "get": {
+        "description": "Si una aprobación de limpieza la concedió una política (revisión y evaluación).",
+        "operationId": "getApprovalOrigin",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "approval_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Approval Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalOrigin"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Approval Origin",
+        "tags": [
+          "Automation"
+        ]
+      }
+    },
     "/api/v1/approvals/{approval_id}/revoke": {
       "post": {
         "operationId": "revokeCleaningApproval",
@@ -10761,6 +11546,170 @@
         "summary": "Register",
         "tags": [
           "Identity"
+        ]
+      }
+    },
+    "/api/v1/automation-policies/{revision_id}": {
+      "get": {
+        "operationId": "getAutomationPolicyRevision",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "revision_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Revision Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Revision",
+        "tags": [
+          "Automation"
         ]
       }
     },
@@ -15664,6 +16613,171 @@
         ]
       }
     },
+    "/api/v1/previews/{execution_id}/policy-approvals": {
+      "post": {
+        "description": "Evalúa la vista previa con la política vigente. Si la autoriza, crea la aprobación del\nefecto exacto; si no, devuelve los motivos y no cambia nada (la persona puede aprobarla).",
+        "operationId": "approvePreviewByPolicy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "execution_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Execution Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyDecision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Approve By Policy",
+        "tags": [
+          "Automation"
+        ]
+      }
+    },
     "/api/v1/projects": {
       "get": {
         "operationId": "listProjects",
@@ -16870,6 +17984,353 @@
         "summary": "Archive Project",
         "tags": [
           "Projects"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/automation-policy": {
+      "get": {
+        "operationId": "getAutomationPolicy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyHead"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Get Policy",
+        "tags": [
+          "Automation"
+        ]
+      },
+      "post": {
+        "description": "Nueva revisión inmutable (`expected_revision`); sin cambios no crea revisión.",
+        "operationId": "saveAutomationPolicy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SavePolicyRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PolicyRevision"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Save Policy",
+        "tags": [
+          "Automation"
         ]
       }
     },

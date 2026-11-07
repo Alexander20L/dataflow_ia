@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from dataflow.modules.cleaning.contracts import (
+    ColumnEffectCounts,
     EffectCounts,
     EffectSample,
     Match,
@@ -26,6 +27,8 @@ class EffectResult:
     logical_content_sha256: str
     row_lineage_sha256: str
     rounded_cells: int = 0
+    # Fase 11B: desglose por columna (fuera del manifiesto y de su hash).
+    columns: list[ColumnEffectCounts] | None = None
 
 
 class IsolatedCleaner:
@@ -199,4 +202,5 @@ class IsolatedCleaner:
             str(payload["logical_content_sha256"]),
             str(payload["row_lineage_sha256"]),
             int(payload["rounded_cells"]),
+            [ColumnEffectCounts.model_validate(item) for item in payload.get("columns", [])],
         )

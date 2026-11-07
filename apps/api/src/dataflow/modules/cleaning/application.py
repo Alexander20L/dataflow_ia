@@ -1,4 +1,5 @@
 import json
+from collections.abc import Callable
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID, uuid4
@@ -7,6 +8,7 @@ from dataflow.modules.cleaning.contracts import (
     ApplyStatus,
     ApprovalRepository,
     ApprovalView,
+    ColumnEffectCounts,
     EffectManifest,
     EffectSample,
     LineageOperation,
@@ -164,6 +166,9 @@ class CleaningService:
             approval=approval,
             apply=self.apply_status(owner, run, approval.id) if approval else None,
             failure=self.failure(owner, run),
+            column_effects=[ColumnEffectCounts.model_validate(item) for item in effect["breakdown"]]
+            if effect and "breakdown" in effect
+            else None,
         )
 
     def failure(self, owner: UUID, run: Execution) -> PreviewFailure | None:
@@ -178,8 +183,15 @@ class CleaningService:
         return PreviewFailure.model_validate({"code": code, **details})
 
     def approve(
-        self, owner: UUID, execution: UUID, effect_sha256: str, correlation: str
+        self,
+        owner: UUID,
+        execution: UUID,
+        effect_sha256: str,
+        correlation: str,
+        before_commit: Callable[[ApprovalView], None] | None = None,
     ) -> ApprovalView:
+        """Aprueba el efecto exacto. `before_commit` (Fase 11B) permite registrar en la misma
+        transacción que la aprobación la concedió una política."""
         try:
             run = self.preview_run(owner, execution)
             assert run.plan
@@ -216,6 +228,8 @@ class CleaningService:
                 status="active",
             )
             self.approvals.add(approval, correlation)
+            if before_commit:
+                before_commit(approval)
             self.uow.commit()
             return approval
         except Exception:

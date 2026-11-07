@@ -4579,3 +4579,53 @@ tbody tr:hover {
     max-width: 100%;
   }
 }
+/* Fase 11B: política de automatización */
+.panel-lite {
+  margin: 0 0 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.panel-lite > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-weight: 600;
+}
+.policy-editor[open] {
+  display: grid;
+  gap: 10px;
+}
+.policy-presets,
+.policy-limits {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+}
+.policy-operations {
+  display: grid;
+  gap: 6px;
+  border: 0;
+  padding: 0;
+}
+.policy-operation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.check-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.policy-reasons {
+  display: grid;
+  gap: 6px;
+  flex-basis: 100%;
+}
+.policy-reasons ul {
+  margin: 0;
+  padding-left: 18px;
+}

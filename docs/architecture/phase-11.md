@@ -1,6 +1,6 @@
 # Fase 11 — Automatización determinista
 
-Estado: **11.0 y 11A implementadas** (propuesta de limpieza en el backend y sesión de análisis con fuente única). 11B–11F son plan objetivo y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
+Estado: **11.0, 11A y 11B implementadas** (propuesta de limpieza en el backend, sesión de análisis con fuente única y aprobación por política). 11C–11F son plan objetivo y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
 
 ## Objetivo
 
@@ -236,6 +236,30 @@ Persistencia: `automation_policy_families`, `automation_policy_revisions`, `auto
 Sin fila en `automation_approvals`, la aprobación es humana. Desactivar o sustituir la política revoca las aprobaciones automáticas aún no aplicadas.
 
 Cierre: una transformación autorizada publica una derivada; la misma operación fuera de sus límites se detiene con un motivo verificable y permite continuar manualmente.
+
+### Implementación (11B)
+
+Módulo `automation` (sólo sus puertos y `audit`, prueba AST), `PolicyCleaningAccess` en bootstrap y migración **0014**, sólo aditiva: `automation_policy_families`, `automation_policy_revisions`, `automation_policy_save_requests` y `automation_approvals` (las tres últimas inmutables por trigger).
+
+- **Columnas por nombre exacto.** Los IDs cambian en cada importación (Fase 6B); la política nombra columnas para aplicarse a cualquier carga con esos nombres. Una operación autorizada **sin alcance** no autoriza ninguna columna.
+- **Desglose por columna** (`column_effects` de la vista previa): celdas modificadas y nulos creados por columna, calculados con el mismo criterio que los totales. Se guarda junto al manifiesto, **fuera** de él: el `effect_sha256` no cambia y la aplicación compara el efecto completo como siempre. Una vista previa anterior no tiene desglose y se bloquea con `EFFECT_BREAKDOWN_MISSING`.
+- **Barreras exactas:** `excluidas × 100 > límite × entrada` en enteros y `Decimal`. Los nulos creados se comprueban sobre el total de celdas **y por columna** (sobre las filas de entrada), para que una columna muy afectada no se diluya.
+- **Aprobación:** si la política autoriza el efecto, `CleaningService.approve` crea la aprobación normal y, en la misma transacción (`before_commit`), `automation_approvals` registra la revisión exacta de la política, el efecto, la evaluación y el ejecutor (`manual` hoy; `pipeline` en 11C). Si ya hay una aprobación vigente del mismo efecto, se reutiliza.
+- **Revocación:** guardar una revisión nueva revoca, cada una en su transacción, las aprobaciones automáticas del proyecto aún no aplicadas; las aplicadas o en curso no cambian.
+
+| Ruta                                             | Función                                                                        |
+| ------------------------------------------------ | ------------------------------------------------------------------------------ |
+| GET `/projects/{id}/automation-policy`           | Revisión vigente (`revision: null` si no hay política)                         |
+| POST `/projects/{id}/automation-policy`          | Nueva revisión (`expected_revision`, `Idempotency-Key`); sin cambios, la misma |
+| GET `/automation-policies/{revision_id}`         | Revisión exacta                                                                |
+| POST `/previews/{execution_id}/policy-approvals` | Evalúa con la política vigente; si autoriza, aprueba el efecto exacto          |
+| GET `/approvals/{approval_id}/origin`            | Si una aprobación la concedió una política, con su revisión y evaluación       |
+
+Códigos de evaluación: `POLICY_MISSING`, `POLICY_DISABLED`, `PLAN_INVALID`, `EFFECT_NOT_READY`, `EFFECT_BREAKDOWN_MISSING`, `OPERATION_NOT_AUTHORIZED`, `COLUMN_NOT_AUTHORIZED`, `TOKENS_NOT_AUTHORIZED`, `IDENTIFIER_CONVERSION`, `EXCLUDED_ROWS_ABOVE_LIMIT`, `NULLS_CREATED_ABOVE_LIMIT`, `ROUNDED_CELLS_ABOVE_LIMIT`, `OUTPUT_ROWS_BELOW_MINIMUM`. Un efecto bloqueado no cambia nada; la persona puede aprobarlo con «Aprobar efecto…».
+
+**Interfaz:** en la etapa Limpieza, «Modo automático» (editor de la política con perfiles Conservador y Tipado que sólo rellenan el formulario); en la vista previa, «Aprobar con la política» muestra los motivos si bloquea y, si aprueba, la aprobación lleva «Aprobada automáticamente por la política rev N».
+
+Pruebas: `test_automation_policy.py` (16 casos de la evaluación pura: valores por defecto, alcance, marcadores, identificadores, barreras en el límite exacto, nulos globales y por columna, plan y efecto), `test_automation_api.py` (revisiones, conflicto, validación, bloqueo y aprobación del efecto exacto, origen, reutilización, aplicación, revocación al cambiar la política, accesos), `test_cleaning_ops.py` (el desglose suma los totales) y `test_migration_0014.py`.
 
 ## 11C · Orquestación durable
 
