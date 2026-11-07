@@ -14,6 +14,8 @@ from dataflow.modules.analytics.application import MetricService, addressed_cell
 from dataflow.modules.analytics.contracts import MetricDraft
 from dataflow.modules.copilot.contracts import (
     ColumnFact,
+    DashboardCardFact,
+    DashboardFacts,
     ExecutionFact,
     MetricFact,
     PlanRef,
@@ -24,6 +26,7 @@ from dataflow.modules.copilot.contracts import (
     TableRef,
     Validation,
 )
+from dataflow.modules.dashboards.application import DashboardService
 from dataflow.modules.datasets.public import Datasets
 from dataflow.modules.executions.public import Executions
 from dataflow.modules.planning.application import PlanningService
@@ -53,9 +56,29 @@ class CopilotAccess:
         semantics: SemanticService,
         metrics: MetricService,
         projects: ProjectPermissions,
+        dashboards: DashboardService | None = None,
     ) -> None:
         self.planning, self.executions, self.datasets = planning, executions, datasets
         self.semantics, self.metric_service, self.projects = semantics, metrics, projects
+        self.dashboards = dashboards
+
+    def dashboard(self, owner: UUID, revision: UUID) -> DashboardFacts:
+        if self.dashboards is None:
+            raise ApplicationError("DASHBOARD_NOT_FOUND", "Dashboard no encontrado.", 404)
+        value = self.dashboards.revision(owner, revision)  # ajena o inexistente: 404
+        content = value.content
+        return DashboardFacts(
+            revision_id=value.id,
+            project_id=value.project_id,
+            title=content.title,
+            description=content.description,
+            cards=[
+                DashboardCardFact(
+                    id=card.id, title=card.title, metric=card.metric, execution_id=card.execution_id
+                )
+                for card in content.cards
+            ],
+        )
 
     def require_project(self, owner: UUID, project: UUID, writable: bool = False) -> None:
         self.projects.require(owner, project, writable)

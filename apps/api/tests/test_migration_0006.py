@@ -201,6 +201,7 @@ LATER_TABLES = {
     "copilot_messages",
     "copilot_action_links",
     "copilot_requests",
+    "copilot_text_audits",
 }
 
 

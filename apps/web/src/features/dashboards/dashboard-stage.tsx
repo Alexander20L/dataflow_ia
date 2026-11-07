@@ -17,6 +17,7 @@ import {
   type DashboardView,
 } from "./api";
 import { DashboardCard } from "./card";
+import { TextAuditPanel } from "@/features/copilot/text-audit-panel";
 
 export function DashboardStage({
   projectId,
@@ -321,6 +322,10 @@ function Board({
           </div>
         </Dialog>
       )}
+      <TextAuditPanel
+        projectId={view.head.project_id}
+        revisionId={view.head.id}
+      />
     </div>
   );
 }

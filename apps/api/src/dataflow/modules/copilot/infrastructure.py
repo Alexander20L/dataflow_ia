@@ -20,15 +20,19 @@ from sqlalchemy import (
     func,
     select,
 )
+from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
 from dataflow.modules.audit.public import record_event
 from dataflow.modules.copilot.contracts import (
     ActionLink,
     AssistantContent,
+    AuditCard,
+    AuditContent,
     CallRecord,
     Conversation,
     Message,
+    TextAudit,
 )
 from dataflow.platform.database import Base
 from dataflow.platform.errors import ApplicationError
@@ -104,7 +108,54 @@ class CopilotRequest(Base):
     result_id: Mapped[UUID] = mapped_column(Uuid)
 
 
+class TextAuditRecord(Base):
+    """Auditoría textual guardada (11F, migración 0020): inmutable; una por revisión de dashboard
+    y clave de contenido (`audit_key`)."""
+
+    __tablename__ = "copilot_text_audits"
+    __table_args__ = (
+        UniqueConstraint("dashboard_revision_id", "audit_key", name="uq_copilot_text_audit_key"),
+    )
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    dashboard_revision_id: Mapped[UUID] = mapped_column(
+        ForeignKey("dashboard_revisions.id"), index=True
+    )
+    audit_key: Mapped[str] = mapped_column(String(64))
+    result_sha256: Mapped[str] = mapped_column(String(64))
+    provider: Mapped[str] = mapped_column(String(32))
+    model: Mapped[str] = mapped_column(String(80))
+    prompt_id: Mapped[str] = mapped_column(String(64))
+    prompt_version: Mapped[str] = mapped_column(String(32))
+    config: Mapped[dict[str, Any]] = mapped_column(JSON)
+    cards: Mapped[list[dict[str, Any]]] = mapped_column(JSON)
+    content: Mapped[dict[str, Any]] = mapped_column(JSON)
+    call_id: Mapped[UUID] = mapped_column(ForeignKey("copilot_ai_calls.id"))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
 NOT_FOUND = ("CONVERSATION_NOT_FOUND", "Conversación no encontrada.", 404)
+AUDIT_NOT_FOUND = ("TEXT_AUDIT_NOT_FOUND", "Auditoría no encontrada.", 404)
+
+
+def audit_view(record: TextAuditRecord) -> TextAudit:
+    return TextAudit(
+        id=record.id,
+        dashboard_revision_id=record.dashboard_revision_id,
+        project_id=record.project_id,
+        audit_key=record.audit_key,
+        result_sha256=record.result_sha256,
+        provider=record.provider,
+        model=record.model,
+        prompt_id=record.prompt_id,
+        prompt_version=record.prompt_version,
+        config=deepcopy(record.config),
+        cards=[AuditCard.model_validate(card) for card in record.cards],
+        content=AuditContent.model_validate(record.content),
+        created_by=record.owner_id,
+        created_at=record.created_at,
+    )
 
 
 def conversation_view(record: ConversationRecord) -> Conversation:
@@ -318,6 +369,63 @@ class SQLCopilotRepository:
             ).where(AICallRecord.owner_id == owner, AICallRecord.created_at >= since)
         )
         return int(total or 0)
+
+    def audit_by_key(self, revision: UUID, key: str) -> TextAudit | None:
+        record = self.db.scalar(
+            select(TextAuditRecord).where(
+                TextAuditRecord.dashboard_revision_id == revision,
+                TextAuditRecord.audit_key == key,
+            )
+        )
+        return audit_view(record) if record else None
+
+    def audit(self, owner: UUID, audit: UUID) -> TextAudit:
+        record = self.db.get(TextAuditRecord, audit)
+        if record is None or record.owner_id != owner:
+            raise ApplicationError(*AUDIT_NOT_FOUND)
+        return audit_view(record)
+
+    def audits(self, owner: UUID, revision: UUID) -> list[TextAudit]:
+        records = self.db.scalars(
+            select(TextAuditRecord)
+            .where(
+                TextAuditRecord.owner_id == owner,
+                TextAuditRecord.dashboard_revision_id == revision,
+            )
+            .order_by(TextAuditRecord.created_at.desc(), TextAuditRecord.id)
+        )
+        return [audit_view(r) for r in records]
+
+    def save_audit(self, audit: TextAudit, call: UUID, correlation: str) -> TextAudit:
+        """Inserta o, si otra petición guardó la misma clave a la vez, devuelve aquélla."""
+        self.db.execute(
+            insert(TextAuditRecord)
+            .values(
+                id=audit.id,
+                owner_id=audit.created_by,
+                project_id=audit.project_id,
+                dashboard_revision_id=audit.dashboard_revision_id,
+                audit_key=audit.audit_key,
+                result_sha256=audit.result_sha256,
+                provider=audit.provider,
+                model=audit.model,
+                prompt_id=audit.prompt_id,
+                prompt_version=audit.prompt_version,
+                config=audit.config,
+                cards=[card.model_dump(mode="json") for card in audit.cards],
+                content=audit.content.model_dump(mode="json"),
+                call_id=call,
+                created_at=audit.created_at,
+            )
+            .on_conflict_do_nothing(index_elements=["dashboard_revision_id", "audit_key"])
+        )
+        saved = self.audit_by_key(audit.dashboard_revision_id, audit.audit_key)
+        assert saved is not None
+        if saved.id == audit.id:
+            record_event(
+                self.db, audit.created_by, audit.id, "copilot.text_audit.created", correlation
+            )
+        return saved
 
     def project_cost_since(self, project: UUID, since: datetime) -> Decimal:
         total = self.db.scalar(

@@ -33,6 +33,8 @@ def raw(value: Any) -> Any:
 def respond(task: str, context: dict[str, Any], request: str) -> dict[str, Any]:
     if task == "explain_result":
         return explain(context)
+    if task == "text_audit":
+        return audit(context)
     return turn(context, normalized(request))
 
 
@@ -171,3 +173,43 @@ def explain(context: dict[str, Any]) -> dict[str, Any]:
         f"bajo, {{{{evidence:{low}}}}} en {{{{label:{low}}}}}."
     )
     return {"text": text}
+
+
+def audit(context: dict[str, Any]) -> dict[str, Any]:
+    """Auditoría textual determinista (11F): la cifra más alta y la más baja de todo el
+    dashboard, citadas por evidencia; una alerta si alguna tarjeta quedó fuera."""
+    values = []
+    for card in context["tarjetas"]:
+        for cell in card["resultado"]["cifras"]:
+            if cell["celda"] != "value" or cell["valor"] is None:
+                continue
+            try:
+                values.append((Decimal(cell["valor"]), cell["evidencia"]))
+            except InvalidOperation:
+                continue
+    if values:
+        values.sort(key=lambda item: (item[0], item[1]))
+        low, high = values[0][1], values[-1][1]
+        summary = (
+            f"La cifra más alta del dashboard es {{{{evidence:{high}}}}} en "
+            f"{{{{label:{high}}}}} y la más baja, {{{{evidence:{low}}}}} en {{{{label:{low}}}}}."
+        )
+    else:
+        summary = "Los resultados publicados no tienen cifras con valor que comparar."
+    alerts = []
+    if context["tarjetas_sin_resultado"]:
+        alerts.append(
+            {
+                "titulo": "Tarjetas sin resultado",
+                "detalle": "Algunas tarjetas no tienen una ejecución terminada y no se auditaron.",
+                "severidad": "media",
+            }
+        )
+    return {
+        "resumen_ejecutivo": summary,
+        "alertas_criticas": alerts,
+        "recomendaciones": [
+            "Revisa el origen de las cifras extremas antes de compartir el dashboard.",
+            "Actualiza el dashboard cuando cargues una versión nueva de los datos.",
+        ],
+    }

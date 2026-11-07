@@ -13,6 +13,7 @@ from dataflow.modules.copilot.infrastructure import (
     ConversationRecord,
     CopilotRequest,
     MessageRecord,
+    TextAuditRecord,
 )
 from dataflow.modules.dashboards.infrastructure import (
     DashboardFamilyRecord,
@@ -108,6 +109,7 @@ __all__ = [
     "ConversationRecord",
     "AICallRecord",
     "MessageRecord",
+    "TextAuditRecord",
     "ActionLinkRecord",
     "CopilotRequest",
 ]

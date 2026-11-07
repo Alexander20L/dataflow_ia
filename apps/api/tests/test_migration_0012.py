@@ -74,7 +74,9 @@ def test_0012_is_additive_and_copilot_records_are_immutable(
 
         with Session(engine, expire_on_commit=False) as db:
             with engine.connect() as connection:
-                context = MigrationContext.configure(connection, opts={})
+                context = MigrationContext.configure(
+                    connection, opts={"include_object": exists_at_0012}
+                )
                 diff = compare_metadata(context, Base.metadata)
             assert diff == [], diff
             executions = make_executions(db)
@@ -143,3 +145,13 @@ def test_0012_is_additive_and_copilot_records_are_immutable(
         with admin.begin() as connection:
             connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
         admin.dispose()
+
+
+LATER_TABLES = {"copilot_text_audits"}
+
+
+def exists_at_0012(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    table = name if type_ == "table" else getattr(getattr(obj, "table", None), "name", None)
+    return table not in LATER_TABLES
