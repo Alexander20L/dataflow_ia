@@ -139,6 +139,7 @@ def test_nothing_to_clean_activates_the_imported_version(pipe: Pipeline) -> None
     run = pipe.drive(version["id"])
     assert run["step"] == "interpret" and run["plan_revision_id"] is None
     assert run["result_version_id"] == version["id"]
+    assert ("quality_rules", "succeeded") in steps(run)
     assert pipe.active()["version_id"] == version["id"]  # type: ignore[index]
 
 

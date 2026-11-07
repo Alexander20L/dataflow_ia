@@ -8,6 +8,7 @@ from uuid import UUID, uuid4
 
 from sqlalchemy import (
     JSON,
+    Connection,
     DateTime,
     ForeignKey,
     String,
@@ -116,6 +117,7 @@ def lock_key(run: UUID) -> int:
 class SQLRunRepository:
     def __init__(self, db: Session) -> None:
         self.db = db
+        self._locks: dict[UUID, Connection] = {}
 
     # --- creación (dentro de la transacción de publicación de la importación) ---
 
@@ -181,11 +183,41 @@ class SQLRunRepository:
     # --- avance ---
 
     def try_lock(self, run: UUID) -> bool:
-        # Lock de sesión: sobrevive a los commits de los casos de uso que el paso invoca.
-        return bool(self.db.scalar(select(func.pg_try_advisory_lock(lock_key(run)))))
+        # El lock pertenece a una conexión PostgreSQL, no a la Session ORM. Sus commits
+        # devuelven conexiones al pool: mantener una conexión exclusiva hasta unlock().
+        if run in self._locks:
+            return False
+        bind = self.db.get_bind()
+        engine = bind.engine if isinstance(bind, Connection) else bind
+        connection = engine.connect()
+        try:
+            acquired = bool(connection.scalar(select(func.pg_try_advisory_lock(lock_key(run)))))
+            connection.commit()
+            if acquired:
+                self._locks[run] = connection
+                return True
+        except Exception:
+            # Una conexión con un posible lock nunca vuelve al pool en caso de error.
+            connection.invalidate()
+            connection.close()
+            raise
+        connection.close()
+        return False
 
     def unlock(self, run: UUID) -> None:
-        self.db.execute(select(func.pg_advisory_unlock(lock_key(run))))
+        connection = self._locks.pop(run, None)
+        if connection is None:
+            return
+        try:
+            released = connection.scalar(select(func.pg_advisory_unlock(lock_key(run))))
+            if not released:
+                raise RuntimeError("El bloqueo del pipeline ya no pertenece a su conexión.")
+            connection.commit()
+        except Exception:
+            connection.invalidate()
+            raise
+        finally:
+            connection.close()
 
     def load(self, run: UUID) -> PipelineRun | None:
         record = self.db.get(AutomationRunRecord, run, populate_existing=True)

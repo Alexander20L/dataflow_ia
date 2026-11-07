@@ -33,6 +33,7 @@ MESSAGES = {
     "APPLY_FAILED": "La aplicación de la limpieza falló.",
     "DIAGNOSTIC_FAILED": "El diagnóstico de la versión derivada falló.",
     "RULES_FAILED": "La evaluación de las reglas de calidad falló.",
+    "ANALYSIS_FAILED": "Una consulta del dashboard falló; no se publicó el dashboard.",
     "SELECT_FAILED": "No se pudo activar la versión resultante como fuente.",
     "EXECUTION_CANCELLED": "Una ejecución del pipeline se canceló.",
     "STEP_ERROR": "Un paso del pipeline no se pudo completar.",
@@ -242,7 +243,7 @@ class PipelineService:
             steps, semantic = self.port.proposal(owner, table[0], match.casts)
             if not steps:
                 run.result_version_id = run.version_id
-                self.move(run, "select", {"proposal": "nothing_to_clean"})
+                self.move(run, "quality_rules", {"proposal": "nothing_to_clean"})
                 return
             plan = self.port.create_plan(
                 owner,
@@ -397,18 +398,33 @@ class PipelineService:
             for query in analysis["queries"]:
                 if query["execution_id"] is None:
                     return
-                state, _ = self.port.execution_state(owner, UUID(query["execution_id"]))
-                if state in WAITING:
-                    return  # se publica un dashboard coherente cuando todas terminan
+                if not self.wait_for(run, UUID(query["execution_id"]), "ANALYSIS_FAILED"):
+                    return  # sólo se publica cuando todas terminaron correctamente
             self.move(run, "publish")
         elif run.step == "publish":
             analysis = self.runs.analysis(run.id)
             assert analysis
             if not analysis.get("dashboard_revision_id"):
+                if "dashboard_publication_target" not in analysis:
+                    family = self.runs.dashboard_family(run.project_id, analysis["template"])
+                    analysis = {
+                        **analysis,
+                        "dashboard_publication_target": {
+                            "family_id": str(family) if family else None,
+                            "expected_revision": self.port.dashboard_head_revision(owner, family)
+                            if family
+                            else 0,
+                        },
+                    }
+                    # Fijar también el destino antes del efecto externo. Una caída tras publicar
+                    # debe repetir la MISMA solicitud, no leer otra cabeza ni cambiar create/edit.
+                    self.runs.save_analysis(run.id, run.project_id, analysis)
+                    self.uow.commit()
+                target = analysis["dashboard_publication_target"]
                 family, revision = self.port.publish_dashboard(
                     owner,
                     run.project_id,
-                    self.runs.dashboard_family(run.project_id, analysis["template"]),
+                    UUID(target["family_id"]) if target["family_id"] else None,
                     analysis,
                     key(run, "dashboard"),
                 )

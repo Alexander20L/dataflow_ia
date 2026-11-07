@@ -365,6 +365,9 @@ class PipelineAccess:
                 return None
             raise
 
+    def dashboard_head_revision(self, owner: UUID, family: UUID) -> int:
+        return self.dashboards.head(owner, family).revision
+
     def publish_dashboard(
         self,
         owner: UUID,
@@ -396,6 +399,6 @@ class PipelineAccess:
         if family is None:
             saved = self.dashboards.create(owner, project, draft, key, str(key))
         else:
-            head = self.dashboards.head(owner, family)
-            saved = self.dashboards.revise(owner, family, head.revision, draft, key, str(key))
+            expected = int(analysis["dashboard_publication_target"]["expected_revision"])
+            saved = self.dashboards.revise(owner, family, expected, draft, key, str(key))
         return saved.revision.family_id, saved.revision.id

@@ -158,6 +158,8 @@ class PipelinePort(Protocol):
         """Crea el dashboard del molde o una revisión nueva; devuelve (familia, revisión)."""
         ...
 
+    def dashboard_head_revision(self, owner: UUID, family: UUID) -> int: ...
+
     def create_plan(
         self,
         owner: UUID,

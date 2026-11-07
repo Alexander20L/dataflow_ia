@@ -1,11 +1,14 @@
 """Fase 11E: dashboard automático determinista publicado por el pipeline."""
 
+from typing import Any
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from test_automation_interpretation import SECOND, TYPED_POLICY, save_mapping
 from test_automation_pipeline import Pipeline
 
+from dataflow.bootstrap.pipeline_access import PipelineAccess
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.templates.analysis import analysis_spec
 from dataflow.modules.templates.contracts import MappingContent
@@ -82,3 +85,36 @@ def test_pipeline_publishes_and_then_revises_the_same_dashboard(pipe: Pipeline) 
         c["card_id"]
         for c in pipe.client.get(f"/api/v1/dashboards/{run['dashboard_family_id']}").json()["cards"]
     ]
+
+
+def test_dashboard_revision_recovered_after_crash_does_not_duplicate_or_conflict(
+    pipe: Pipeline, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    pipe.policy(TYPED_POLICY)
+    save_mapping(pipe)
+    first = pipe.load()
+    initial = pipe.drive(first["id"], limit=30)
+    assert initial["state"] == "completed"
+    original = PipelineAccess.publish_dashboard
+    interrupted = False
+
+    def publish_then_interrupt(self: PipelineAccess, *args: Any, **kwargs: Any) -> Any:
+        nonlocal interrupted
+        result = original(self, *args, **kwargs)
+        if not interrupted:
+            interrupted = True
+            raise RuntimeError("crash after dashboard commit")
+        return result
+
+    monkeypatch.setattr(PipelineAccess, "publish_dashboard", publish_then_interrupt)
+    second = pipe.load(SECOND)
+    with pytest.raises(RuntimeError, match="crash after dashboard commit"):
+        pipe.drive(second["id"], limit=30)
+    assert pipe.run(second["id"])["step"] == "publish"
+    recovered = pipe.drive(second["id"], limit=10)
+    assert recovered["state"] == "completed", recovered
+    assert recovered["dashboard_family_id"] == initial["dashboard_family_id"]
+    view = pipe.client.get(f"/api/v1/dashboards/{initial['dashboard_family_id']}").json()
+    assert view["head"]["revision"] == 2
+    assert view["revision_count"] == 2
+    assert recovered["dashboard_revision_id"] == view["head"]["id"]
