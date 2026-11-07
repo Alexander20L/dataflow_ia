@@ -249,9 +249,11 @@ def extract(
                 raise fail("SQL_HEADERS", "Un nombre de columna está vacío o es demasiado largo.")
         mode = consistency(connection)
         version = server_version(connection)
-        connection.autocommit = False
         if mode == "snapshot":
+            # El nivel se fija para la sesión antes de abrir la transacción: SQL Server no
+            # permite pasar a SNAPSHOT una transacción ya iniciada.
             cursor.execute("SET TRANSACTION ISOLATION LEVEL SNAPSHOT")
+        connection.autocommit = False
         selected = ", ".join(quote(column) for column, _ in columns)
         cursor.execute(
             f"SELECT TOP (?) {selected} FROM {quote(schema)}.{quote(name)}",
