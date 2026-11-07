@@ -11515,6 +11515,166 @@
         ],
         "title": "VersionResponse",
         "type": "object"
+      },
+      "XlsxInspection": {
+        "description": "Hojas y tablas del libro y vista previa de la selección, antes de importar.",
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "header_row": {
+            "title": "Header Row",
+            "type": "integer"
+          },
+          "problem": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/XlsxProblem"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "sheet": {
+            "title": "Sheet",
+            "type": "string"
+          },
+          "sheets": {
+            "items": {
+              "$ref": "#/components/schemas/XlsxSheet"
+            },
+            "title": "Sheets",
+            "type": "array"
+          },
+          "table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table"
+          },
+          "warning_count": {
+            "title": "Warning Count",
+            "type": "integer"
+          },
+          "warnings": {
+            "items": {
+              "$ref": "#/components/schemas/XlsxWarning"
+            },
+            "title": "Warnings",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sheets",
+          "sheet",
+          "table",
+          "header_row",
+          "columns",
+          "rows",
+          "row_count",
+          "warnings",
+          "warning_count"
+        ],
+        "title": "XlsxInspection",
+        "type": "object"
+      },
+      "XlsxProblem": {
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "message"
+        ],
+        "title": "XlsxProblem",
+        "type": "object"
+      },
+      "XlsxSheet": {
+        "properties": {
+          "hidden": {
+            "title": "Hidden",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "tables": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Tables",
+            "type": "array"
+          }
+        },
+        "required": [
+          "name",
+          "hidden",
+          "tables"
+        ],
+        "title": "XlsxSheet",
+        "type": "object"
+      },
+      "XlsxWarning": {
+        "properties": {
+          "cell": {
+            "title": "Cell",
+            "type": "string"
+          },
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "message": {
+            "title": "Message",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "cell",
+          "message"
+        ],
+        "title": "XlsxWarning",
+        "type": "object"
       }
     },
     "securitySchemes": {
@@ -22167,6 +22327,479 @@
           }
         ],
         "summary": "Upload Csv",
+        "tags": [
+          "Datasets"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/imports/xlsx": {
+      "post": {
+        "description": "Fase 12A: importa la hoja o tabla elegida con ingestion.read_xlsx@1.",
+        "operationId": "uploadXlsx",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "File Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sheet",
+            "required": true,
+            "schema": {
+              "maxLength": 31,
+              "minLength": 1,
+              "title": "Sheet",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "table",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Table"
+            }
+          },
+          {
+            "in": "query",
+            "name": "header_row",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1048576,
+              "minimum": 1,
+              "title": "Header Row",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Upload Xlsx",
+        "tags": [
+          "Datasets"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/imports/xlsx/inspect": {
+      "post": {
+        "description": "Fase 12A: hojas, tablas con nombre y vista previa de la selección; no guarda nada.",
+        "operationId": "inspectXlsx",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "File Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "sheet",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sheet"
+            }
+          },
+          {
+            "in": "query",
+            "name": "table",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 255,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Table"
+            }
+          },
+          {
+            "in": "query",
+            "name": "header_row",
+            "required": false,
+            "schema": {
+              "default": 1,
+              "maximum": 1048576,
+              "minimum": 1,
+              "title": "Header Row",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/XlsxInspection"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Inspect Xlsx",
         "tags": [
           "Datasets"
         ]

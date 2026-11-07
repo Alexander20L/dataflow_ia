@@ -1,17 +1,31 @@
 import hashlib
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any, Literal, Protocol, cast
 from uuid import UUID, uuid4
 
 from dataflow.modules.datasets.public import Datasets, DatasetVersion, ObjectStore
-from dataflow.modules.executions.public import Execution, Executions, ProcessingConfig, legacy_state
-from dataflow.modules.ingestion.contracts import Diagnostic, IngestionSummary, PreviewPage
+from dataflow.modules.executions.public import (
+    Execution,
+    Executions,
+    PlanRevision,
+    ProcessingConfig,
+    legacy_state,
+)
+from dataflow.modules.ingestion.contracts import (
+    Diagnostic,
+    IngestionSummary,
+    PreviewPage,
+    ReadXlsxParameters,
+    XlsxInspection,
+)
 from dataflow.modules.ingestion.domain import ImportState, Version
 from dataflow.modules.ingestion.plans import (
     analysis_fingerprint,
     build_plan,
     import_fingerprint,
     resolve_separator,
+    xlsx_import_fingerprint,
 )
 from dataflow.modules.quality.contracts import QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
@@ -58,6 +72,13 @@ class Analyzer(Protocol):
     def read(
         self, content: bytes, separator: str, config: ProcessingConfig, timeout: float
     ) -> ReadOutput: ...
+    def read_xlsx(
+        self,
+        content: bytes,
+        parameters: ReadXlsxParameters,
+        config: ProcessingConfig,
+        timeout: float,
+    ) -> ReadOutput: ...
     def profile(
         self,
         table: bytes,
@@ -67,6 +88,23 @@ class Analyzer(Protocol):
         timeout: float,
     ) -> DatasetProfile: ...
     def quality(self, table: bytes, config: ProcessingConfig, timeout: float) -> QualityReport: ...
+
+
+class XlsxInspector(Protocol):
+    """Lista hojas/tablas y previsualiza la selección en el subproceso aislado (Fase 12A)."""
+
+    def inspect_xlsx(
+        self,
+        content: bytes,
+        sheet: str | None,
+        table: str | None,
+        header_row: int,
+        config: ProcessingConfig,
+    ) -> XlsxInspection: ...
+
+
+XLSX_REJECTED = (".xls", ".xlsm", ".xlsb", ".xltm", ".xlt")
+UNSAFE_NAME = "/\\\x00\r\n"
 
 
 class PreviewReader(Protocol):
@@ -122,10 +160,12 @@ class IngestionService:
         config: ProcessingConfig,
         quota: int,
         maximum_upload: int = 5 * 1024 * 1024,
+        inspector: XlsxInspector | None = None,
     ) -> None:
         self.datasets, self.executions, self.objects = datasets, executions, objects
         self.projects, self.preview_reader, self.uow = projects, preview, uow
         self.config, self.quota, self.maximum_upload = config, quota, maximum_upload
+        self.inspector = inspector
 
     def submit(
         self,
@@ -140,21 +180,115 @@ class IngestionService:
         try:
             if (
                 not name.lower().endswith(".csv")
-                or any(c in name for c in "/\\\x00\r\n")
+                or any(c in name for c in UNSAFE_NAME)
                 or len(name) > 255
             ):
                 raise ApplicationError(
                     "CSV_REQUIRED", "Selecciona un nombre de archivo CSV válido.", 422
                 )
-            if not content:
-                raise ApplicationError("EMPTY_FILE", "El archivo está vacío.", 422)
-            if len(content) > self.maximum_upload:
-                raise ApplicationError("FILE_TOO_LARGE", "El CSV supera el límite de tamaño.", 413)
+            self._check_content(content, "El CSV supera el límite de tamaño.")
             if separator not in {"auto", ",", ";", "tab"}:
                 raise ApplicationError("CSV_SEPARATOR", "Separador no admitido.", 422)
+        except Exception:
+            self.uow.rollback()
+            raise
+        return self._register(
+            owner,
+            project,
+            name,
+            content,
+            key,
+            correlation,
+            "csv",
+            import_fingerprint(name, hashlib.sha256(content).hexdigest(), separator),
+            lambda version: build_plan(
+                owner, version, self.config, separator, resolve_separator(content, separator)
+            ),
+        )
+
+    def submit_xlsx(
+        self,
+        owner: UUID,
+        project: UUID,
+        name: str,
+        content: bytes,
+        parameters: ReadXlsxParameters,
+        key: UUID,
+        correlation: str,
+    ) -> Version:
+        """Fase 12A: un libro .xlsx con la hoja o tabla elegida tras la vista previa."""
+        try:
+            self._check_xlsx(name, content)
+        except Exception:
+            self.uow.rollback()
+            raise
+        return self._register(
+            owner,
+            project,
+            name,
+            content,
+            key,
+            correlation,
+            "xlsx",
+            xlsx_import_fingerprint(name, hashlib.sha256(content).hexdigest(), parameters),
+            lambda version: build_plan(owner, version, self.config, xlsx=parameters),
+        )
+
+    def inspect_xlsx(
+        self,
+        owner: UUID,
+        project: UUID,
+        name: str,
+        content: bytes,
+        sheet: str | None,
+        table: str | None,
+        header_row: int,
+    ) -> XlsxInspection:
+        """Vista previa antes de activar: no guarda nada."""
+        try:
+            self.projects.require(owner, project, writable=True)
+        finally:
+            self.uow.rollback()
+        self._check_xlsx(name, content)
+        if self.inspector is None:
+            raise ApplicationError("XLSX_UNAVAILABLE", "La lectura de Excel no está activa.", 503)
+        return self.inspector.inspect_xlsx(content, sheet, table, header_row, self.config)
+
+    def _check_content(self, content: bytes, too_large: str) -> None:
+        if not content:
+            raise ApplicationError("EMPTY_FILE", "El archivo está vacío.", 422)
+        if len(content) > self.maximum_upload:
+            raise ApplicationError("FILE_TOO_LARGE", too_large, 413)
+
+    def _check_xlsx(self, name: str, content: bytes) -> None:
+        lowered = name.lower()
+        if any(c in name for c in UNSAFE_NAME) or len(name) > 255:
+            raise ApplicationError("XLSX_REQUIRED", "Nombre de archivo no válido.", 422)
+        if lowered.endswith(XLSX_REJECTED):
+            raise ApplicationError(
+                "UNSUPPORTED_FORMAT",
+                "Sólo se admiten libros .xlsx; guarda el archivo como «Libro de Excel (.xlsx)».",
+                422,
+            )
+        if not lowered.endswith(".xlsx"):
+            raise ApplicationError("XLSX_REQUIRED", "Selecciona un libro de Excel .xlsx.", 422)
+        self._check_content(content, "El libro supera el límite de tamaño.")
+
+    def _register(
+        self,
+        owner: UUID,
+        project: UUID,
+        name: str,
+        content: bytes,
+        key: UUID,
+        correlation: str,
+        extension: str,
+        fingerprint: str,
+        plan: Callable[[DatasetVersion], PlanRevision],
+    ) -> Version:
+        try:
             self.projects.require(owner, project)
             self.datasets.lock_owner(owner)
-            fingerprint = import_fingerprint(name, hashlib.sha256(content).hexdigest(), separator)
             existing = self.executions.find_request(owner, project, "csv_import", key, fingerprint)
             if existing:
                 result = legacy_view(self.datasets.get(owner, existing.version_id), existing)
@@ -167,15 +301,20 @@ class IngestionService:
                     "STORAGE_QUOTA", "Se alcanzó la cuota de archivos originales de la cuenta.", 413
                 )
             version_id = uuid4()
+            digest_hex = hashlib.sha256(content).hexdigest()
             source = self.objects.put(
-                f"originals/{owner}/{version_id}/{hashlib.sha256(content).hexdigest()}.csv", content
+                f"originals/{owner}/{version_id}/{digest_hex}.{extension}", content
             )
             version = self.datasets.register(owner, project, version_id, name, source)
-            plan = build_plan(
-                owner, version, self.config, separator, resolve_separator(content, separator)
-            )
             run = self.executions.enqueue(
-                owner, project, version_id, "csv_import", key, fingerprint, plan, correlation
+                owner,
+                project,
+                version_id,
+                "csv_import",
+                key,
+                fingerprint,
+                plan(version),
+                correlation,
             )
             self.datasets.bind_import(version_id, run.id)
             self.uow.commit()

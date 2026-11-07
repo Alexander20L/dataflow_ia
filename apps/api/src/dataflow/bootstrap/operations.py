@@ -21,7 +21,7 @@ from dataflow.modules.cleaning.public import (
     trim_column_types,
 )
 from dataflow.modules.executions.public import StepExecutor
-from dataflow.modules.ingestion.contracts import ReadCsvParameters
+from dataflow.modules.ingestion.contracts import ReadCsvParameters, ReadXlsxParameters
 from dataflow.modules.planning.public import (
     CATALOG_VERSION,
     IdentifierConversionGuard,
@@ -36,6 +36,9 @@ from dataflow.platform.data_types import ALL_TYPES, NUMERIC
 # limpieza transforman datos: se ejecutan con vista previa y aprobación, nunca como "plan".
 DESCRIPTORS: tuple[OperationDescriptor, ...] = (
     OperationDescriptor("ingestion.read_csv", 1, "Leer CSV", "source", "table", ReadCsvParameters),
+    OperationDescriptor(
+        "ingestion.read_xlsx", 1, "Leer Excel (.xlsx)", "source", "table", ReadXlsxParameters
+    ),
     OperationDescriptor(
         "understanding.profile", 1, "Perfil de columnas", "table", "profile", ProfileParameters
     ),

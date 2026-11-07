@@ -9,7 +9,13 @@ from starlette.concurrency import run_in_threadpool
 
 from dataflow.bootstrap.dependencies import Analysis, CurrentIdentity, Ingestion
 from dataflow.modules.executions.contracts import ExecutionResponse, execution_response
-from dataflow.modules.ingestion.contracts import Diagnostic, IngestionSummary, PreviewPage
+from dataflow.modules.ingestion.contracts import (
+    Diagnostic,
+    IngestionSummary,
+    PreviewPage,
+    ReadXlsxParameters,
+    XlsxInspection,
+)
 from dataflow.modules.ingestion.domain import ImportState
 from dataflow.modules.quality.contracts import QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
@@ -96,6 +102,94 @@ async def upload_csv(
         file_name,
         b"".join(chunks),
         separator,
+        request_key,
+        request.state.correlation_id,
+    )
+    return VersionResponse.model_validate(version)
+
+
+XLSX_MIME = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+XLSX_BODY = {
+    "requestBody": {
+        "required": True,
+        "content": {XLSX_MIME: {"schema": {"type": "string", "format": "binary"}}},
+    }
+}
+
+
+async def xlsx_body(request: Request) -> bytes:
+    if request.headers.get("content-type", "").split(";")[0].strip() != XLSX_MIME:
+        raise ApplicationError(
+            "XLSX_CONTENT_TYPE", f"Envía el libro con Content-Type {XLSX_MIME}.", 415
+        )
+    maximum = get_settings().max_upload_bytes
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > maximum:
+            raise ApplicationError("FILE_TOO_LARGE", "El libro supera el límite de 5 MB.", 413)
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@router.post(
+    "/projects/{project_id}/imports/xlsx/inspect",
+    response_model=XlsxInspection,
+    operation_id="inspectXlsx",
+    openapi_extra=XLSX_BODY,
+)
+async def inspect_xlsx(
+    project_id: UUID,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    file_name: Annotated[str, Query(min_length=1, max_length=255)],
+    sheet: Annotated[str | None, Query(min_length=1, max_length=31)] = None,
+    table: Annotated[str | None, Query(min_length=1, max_length=255)] = None,
+    header_row: Annotated[int, Query(ge=1, le=1_048_576)] = 1,
+) -> XlsxInspection:
+    """Fase 12A: hojas, tablas con nombre y vista previa de la selección; no guarda nada."""
+    content = await xlsx_body(request)
+    return await run_in_threadpool(
+        service.inspect_xlsx,
+        identity.user.id,
+        project_id,
+        file_name,
+        content,
+        sheet,
+        table,
+        header_row,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/imports/xlsx",
+    status_code=202,
+    response_model=VersionResponse,
+    operation_id="uploadXlsx",
+    openapi_extra=XLSX_BODY,
+)
+async def upload_xlsx(
+    project_id: UUID,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    file_name: Annotated[str, Query(min_length=1, max_length=255)],
+    sheet: Annotated[str, Query(min_length=1, max_length=31)],
+    request_key: Annotated[UUID, Header(alias="Idempotency-Key")],
+    table: Annotated[str | None, Query(min_length=1, max_length=255)] = None,
+    header_row: Annotated[int, Query(ge=1, le=1_048_576)] = 1,
+) -> VersionResponse:
+    """Fase 12A: importa la hoja o tabla elegida con ingestion.read_xlsx@1."""
+    content = await xlsx_body(request)
+    version = await run_in_threadpool(
+        service.submit_xlsx,
+        identity.user.id,
+        project_id,
+        file_name,
+        content,
+        ReadXlsxParameters(sheet=sheet, table=table, header_row=header_row),
         request_key,
         request.state.correlation_id,
     )

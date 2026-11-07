@@ -15,8 +15,8 @@ from dataflow.modules.executions.public import (
     StepInput,
     StepResult,
 )
-from dataflow.modules.ingestion.application import Analyzer, ProjectAccess
-from dataflow.modules.ingestion.contracts import ReadCsvParameters
+from dataflow.modules.ingestion.application import Analyzer, ProjectAccess, ReadOutput
+from dataflow.modules.ingestion.contracts import ReadCsvParameters, ReadXlsxParameters
 from dataflow.modules.quality.contracts import QualityParameters
 from dataflow.modules.quality.public import (
     QualityRulesParameters,
@@ -139,25 +139,49 @@ class ReadCsvStep(AnalyzerStep):
             lease.execution.plan.config,
             timeout,
         )
-        if result.source_sha256 != source.source_sha256:
-            raise ApplicationError("INTEGRITY_ERROR", "La salida no corresponde al original.", 409)
-        table = self.put(lease, step, "data.parquet", result.parquet)
-        columns, logical_hash = table_metadata(lease.version_id, result.parquet)
-        output = ArtifactOutput(
-            uuid4(),
-            step.id,
-            "table",
-            "table",
-            table,
-            "application/vnd.apache.parquet",
-            result.row_count,
-            result.column_count,
-            columns,
-            logical_hash,
+        return publish_read(self, lease, step, source, result)
+
+
+class ReadXlsxStep(AnalyzerStep):
+    """ingestion.read_xlsx@1 (Fase 12A): libro original → tabla de la hoja o tabla elegida."""
+
+    output_kind: ArtifactKind = "table"
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        self.require(source, "source")
+        assert lease.execution.plan
+        result = self.analyzer.read_xlsx(
+            self.objects.read(source.content),
+            ReadXlsxParameters.model_validate(step.parameters),
+            lease.execution.plan.config,
+            timeout,
         )
-        return StepResult(
-            [output], StepInput("table", table, source.source_sha256, result.separator)
-        )
+        return publish_read(self, lease, step, source, result)
+
+
+def publish_read(
+    reader: AnalyzerStep, lease: Lease, step: PlanStepSpec, source: StepInput, result: ReadOutput
+) -> StepResult:
+    """Tabla leída de un original: mismo artefacto para CSV y XLSX (Fase 12, principio común)."""
+    if result.source_sha256 != source.source_sha256:
+        raise ApplicationError("INTEGRITY_ERROR", "La salida no corresponde al original.", 409)
+    table = reader.put(lease, step, "data.parquet", result.parquet)
+    columns, logical_hash = table_metadata(lease.version_id, result.parquet)
+    output = ArtifactOutput(
+        uuid4(),
+        step.id,
+        "table",
+        "table",
+        table,
+        "application/vnd.apache.parquet",
+        result.row_count,
+        result.column_count,
+        columns,
+        logical_hash,
+    )
+    return StepResult([output], StepInput("table", table, source.source_sha256, result.separator))
 
 
 class ProfileStep(AnalyzerStep):

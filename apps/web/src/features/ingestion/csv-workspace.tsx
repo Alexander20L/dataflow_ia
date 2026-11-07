@@ -18,6 +18,7 @@ import { number } from "@/lib/utils";
 import { steps } from "@/lib/demo";
 import { useApp } from "@/lib/providers";
 import { ActiveSource } from "@/features/analysis-sessions/active-source";
+import { XlsxSource } from "./xlsx-source";
 import {
   AutomationNotices,
   PipelineStatus,
@@ -656,14 +657,19 @@ export function CsvUpload({
     if (!value || upload.isPending) return;
     setFile(null);
     setError("");
-    if (!value.name.toLowerCase().endsWith(".csv")) {
+    const name = value.name.toLowerCase();
+    if (/\.(xls|xlsm|xlsb)$/.test(name)) {
       setError(
-        "Selecciona un archivo CSV. XLSX y Parquet se integrarán después.",
+        "Sólo se admiten libros .xlsx: guarda el archivo como «Libro de Excel (.xlsx)».",
       );
       return;
     }
+    if (!name.endsWith(".csv") && !name.endsWith(".xlsx")) {
+      setError("Selecciona un archivo CSV o un libro de Excel (.xlsx).");
+      return;
+    }
     if (!value.size || value.size > 5 * 1024 * 1024) {
-      setError("Selecciona un CSV no vacío de hasta 5 MB.");
+      setError("Selecciona un archivo no vacío de hasta 5 MB.");
       return;
     }
     setFile(value);
@@ -674,8 +680,8 @@ export function CsvUpload({
         hidden
         ref={input}
         type="file"
-        accept=".csv,text/csv"
-        aria-label="Archivo CSV"
+        accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        aria-label="Archivo CSV o Excel"
         onChange={(e) => select(e.target.files?.[0])}
       />
       <div
@@ -687,55 +693,79 @@ export function CsvUpload({
         }}
       >
         <UploadCloud size={25} />
-        <h3>{file?.name ?? "Arrastra tu CSV aquí"}</h3>
-        <p>UTF-8 · hasta 5 MB · el original se conserva sin cambios</p>
+        <h3>{file?.name ?? "Arrastra tu CSV o Excel aquí"}</h3>
+        <p>
+          CSV UTF-8 o .xlsx · hasta 5 MB · el original se conserva sin cambios
+        </p>
         <Button
           variant="outline"
           disabled={upload.isPending}
           onClick={() => input.current?.click()}
         >
-          Seleccionar CSV
+          Seleccionar archivo
         </Button>
       </div>
-      <label htmlFor={`separator-${projectId}`}>Separador de columnas</label>
-      <select
-        id={`separator-${projectId}`}
-        disabled={upload.isPending}
-        value={separator}
-        onChange={(e) => setSeparator(e.target.value as Separator)}
-      >
-        <option value="auto">Detectar automáticamente</option>
-        <option value=",">Coma (,)</option>
-        <option value=";">Punto y coma (;)</option>
-        <option value="tab">Tabulador</option>
-      </select>
-      {(error || upload.isError) && (
-        <p className="auth-error" role="alert">
-          {error || errorMessage(upload.error)}
-        </p>
-      )}
-      <Button
-        disabled={!file || upload.isPending}
-        onClick={async () => {
-          if (!file) return;
-          try {
-            await upload.mutateAsync({ file, separator });
+      {file && /\.xlsx$/i.test(file.name) ? (
+        <XlsxSource
+          key={`${file.name}-${file.size}-${file.lastModified}`}
+          projectId={projectId}
+          file={file}
+          onUploaded={() => {
             setFile(null);
             if (input.current) input.current.value = "";
-            notify("Original conservado. Procesamiento encolado.");
             onUploaded();
-          } catch {
-            /* Error visible y clave de reintento conservada. */
-          }
-        }}
-      >
-        {upload.isPending ? (
-          <LoaderCircle className="spin" size={16} />
-        ) : (
-          <UploadCloud size={16} />
-        )}
-        {upload.isPending ? "Enviando CSV…" : "Subir y analizar CSV"}
-      </Button>
+          }}
+        />
+      ) : (
+        <>
+          <label htmlFor={`separator-${projectId}`}>
+            Separador de columnas
+          </label>
+          <select
+            id={`separator-${projectId}`}
+            disabled={upload.isPending}
+            value={separator}
+            onChange={(e) => setSeparator(e.target.value as Separator)}
+          >
+            <option value="auto">Detectar automáticamente</option>
+            <option value=",">Coma (,)</option>
+            <option value=";">Punto y coma (;)</option>
+            <option value="tab">Tabulador</option>
+          </select>
+          {upload.isError && (
+            <p className="auth-error" role="alert">
+              {errorMessage(upload.error)}
+            </p>
+          )}
+          <Button
+            disabled={!file || upload.isPending}
+            onClick={async () => {
+              if (!file) return;
+              try {
+                await upload.mutateAsync({ file, separator });
+                setFile(null);
+                if (input.current) input.current.value = "";
+                notify("Original conservado. Procesamiento encolado.");
+                onUploaded();
+              } catch {
+                /* Error visible y clave de reintento conservada. */
+              }
+            }}
+          >
+            {upload.isPending ? (
+              <LoaderCircle className="spin" size={16} />
+            ) : (
+              <UploadCloud size={16} />
+            )}
+            {upload.isPending ? "Enviando CSV…" : "Subir y analizar CSV"}
+          </Button>
+        </>
+      )}
+      {error && (
+        <p className="auth-error" role="alert">
+          {error}
+        </p>
+      )}
     </div>
   );
 }

@@ -239,3 +239,21 @@ def test_reports_depend_only_on_their_ports_and_render_without_database() -> Non
     for name in ["pdf.py", "processor.py", "contracts.py", "domain.py"]:
         for module in imports(ast.parse((root / name).read_text(encoding="utf-8"))):
             assert not module.startswith(forbidden), (name, module)
+
+
+def test_source_readers_run_only_in_the_isolated_ingestion_process() -> None:
+    """Fase 12: cada lector de fuente se usa sólo desde el subproceso de ingesta y no toca
+    la base de datos ni la red."""
+    src = Path(__file__).resolve().parents[1] / "src" / "dataflow"
+    processor = src / "modules" / "ingestion" / "processor.py"
+    for file in src.rglob("*.py"):
+        if file.is_relative_to(src / "integrations" / "sources"):
+            continue
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            if module.startswith("dataflow.integrations.sources"):
+                assert file == processor, (file, module)
+    for file in (src / "integrations" / "sources").rglob("*.py"):
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            assert not module.startswith(
+                ("sqlalchemy", "psycopg", "socket", "urllib", "http", "dataflow.modules")
+            ), (file, module)
