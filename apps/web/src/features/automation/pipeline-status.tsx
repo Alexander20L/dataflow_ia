@@ -4,9 +4,11 @@ import { useQueryClient } from "@tanstack/react-query";
 import { AlertTriangle, Bot, CheckCircle2, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/api";
+import { InterpretationEditor } from "@/features/templates/interpretation-editor";
 import {
   useCancelRun,
   useNotifications,
+  useResumeRun,
   useVersionRun,
   type AutomationRun,
 } from "./api";
@@ -24,14 +26,17 @@ const STEPS: Record<string, string> = {
 
 /** Estado del pipeline automático de la versión que se ve (Fase 11C). */
 export function PipelineStatus({
+  projectId,
   versionId,
   onShowVersion,
 }: {
+  projectId: string;
   versionId: string;
   onShowVersion: (versionId: string) => void;
 }) {
   const run = useVersionRun(versionId);
   const cancel = useCancelRun(versionId);
+  const resume = useResumeRun(versionId);
   const client = useQueryClient();
   const state = run.data?.state;
   const previous = useRef(state);
@@ -109,6 +114,17 @@ export function PipelineStatus({
               </li>
             ))}
           </ul>
+          {current.reasons.length > 0 &&
+            current.reasons.every((r) => r.code.startsWith("MAPPING_")) && (
+              <InterpretationEditor
+                projectId={projectId}
+                versionId={current.result_version_id ?? current.version_id}
+                onSaved={() =>
+                  void resume.mutateAsync(current.id).catch(() => {})
+                }
+              />
+            )}
+          {resume.isError && <p role="alert">{errorMessage(resume.error)}</p>}
         </div>
       )}
       {cancel.isError && <p role="alert">{errorMessage(cancel.error)}</p>}

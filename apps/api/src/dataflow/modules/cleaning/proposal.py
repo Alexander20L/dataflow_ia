@@ -13,12 +13,13 @@ Orden fijo de los pasos: marcadores → recortar → convertir → excluir nulos
 """
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from dataflow.modules.cleaning.conversion import FORMATS
 from dataflow.modules.planning.contracts import InputRef, PlanStep, StepRef
 from dataflow.platform.data_types import DataType
 
@@ -41,6 +42,14 @@ class DedupeProposal(ProposalModel):
     null_keys: NullKeys
 
 
+class CastProposal(ProposalModel):
+    """Conversión confirmada por la persona en un mapeo (Fase 11D); nunca se infiere."""
+
+    column_id: UUID
+    type: Literal["integer", "decimal", "date", "boolean"]
+    scale: int | None = Field(default=None, ge=0, le=12)
+
+
 class CleaningDraft(ProposalModel):
     """Selección editable por columna; `draft_steps` la convierte en pasos del catálogo."""
 
@@ -48,6 +57,8 @@ class CleaningDraft(ProposalModel):
     trim: list[UUID]
     drop_nulls: list[UUID]
     dedupe: DedupeProposal
+    # Fase 11D: sólo las conversiones de un mapeo confirmado; vacío en la propuesta de la UI.
+    casts: list[CastProposal] = Field(default_factory=list)
 
 
 class ProposalSemanticRef(ProposalModel):
@@ -94,6 +105,7 @@ class ProposalInputs:
     columns: list[ProposalColumn]
     issues: list[ProposalIssue]
     confirmed_tokens: list[ConfirmedTokens]
+    casts: list[CastProposal] = field(default_factory=list)
 
 
 def propose_draft(
@@ -160,6 +172,19 @@ def draft_steps(draft: CleaningDraft, columns: list[ProposalColumn]) -> list[Pla
         )
     if draft.trim:
         add("trim", "cleaning.trim_whitespace", {"column_ids": draft.trim})
+    order = {column.id: index for index, column in enumerate(columns)}
+    for index, cast in enumerate(sorted(draft.casts, key=lambda c: order.get(c.column_id, 0)), 1):
+        add(
+            f"cast_{index}",
+            "cleaning.cast",
+            {
+                "column_id": cast.column_id,
+                "type": cast.type,
+                "format": FORMATS[cast.type],
+                "scale": cast.scale if cast.type == "decimal" else None,
+                "confirm_identifier_conversion": False,
+            },
+        )
     if draft.drop_nulls:
         add(
             "drop_nulls",
@@ -181,6 +206,8 @@ def draft_steps(draft: CleaningDraft, columns: list[ProposalColumn]) -> list[Pla
 
 def propose(inputs: ProposalInputs) -> CleaningProposal:
     draft = propose_draft(inputs.columns, inputs.issues, inputs.confirmed_tokens)
+    if inputs.casts:
+        draft = draft.model_copy(update={"casts": list(inputs.casts)})
     return CleaningProposal(
         representation_id=inputs.representation_id,
         table_sha256=inputs.table_sha256,

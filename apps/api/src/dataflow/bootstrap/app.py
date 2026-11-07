@@ -25,6 +25,7 @@ from dataflow.modules.planning.presentation import router as planning_router
 from dataflow.modules.projects.presentation import router as projects_router
 from dataflow.modules.quality.presentation import router as quality_router
 from dataflow.modules.reports.presentation import router as reports_router
+from dataflow.modules.templates.presentation import router as templates_router
 from dataflow.modules.understanding.presentation import router as understanding_router
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import engine, session_factory
@@ -160,3 +161,4 @@ app.include_router(reports_router)
 app.include_router(copilot_router)
 app.include_router(analysis_sessions_router)
 app.include_router(automation_router)
+app.include_router(templates_router)

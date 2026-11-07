@@ -4658,3 +4658,9 @@ tbody tr:hover {
   cursor: pointer;
   font-weight: 600;
 }
+/* Fase 11D: interpretación */
+.interpretation-editor {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+}

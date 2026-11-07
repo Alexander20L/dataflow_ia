@@ -6,18 +6,23 @@ from uuid import UUID, uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.templates_access import TemplateTablesAccess
 from dataflow.modules.analysis_sessions.public import AnalysisSessionService
 from dataflow.modules.automation.application import AutomationService
 from dataflow.modules.automation.infrastructure import SQLPolicyRepository
-from dataflow.modules.automation.pipeline_contracts import ApprovalResult, PlanResult
+from dataflow.modules.automation.pipeline_contracts import ApprovalResult, MatchResult, PlanResult
 from dataflow.modules.automation.pipeline_infrastructure import SQLRunRepository
 from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
 from dataflow.modules.cleaning.contracts import derived_version_id
+from dataflow.modules.cleaning.proposal import CastProposal
 from dataflow.modules.datasets.public import Datasets
 from dataflow.modules.executions.public import Executions
 from dataflow.modules.planning.application import PlanningService
 from dataflow.modules.planning.contracts import PlanDraft
 from dataflow.modules.quality.application import RulesetService
+from dataflow.modules.templates.application import TemplateService
+from dataflow.modules.understanding.public import SemanticService
+from dataflow.modules.understanding.semantic_contracts import SemanticDraft
 from dataflow.platform.config import get_settings
 from dataflow.platform.errors import ApplicationError
 
@@ -53,7 +58,11 @@ class PipelineAccess:
         automation: AutomationService,
         rulesets: RulesetService,
         sessions: AnalysisSessionService,
+        templates: TemplateService,
+        tables: TemplateTablesAccess,
+        semantics: SemanticService,
     ) -> None:
+        self.templates, self.tables, self.semantics = templates, tables, semantics
         self.datasets, self.executions = datasets, executions
         self.proposals, self.planning, self.cleaning = proposals, planning, cleaning
         self.automation, self.rulesets, self.sessions = automation, rulesets, sessions
@@ -69,9 +78,16 @@ class PipelineAccess:
         return table.id, table.content.sha256
 
     def proposal(
-        self, owner: UUID, artifact: UUID
+        self, owner: UUID, artifact: UUID, casts: list[dict[str, Any]]
     ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]:
-        proposal = self.proposals.get(owner, artifact)
+        proposal = self.proposals.get(
+            owner,
+            artifact,
+            [
+                CastProposal.model_validate({k: cast[k] for k in ("column_id", "type", "scale")})
+                for cast in casts
+            ],
+        )
         semantic = proposal.semantic_revision
         return (
             [step.model_dump(mode="json") for step in proposal.steps],
@@ -185,3 +201,44 @@ class PipelineAccess:
 
     def cancel_execution(self, owner: UUID, execution: UUID) -> None:
         self.executions.cancel(owner, execution)
+
+    # --- Fase 11D: interpretación reutilizable ---
+
+    def mapping_match(self, owner: UUID, project: UUID, artifact: UUID) -> MatchResult:
+        _, columns = self.tables.columns(owner, artifact)
+        match = self.templates.match(owner, project, columns)
+        ids = {column.name: column.id for column in columns}
+        return MatchResult(
+            status=match.status,
+            revision_id=match.revision.id if match.revision else None,
+            problems=match.problems,
+            casts=[
+                {
+                    "column_id": str(ids[c.column]),
+                    "column": c.column,
+                    "type": c.type,
+                    "scale": c.scale,
+                }
+                for c in match.casts
+                if c.column in ids
+            ],
+        )
+
+    def apply_mapping(self, owner: UUID, mapping_revision: UUID, artifact: UUID) -> UUID:
+        """Confirma la semántica del mapeo sobre la tabla (revisión semántica normal)."""
+        mapping = self.templates.revision(owner, mapping_revision)
+        _, columns = self.tables.columns(owner, artifact)
+        context = self.semantics.context(owner, artifact)
+        draft = self.templates.semantic_draft(
+            mapping, columns, context.editable.model_dump(mode="json")
+        )
+        saved = self.semantics.save(
+            owner,
+            artifact,
+            context.table_ref.artifact_sha256,
+            context.revision_count,
+            SemanticDraft.model_validate(draft),
+            uuid5(mapping_revision, str(artifact)),
+            str(artifact),
+        )
+        return saved.revision.id

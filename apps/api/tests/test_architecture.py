@@ -167,6 +167,20 @@ def test_automation_depends_only_on_its_ports() -> None:
             assert not module.startswith(("polars", "duckdb")), (file, module)
 
 
+def test_templates_depend_only_on_their_ports() -> None:
+    # Los moldes proponen y validan interpretaciones; no leen datos ni guardan semántica.
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules"
+    files = list((root / "templates").rglob("*.py"))
+    assert files
+    for file in files:
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            if module.startswith("dataflow.modules.") and not module.startswith(
+                "dataflow.modules.templates"
+            ):
+                assert module == "dataflow.modules.audit.public", (file, module)
+            assert not module.startswith(("polars", "duckdb")), (file, module)
+
+
 def test_copilot_depends_only_on_its_ports_and_the_ai_port() -> None:
     # El copiloto no planifica, no calcula ni conoce al proveedor: bootstrap le da planes,
     # métricas y resultados, y el puerto AIProvider le da la salida estructurada.

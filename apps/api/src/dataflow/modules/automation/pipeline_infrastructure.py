@@ -39,6 +39,7 @@ REFERENCES = (
     "rules_execution_id",
     "result_version_id",
 )
+INTERPRETATION = ("mapping_revision_id", "semantic_revision_id", "pass_number")
 
 
 class AutomationRunRecord(Base):
@@ -62,6 +63,18 @@ class AutomationRunRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
     finished_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class AutomationRunInterpretationRecord(Base):
+    """Fase 11D (migración 0016): mapeo aplicado y revisión semántica que confirmó. Tabla 1:1
+    aparte para no añadir columnas a `automation_runs` (criterio de los ADR-014 y ADR-015)."""
+
+    __tablename__ = "automation_run_interpretations"
+    run_id: Mapped[UUID] = mapped_column(ForeignKey("automation_runs.id"), primary_key=True)
+    mapping_revision_id: Mapped[UUID | None] = mapped_column(Uuid)
+    semantic_revision_id: Mapped[UUID | None] = mapped_column(Uuid)
+    pass_number: Mapped[int] = mapped_column(default=1)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
 class AutomationStepAttemptRecord(Base):
@@ -174,6 +187,7 @@ class SQLRunRepository:
             step=record.step,
             reasons=list(record.reasons),
             **{name: getattr(record, name) for name in REFERENCES},
+            **self.interpretation(record.id),
         )
 
     def save(self, run: PipelineRun) -> None:
@@ -184,9 +198,20 @@ class SQLRunRepository:
         record.state, record.step, record.reasons = run.state, run.step, run.reasons
         for name in REFERENCES:
             setattr(record, name, getattr(run, name))
+        if run.mapping_revision_id or run.semantic_revision_id or run.pass_number > 1:
+            link = self.db.get(AutomationRunInterpretationRecord, run.id)
+            if link is None:
+                link = AutomationRunInterpretationRecord(run_id=run.id, updated_at=now)
+                self.db.add(link)
+            link.mapping_revision_id = run.mapping_revision_id
+            link.semantic_revision_id = run.semantic_revision_id
+            link.pass_number = run.pass_number
+            link.updated_at = now
         record.updated_at = now
         if changed and run.state != "running":
             record.finished_at = now
+        elif run.state == "running":
+            record.finished_at = None  # reanudado
             record_event(self.db, run.owner_id, run.id, f"automation.{run.state}", str(run.id))
         self.db.flush()
 
@@ -211,6 +236,12 @@ class SQLRunRepository:
             )
         )
         self.db.flush()
+
+    def interpretation(self, run: UUID) -> dict[str, Any]:
+        link = self.db.get(AutomationRunInterpretationRecord, run)
+        if link is None:
+            return {"mapping_revision_id": None, "semantic_revision_id": None, "pass_number": 1}
+        return {name: getattr(link, name) for name in INTERPRETATION}
 
     def running_ids(self, limit: int) -> list[UUID]:
         return list(
@@ -252,6 +283,7 @@ class SQLRunRepository:
             step=record.step,
             reasons=[PipelineReason.model_validate(item) for item in record.reasons],
             **{name: getattr(record, name) for name in REFERENCES},
+            **self.interpretation(record.id),
             created_at=record.created_at.astimezone(UTC),
             updated_at=record.updated_at.astimezone(UTC),
             finished_at=utc(record.finished_at),
