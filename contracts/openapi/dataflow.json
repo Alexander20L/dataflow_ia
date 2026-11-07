@@ -1309,6 +1309,95 @@
         "title": "CleaningCard",
         "type": "object"
       },
+      "CleaningDraft": {
+        "additionalProperties": false,
+        "description": "Selección editable por columna; `draft_steps` la convierte en pasos del catálogo.",
+        "properties": {
+          "dedupe": {
+            "$ref": "#/components/schemas/DedupeProposal"
+          },
+          "drop_nulls": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Drop Nulls",
+            "type": "array"
+          },
+          "null_tokens": {
+            "items": {
+              "$ref": "#/components/schemas/NullTokenProposal"
+            },
+            "title": "Null Tokens",
+            "type": "array"
+          },
+          "trim": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Trim",
+            "type": "array"
+          }
+        },
+        "required": [
+          "null_tokens",
+          "trim",
+          "drop_nulls",
+          "dedupe"
+        ],
+        "title": "CleaningDraft",
+        "type": "object"
+      },
+      "CleaningProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "draft": {
+            "$ref": "#/components/schemas/CleaningDraft"
+          },
+          "proposal_version": {
+            "const": "cleaning-proposal@1",
+            "default": "cleaning-proposal@1",
+            "title": "Proposal Version",
+            "type": "string"
+          },
+          "representation_id": {
+            "format": "uuid",
+            "title": "Representation Id",
+            "type": "string"
+          },
+          "semantic_revision": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ProposalSemanticRef"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "steps": {
+            "items": {
+              "$ref": "#/components/schemas/PlanStep"
+            },
+            "title": "Steps",
+            "type": "array"
+          },
+          "table_sha256": {
+            "title": "Table Sha256",
+            "type": "string"
+          }
+        },
+        "required": [
+          "representation_id",
+          "table_sha256",
+          "semantic_revision",
+          "draft",
+          "steps"
+        ],
+        "title": "CleaningProposal",
+        "type": "object"
+      },
       "ColumnDraft": {
         "additionalProperties": false,
         "properties": {
@@ -2434,6 +2523,38 @@
           "columns"
         ],
         "title": "DatasetProfile",
+        "type": "object"
+      },
+      "DedupeProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "column_ids": {
+            "items": {
+              "format": "uuid",
+              "type": "string"
+            },
+            "title": "Column Ids",
+            "type": "array"
+          },
+          "enabled": {
+            "title": "Enabled",
+            "type": "boolean"
+          },
+          "null_keys": {
+            "enum": [
+              "reject",
+              "group_nulls"
+            ],
+            "title": "Null Keys",
+            "type": "string"
+          }
+        },
+        "required": [
+          "enabled",
+          "column_ids",
+          "null_keys"
+        ],
+        "title": "DedupeProposal",
         "type": "object"
       },
       "Diagnostic": {
@@ -4688,6 +4809,31 @@
         "title": "NullPolicy",
         "type": "object"
       },
+      "NullTokenProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "column_id": {
+            "format": "uuid",
+            "title": "Column Id",
+            "type": "string"
+          },
+          "tokens": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "minItems": 1,
+            "title": "Tokens",
+            "type": "array"
+          }
+        },
+        "required": [
+          "column_id",
+          "tokens"
+        ],
+        "title": "NullTokenProposal",
+        "type": "object"
+      },
       "NumericSummary": {
         "properties": {
           "count": {
@@ -5599,6 +5745,31 @@
           "message"
         ],
         "title": "ProposalProblem",
+        "type": "object"
+      },
+      "ProposalSemanticRef": {
+        "additionalProperties": false,
+        "properties": {
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "revision",
+          "content_sha256"
+        ],
+        "title": "ProposalSemanticRef",
         "type": "object"
       },
       "Provenance": {
@@ -19571,6 +19742,171 @@
         "summary": "Applicable Operations",
         "tags": [
           "Planning"
+        ]
+      }
+    },
+    "/api/v1/representations/{artifact_id}/cleaning-proposal": {
+      "get": {
+        "description": "Propuesta inicial de limpieza calculada en el servidor (Fase 11A). Sólo lectura.",
+        "operationId": "getCleaningProposal",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "artifact_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Artifact Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CleaningProposal"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Proposal",
+        "tags": [
+          "Cleaning"
         ]
       }
     },

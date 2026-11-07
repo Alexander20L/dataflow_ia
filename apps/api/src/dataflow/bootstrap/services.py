@@ -3,7 +3,7 @@ from uuid import uuid5
 from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
-from dataflow.bootstrap.cleaning_access import CleaningPlanAccess
+from dataflow.bootstrap.cleaning_access import CleaningPlanAccess, CleaningProposalAccess
 from dataflow.bootstrap.copilot_access import CopilotAccess
 from dataflow.bootstrap.dashboards_access import DashboardAccess
 from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry
@@ -21,7 +21,7 @@ from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.analytics.infrastructure import SQLMetricRepository
 from dataflow.modules.analytics.steps import AnalyticsQueryStep, MetricSource
 from dataflow.modules.audit.public import record_event
-from dataflow.modules.cleaning.application import CleaningService
+from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
 from dataflow.modules.cleaning.engine import IsolatedCleaner
 from dataflow.modules.cleaning.public import (
     ApprovalSource,
@@ -384,4 +384,10 @@ def make_cleaning(db: Session, objects: LocalObjects) -> CleaningService:
         datasets,
         objects,
         SQLUnitOfWork(db),
+    )
+
+
+def make_cleaning_proposals(db: Session, objects: LocalObjects) -> CleaningProposals:
+    return CleaningProposals(
+        CleaningProposalAccess(make_semantics(db, objects), make_ingestion(db, objects))
     )

@@ -14,6 +14,7 @@ from dataflow.modules.cleaning.contracts import (
     PreviewFailure,
     PreviewView,
 )
+from dataflow.modules.cleaning.proposal import CleaningProposal, ProposalInputs, propose
 from dataflow.modules.datasets.public import Datasets, ObjectStore
 from dataflow.modules.executions.public import Execution, Executions
 from dataflow.modules.planning.contracts import InputRef, OperationCatalog, PlanView
@@ -315,3 +316,21 @@ class CleaningService:
                 for step in producer.plan.content["steps"]
             ],
         )
+
+
+class ProposalSource(Protocol):
+    """Hechos de la tabla para proponer una limpieza (bootstrap los reúne de understanding e
+    ingestion: columnas, revisión semántica vigente y diagnóstico de calidad)."""
+
+    def proposal_inputs(self, owner: UUID, artifact: UUID) -> ProposalInputs: ...
+
+
+class CleaningProposals:
+    """Propuesta inicial de limpieza de una tabla publicada (Fase 11A): misma propuesta para la
+    interfaz y la automatización. Sólo lee; no guarda planes ni ejecuta nada."""
+
+    def __init__(self, source: ProposalSource) -> None:
+        self.source = source
+
+    def get(self, owner: UUID, artifact: UUID) -> CleaningProposal:
+        return propose(self.source.proposal_inputs(owner, artifact))

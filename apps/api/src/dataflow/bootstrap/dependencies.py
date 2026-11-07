@@ -9,6 +9,7 @@ from dataflow.bootstrap.ai import configured
 from dataflow.bootstrap.services import (
     make_analysis,
     make_cleaning,
+    make_cleaning_proposals,
     make_copilot,
     make_dashboards,
     make_datasets,
@@ -22,7 +23,7 @@ from dataflow.bootstrap.services import (
 )
 from dataflow.integrations.ai import AIProvider
 from dataflow.modules.analytics.application import MetricService
-from dataflow.modules.cleaning.application import CleaningService
+from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
 from dataflow.modules.copilot.application import CopilotConfig, CopilotService
 from dataflow.modules.dashboards.application import DashboardService
 from dataflow.modules.datasets.objects import LocalObjects
@@ -182,3 +183,10 @@ def cleaning_service(db: Db, objects: Objects) -> CleaningService:
 
 
 Cleaning = Annotated[CleaningService, Depends(cleaning_service)]
+
+
+def cleaning_proposal_service(db: Db, objects: Objects) -> CleaningProposals:
+    return make_cleaning_proposals(db, objects)
+
+
+CleaningProposalsDep = Annotated[CleaningProposals, Depends(cleaning_proposal_service)]

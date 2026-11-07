@@ -4,13 +4,14 @@ from uuid import UUID
 from fastapi import APIRouter, Header, Request
 from pydantic import Field
 
-from dataflow.bootstrap.dependencies import Cleaning, CurrentIdentity
+from dataflow.bootstrap.dependencies import Cleaning, CleaningProposalsDep, CurrentIdentity
 from dataflow.modules.cleaning.contracts import (
     ApprovalView,
     CleaningModel,
     LineageView,
     PreviewView,
 )
+from dataflow.modules.cleaning.proposal import CleaningProposal
 from dataflow.modules.executions.public import ExecutionResponse, execution_response
 
 router = APIRouter(prefix="/api/v1", tags=["Cleaning"])
@@ -93,3 +94,15 @@ def apply(
 )
 def lineage(version_id: UUID, identity: CurrentIdentity, service: Cleaning) -> LineageView:
     return service.lineage(identity.user.id, version_id)
+
+
+@router.get(
+    "/representations/{artifact_id}/cleaning-proposal",
+    response_model=CleaningProposal,
+    operation_id="getCleaningProposal",
+)
+def proposal(
+    artifact_id: UUID, identity: CurrentIdentity, service: CleaningProposalsDep
+) -> CleaningProposal:
+    """Propuesta inicial de limpieza calculada en el servidor (Fase 11A). Sólo lectura."""
+    return service.get(identity.user.id, artifact_id)
