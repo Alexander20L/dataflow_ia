@@ -31,9 +31,7 @@ def main() -> None:
         "/tmp/verify_" + token + ".dump",
     )
     postgres = run(COMPOSE + ["ps", "-q", "postgres"])
-    image = run(
-        ["docker", "image", "inspect", "dataflow-api:latest", "--format", "{{.Id}}"]
-    )
+    image = run(["docker", "image", "inspect", "dataflow-api:latest", "--format", "{{.Id}}"])
     mounts = [
         "--mount",
         f"type=volume,source={volume},target=/restore",
@@ -97,9 +95,7 @@ def main() -> None:
                 code,
             ]
         )
-        password = run(
-            COMPOSE + ["exec", "-T", "postgres", "printenv", "POSTGRES_PASSWORD"]
-        )
+        password = run(COMPOSE + ["exec", "-T", "postgres", "printenv", "POSTGRES_PASSWORD"])
         url = f"postgresql+psycopg://dataflow:{quote(password, safe='')}@postgres:5432/{database}"
         output = run(
             [

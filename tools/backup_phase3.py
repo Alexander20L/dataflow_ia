@@ -40,13 +40,9 @@ def main() -> None:
     if int(sql(pending)):
         raise RuntimeError("Espera a que terminen los trabajos antes de respaldar.")
     container = run(COMPOSE + ["ps", "-a", "-q", "api"])
-    config = json.loads(
-        run(["docker", "inspect", "--format", "{{json .Config}}", container])
-    )
+    config = json.loads(run(["docker", "inspect", "--format", "{{json .Config}}", container]))
     previous = run(["docker", "inspect", "--format", "{{.Image}}", container])
-    mounts = json.loads(
-        run(["docker", "inspect", "--format", "{{json .Mounts}}", container])
-    )
+    mounts = json.loads(run(["docker", "inspect", "--format", "{{json .Mounts}}", container]))
     volume = next(
         m["Name"]
         for m in mounts
@@ -54,14 +50,8 @@ def main() -> None:
     )
     run(COMPOSE + ["stop", "web", "api", "worker"])
     if int(sql(pending)):
-        raise RuntimeError(
-            "Entró un trabajo durante la pausa; deja drenar el worker anterior."
-        )
-    directory = (
-        ROOT
-        / ".data/backups"
-        / (datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-phase3")
-    )
+        raise RuntimeError("Entró un trabajo durante la pausa; deja drenar el worker anterior.")
+    directory = ROOT / ".data/backups" / (datetime.now(UTC).strftime("%Y%m%dT%H%M%SZ") + "-phase3")
     directory.mkdir(parents=True, exist_ok=False)
     dump, archive, rootfs = (
         directory / "database.dump",
@@ -134,18 +124,14 @@ def main() -> None:
         "objects_sha256": checksum(archive),
         "previous_api_rootfs_sha256": checksum(rootfs),
         "previous_api_image": previous,
-        "previous_api_config": {
-            key: config.get(key) for key in ["WorkingDir", "User", "Cmd"]
-        },
+        "previous_api_config": {key: config.get(key) for key in ["WorkingDir", "User", "Cmd"]},
         "inventory": {**counts, "objects": len(objects), "identity_sha256": identity},
     }
     (directory / "manifest.json").write_text(
         json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
     )
     print(directory)
-    print(
-        "Copia Fase 3 completada; PostgreSQL activo y servicios de escritura pausados."
-    )
+    print("Copia Fase 3 completada; PostgreSQL activo y servicios de escritura pausados.")
 
 
 if __name__ == "__main__":
