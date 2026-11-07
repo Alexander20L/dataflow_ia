@@ -9,10 +9,11 @@ La política de errores es estricta: quien llama decide que un solo error hace f
 import re
 from dataclasses import dataclass
 from datetime import date
-from decimal import Decimal, localcontext
+from decimal import Decimal
 from typing import Literal
 
 from dataflow.platform.data_types import MAX_DECIMAL_PRECISION, MAX_DECIMAL_SCALE
+from dataflow.platform.decimal_context import exact_context
 
 CastType = Literal["integer", "decimal", "date", "boolean"]
 CastFormat = Literal["integer_ascii", "decimal_dot", "iso_date", "boolean_lowercase"]
@@ -92,8 +93,7 @@ def to_decimal(text: str, scale: int) -> Converted | Failed:
     integer_digits = max(len(original.as_tuple().digits) + exponent, 0)
     if integer_digits + scale > MAX_DECIMAL_PRECISION:
         return Failed("precision_exceeded")
-    with localcontext() as context:
-        context.prec = 2 * MAX_DECIMAL_PRECISION
+    with exact_context():
         quantized = original.quantize(Decimal(1).scaleb(-scale), rounding="ROUND_HALF_EVEN")
     if len(quantized.as_tuple().digits) > MAX_DECIMAL_PRECISION:
         return Failed("precision_exceeded")

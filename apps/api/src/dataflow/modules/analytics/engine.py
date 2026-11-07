@@ -13,7 +13,7 @@ import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from datetime import date
-from decimal import Decimal, localcontext
+from decimal import Decimal
 from functools import lru_cache
 from typing import Any, Literal, cast
 from uuid import UUID
@@ -48,6 +48,7 @@ from dataflow.modules.analytics.domain import parse_value
 from dataflow.modules.analytics.periods import ComparisonKind, period, shift
 from dataflow.platform.canonical import digest
 from dataflow.platform.data_types import MAX_DECIMAL_PRECISION, DataType
+from dataflow.platform.decimal_context import exact_context
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.tabular import Cell, canonical_cell, canonical_decimal, display_cell
 
@@ -219,6 +220,20 @@ def aggregate(
     query_filters: list[Filter],
     in_period: Callable[[date], bool] | None = None,
 ) -> Grouped:
+    # Las sumas de decimales se acumulan en el contexto exacto: con el de Python (28 dígitos)
+    # un total de Decimal(38, s) se redondeaba sin aviso.
+    with exact_context():
+        return accumulate(table, metrics, parameters, time_column, query_filters, in_period)
+
+
+def accumulate(
+    table: Table,
+    metrics: list[Metric],
+    parameters: QueryParameters,
+    time_column: UUID | None,
+    query_filters: list[Filter],
+    in_period: Callable[[date], bool] | None = None,
+) -> Grouped:
     """Agrupa y acumula. Orden de exclusión por fila y métrica: filtros (consulta y métrica),
     periodo base (`in_period`, sólo en la base de una comparación) y nulos de la medida."""
     rows = table.rows
@@ -350,8 +365,7 @@ def metric_value(
     kind = table.kinds[content.measure_column_id]
     parameters_of = table.params[content.measure_column_id]
     if content.aggregation == "avg":
-        with localcontext() as context:
-            context.prec = 2 * MAX_DECIMAL_PRECISION
+        with exact_context():
             mean = Decimal(acc.total) / Decimal(acc.count)
             text = canonical_decimal(mean, avg_scale)
     elif content.aggregation == "sum":
@@ -547,14 +561,14 @@ def change_of(
         return None, None, "current_missing"
     if base is None:
         return None, None, "base_missing"
-    difference = Decimal(current) - Decimal(base)
+    with exact_context():
+        difference = Decimal(current) - Decimal(base)
     change = check_precision(
         str(int(difference)) if scale is None else canonical_decimal(difference, scale), label
     )
     if Decimal(base) == 0:
         return change, None, "base_zero"
-    with localcontext() as context:
-        context.prec = 4 * MAX_DECIMAL_PRECISION
+    with exact_context():
         ratio = difference / abs(Decimal(base)) * 100
     return change, check_precision(canonical_decimal(ratio, change_scale), label), "available"
 
@@ -609,7 +623,8 @@ def compute_shares(
         key = f"m{number}"
         for items in partitions(parts):
             values = [Decimal(v) for p in items if (v := p.values[key]) is not None]
-            total = sum(values, Decimal(0))
+            with exact_context():
+                total = sum(values, Decimal(0))
             result_scale_of = fields[number]["scale"]
             total_text = check_precision(
                 str(int(total))
@@ -636,8 +651,7 @@ def compute_shares(
                 elif total == 0:
                     cells[(part.group, number)] = (None, "total_zero")
                 else:
-                    with localcontext() as context:
-                        context.prec = 4 * MAX_DECIMAL_PRECISION
+                    with exact_context():
                         ratio = Decimal(text) / total * 100
                     cells[(part.group, number)] = (
                         check_precision(canonical_decimal(ratio, scale), content.label),

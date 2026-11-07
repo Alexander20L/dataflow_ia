@@ -6,13 +6,14 @@ texto se conservan literalmente, de modo que el hash de las tablas de texto no c
 """
 
 from datetime import date
-from decimal import Decimal, localcontext
+from decimal import Decimal
 from typing import Any, cast
 
 import polars as pl
 
 from dataflow.platform.canonical import digest
 from dataflow.platform.data_types import MAX_DECIMAL_PRECISION, MAX_DECIMAL_SCALE, DataType
+from dataflow.platform.decimal_context import exact_context
 from dataflow.platform.errors import ApplicationError
 
 Cell = str | int | Decimal | date | bool | None
@@ -44,8 +45,7 @@ def frame_types(frame: pl.DataFrame) -> list[tuple[DataType, dict[str, Any]]]:
 
 def canonical_decimal(value: Decimal, scale: int) -> str:
     # Contexto amplio: el de Python (28 dígitos) no basta para Decimal(38, s).
-    with localcontext() as context:
-        context.prec = 4 * MAX_DECIMAL_PRECISION
+    with exact_context():
         quantized = value.quantize(Decimal(1).scaleb(-scale), rounding="ROUND_HALF_EVEN")
     if quantized.is_zero():
         quantized = abs(quantized)  # Sin cero negativo.
