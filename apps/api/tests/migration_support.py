@@ -9,6 +9,11 @@ TABLES_AFTER_0012 = {
     # 0013: sesión de análisis con fuente única (11A)
     "analysis_sessions",
     "analysis_session_input_revisions",
+    # 0014: política de automatización y aprobaciones por política (11B)
+    "automation_policy_families",
+    "automation_policy_revisions",
+    "automation_policy_save_requests",
+    "automation_approvals",
 }
 
 

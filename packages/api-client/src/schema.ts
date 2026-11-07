@@ -55,6 +55,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/approvals/{approval_id}/origin": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Approval Origin
+         * @description Si una aprobación de limpieza la concedió una política (revisión y evaluación).
+         */
+        get: operations["getApprovalOrigin"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/approvals/{approval_id}/revoke": {
         parameters: {
             query?: never;
@@ -134,6 +154,23 @@ export interface paths {
         put?: never;
         /** Register */
         post: operations["register"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/automation-policies/{revision_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Revision */
+        get: operations["getAutomationPolicyRevision"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -636,6 +673,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/previews/{execution_id}/policy-approvals": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve By Policy
+         * @description Evalúa la vista previa con la política vigente. Si la autoriza, crea la aprobación del
+         *     efecto exacto; si no, devuelve los motivos y no cambia nada (la persona puede aprobarla).
+         */
+        post: operations["approvePreviewByPolicy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects": {
         parameters: {
             query?: never;
@@ -720,6 +778,27 @@ export interface paths {
         put?: never;
         /** Archive Project */
         post: operations["archiveProject"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/automation-policy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get Policy */
+        get: operations["getAutomationPolicy"];
+        put?: never;
+        /**
+         * Save Policy
+         * @description Nueva revisión inmutable (`expected_revision`); sin cambios no crea revisión.
+         */
+        post: operations["saveAutomationPolicy"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1541,6 +1620,31 @@ export interface components {
              */
             state: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
+        /**
+         * ApprovalOrigin
+         * @description Si una aprobación de limpieza la concedió una política: revisión exacta, ejecutor
+         *     (`manual` si una persona pidió evaluar, `pipeline` en la Fase 11C) y evaluación.
+         */
+        ApprovalOrigin: {
+            /**
+             * Approval Id
+             * Format: uuid
+             */
+            approval_id: string;
+            /** Automatic */
+            automatic: boolean;
+            /** Created At */
+            created_at?: string | null;
+            evaluation?: components["schemas"]["Evaluation"] | null;
+            /** Executor */
+            executor?: string | null;
+            /** Pipeline Run Id */
+            pipeline_run_id?: string | null;
+            /** Policy Revision */
+            policy_revision?: number | null;
+            /** Policy Revision Id */
+            policy_revision_id?: string | null;
+        };
         /** ApprovalRequest */
         ApprovalRequest: {
             /** Effect Sha256 */
@@ -1917,6 +2021,19 @@ export interface components {
             /** Unit */
             unit?: string | null;
         };
+        /**
+         * ColumnEffectCounts
+         * @description Desglose por columna del efecto (Fase 11B). Se guarda junto al manifiesto, fuera de él:
+         *     el `effect_sha256` no cambia y la aplicación sigue comparando el efecto completo.
+         */
+        ColumnEffectCounts: {
+            /** Column Id */
+            column_id: string;
+            /** Created Nulls */
+            created_nulls: number;
+            /** Modified Cells */
+            modified_cells: number;
+        };
         /** ColumnFacts */
         ColumnFacts: {
             /**
@@ -1962,6 +2079,19 @@ export interface components {
             technical_type: "string" | "integer" | "decimal" | "date" | "boolean";
             /** Unique Count */
             unique_count: number;
+        };
+        /**
+         * ColumnScope
+         * @description Columnas (por nombre exacto) en las que se permite una operación; `*` = todas.
+         */
+        ColumnScope: {
+            /** Columns */
+            columns: string[];
+            /**
+             * Operation
+             * @enum {string}
+             */
+            operation: "cleaning.normalize_null_tokens" | "cleaning.trim_whitespace" | "cleaning.cast" | "cleaning.filter_rows" | "cleaning.deduplicate";
         };
         /** ColumnSuggestion */
         ColumnSuggestion: {
@@ -2457,6 +2587,16 @@ export interface components {
             details?: components["schemas"]["ErrorDetail"][] | null;
             /** Message */
             message: string;
+        };
+        /** Evaluation */
+        Evaluation: {
+            /**
+             * Decision
+             * @enum {string}
+             */
+            decision: "approved" | "blocked";
+            /** Reasons */
+            reasons: components["schemas"]["Reason"][];
         };
         /**
          * EvidenceReference
@@ -3219,6 +3359,13 @@ export interface components {
             /** Tokens */
             tokens: string[];
         };
+        /** NullTokens */
+        NullTokens: {
+            /** Column */
+            column: string;
+            /** Tokens */
+            tokens: string[];
+        };
         /** NumericSummary */
         NumericSummary: {
             /** Count */
@@ -3427,6 +3574,157 @@ export interface components {
             steps: components["schemas"]["PlanStep"][];
             validation: components["schemas"]["PlanValidation"];
         };
+        /** PolicyContent */
+        "PolicyContent-Input": {
+            /** Allowed Operations */
+            allowed_operations?: ("cleaning.normalize_null_tokens" | "cleaning.trim_whitespace" | "cleaning.cast" | "cleaning.filter_rows" | "cleaning.deduplicate")[];
+            /** Column Scopes */
+            column_scopes?: components["schemas"]["ColumnScope"][];
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Evaluate Quality Rules
+             * @default true
+             */
+            evaluate_quality_rules: boolean;
+            /**
+             * Max Excluded Rows Pct
+             * @default 0
+             */
+            max_excluded_rows_pct: number | string;
+            /**
+             * Max Nulls Created Pct
+             * @default 0
+             */
+            max_nulls_created_pct: number | string;
+            /**
+             * Max Rounded Cells
+             * @default 0
+             */
+            max_rounded_cells: number;
+            /**
+             * Min Output Rows
+             * @default 1
+             */
+            min_output_rows: number;
+            /** Null Tokens By Column */
+            null_tokens_by_column?: components["schemas"]["NullTokens"][];
+            /**
+             * Schema Version
+             * @default automation-policy@1
+             * @constant
+             */
+            schema_version: "automation-policy@1";
+        };
+        /** PolicyContent */
+        "PolicyContent-Output": {
+            /** Allowed Operations */
+            allowed_operations?: ("cleaning.normalize_null_tokens" | "cleaning.trim_whitespace" | "cleaning.cast" | "cleaning.filter_rows" | "cleaning.deduplicate")[];
+            /** Column Scopes */
+            column_scopes?: components["schemas"]["ColumnScope"][];
+            /**
+             * Enabled
+             * @default false
+             */
+            enabled: boolean;
+            /**
+             * Evaluate Quality Rules
+             * @default true
+             */
+            evaluate_quality_rules: boolean;
+            /**
+             * Max Excluded Rows Pct
+             * @default 0
+             */
+            max_excluded_rows_pct: string;
+            /**
+             * Max Nulls Created Pct
+             * @default 0
+             */
+            max_nulls_created_pct: string;
+            /**
+             * Max Rounded Cells
+             * @default 0
+             */
+            max_rounded_cells: number;
+            /**
+             * Min Output Rows
+             * @default 1
+             */
+            min_output_rows: number;
+            /** Null Tokens By Column */
+            null_tokens_by_column?: components["schemas"]["NullTokens"][];
+            /**
+             * Schema Version
+             * @default automation-policy@1
+             * @constant
+             */
+            schema_version: "automation-policy@1";
+        };
+        /**
+         * PolicyDecision
+         * @description Resultado de evaluar una vista previa con la política vigente. Si se aprueba, existe una
+         *     aprobación normal del efecto exacto (`approval_id`) atribuida a quien guardó la política.
+         */
+        PolicyDecision: {
+            /** Approval Id */
+            approval_id: string | null;
+            /** Effect Sha256 */
+            effect_sha256: string | null;
+            evaluation: components["schemas"]["Evaluation"];
+            /** Policy Revision Id */
+            policy_revision_id: string | null;
+            /**
+             * Preview Execution Id
+             * Format: uuid
+             */
+            preview_execution_id: string;
+        };
+        /**
+         * PolicyHead
+         * @description Política vigente del proyecto; `revision` es None si todavía no se guardó ninguna.
+         */
+        PolicyHead: {
+            revision: components["schemas"]["PolicyRevision"] | null;
+        };
+        /** PolicyRevision */
+        PolicyRevision: {
+            content: components["schemas"]["PolicyContent-Output"];
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Created By
+             * Format: uuid
+             */
+            created_by: string;
+            /**
+             * Family Id
+             * Format: uuid
+             */
+            family_id: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Previous Revision Id */
+            previous_revision_id: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Revision */
+            revision: number;
+        };
         /**
          * PreviewFailure
          * @description Detalle de una vista previa fallida: conteo total exacto y hasta 50 casos.
@@ -3465,6 +3763,8 @@ export interface components {
         PreviewView: {
             apply: components["schemas"]["ApplyStatus"] | null;
             approval: components["schemas"]["ApprovalView"] | null;
+            /** Column Effects */
+            column_effects?: components["schemas"]["ColumnEffectCounts"][] | null;
             /** Effect Sha256 */
             effect_sha256: string | null;
             /** Error Code */
@@ -3816,6 +4116,24 @@ export interface components {
             partitions: components["schemas"]["RankingPartition"][];
             /** Top N */
             top_n: number;
+        };
+        /** Reason */
+        Reason: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "POLICY_MISSING" | "POLICY_DISABLED" | "PLAN_INVALID" | "EFFECT_NOT_READY" | "EFFECT_BREAKDOWN_MISSING" | "OPERATION_NOT_AUTHORIZED" | "COLUMN_NOT_AUTHORIZED" | "TOKENS_NOT_AUTHORIZED" | "IDENTIFIER_CONVERSION" | "EXCLUDED_ROWS_ABOVE_LIMIT" | "NULLS_CREATED_ABOVE_LIMIT" | "ROUNDED_CELLS_ABOVE_LIMIT" | "OUTPUT_ROWS_BELOW_MINIMUM";
+            /** Column */
+            column?: string | null;
+            /** Limit */
+            limit?: string | null;
+            /** Measured */
+            measured?: string | null;
+            /** Message */
+            message: string;
+            /** Step Id */
+            step_id?: string | null;
         };
         /** RefreshDashboardRequest */
         RefreshDashboardRequest: {
@@ -4316,6 +4634,12 @@ export interface components {
             /** Changed */
             changed: boolean;
             revision: components["schemas"]["MetricRevision"];
+        };
+        /** SavePolicyRequest */
+        SavePolicyRequest: {
+            content: components["schemas"]["PolicyContent-Input"];
+            /** Expected Revision */
+            expected_revision: number;
         };
         /** SaveReportResponse */
         SaveReportResponse: {
@@ -5431,6 +5755,129 @@ export interface operations {
             };
         };
     };
+    getApprovalOrigin: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                approval_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApprovalOrigin"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     revokeCleaningApproval: {
         parameters: {
             query?: never;
@@ -5937,6 +6384,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAutomationPolicyRevision: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                revision_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyRevision"];
                 };
             };
             /** @description Bad Request */
@@ -9636,6 +10206,129 @@ export interface operations {
             };
         };
     };
+    approvePreviewByPolicy: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyDecision"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listProjects: {
         parameters: {
             query?: {
@@ -10407,6 +11100,257 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ProjectResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAutomationPolicy: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyHead"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    saveAutomationPolicy: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SavePolicyRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PolicyRevision"];
                 };
             };
             /** @description Bad Request */

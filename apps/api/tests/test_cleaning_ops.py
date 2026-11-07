@@ -14,6 +14,7 @@ from dataflow.modules.cleaning.domain import check_counts, effect_sha256, requir
 from dataflow.modules.cleaning.infrastructure import (
     SOURCE_ROW,
     attach_lineage,
+    column_effects,
     effect,
     filter_rows,
     table_digest,
@@ -212,3 +213,17 @@ def test_incoherent_counts_are_rejected() -> None:
                 created_nulls=0,
             )
         )
+
+
+def test_column_effects_match_the_effect_totals() -> None:
+    # Fase 11B: el desglose por columna usa el mismo criterio que los totales del efecto.
+    source = attach_lineage(table())
+    result = filter_rows(
+        trim_whitespace(source, ["nombre", "importe"]), ["importe"], "is_null", "any"
+    )
+    counts, _, _, _ = effect(source, result, COLUMNS)
+    breakdown = column_effects(source, result, COLUMNS, COLUMNS)
+    assert [item.column_id for item in breakdown] == ["c-id", "c-nombre", "c-importe"]
+    assert sum(item.modified_cells for item in breakdown) == counts.modified_cells
+    assert sum(item.created_nulls for item in breakdown) == counts.created_nulls
+    assert breakdown[0].modified_cells == 0

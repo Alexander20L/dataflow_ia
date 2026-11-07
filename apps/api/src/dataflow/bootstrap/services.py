@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.analysis_sessions_access import AnalysisSessionInputs
 from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
+from dataflow.bootstrap.automation_access import PolicyCleaningAccess
 from dataflow.bootstrap.cleaning_access import CleaningPlanAccess, CleaningProposalAccess
 from dataflow.bootstrap.copilot_access import CopilotAccess
 from dataflow.bootstrap.dashboards_access import DashboardAccess
@@ -24,6 +25,8 @@ from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.analytics.infrastructure import SQLMetricRepository
 from dataflow.modules.analytics.steps import AnalyticsQueryStep, MetricSource
 from dataflow.modules.audit.public import record_event
+from dataflow.modules.automation.application import AutomationService
+from dataflow.modules.automation.infrastructure import SQLPolicyRepository
 from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
 from dataflow.modules.cleaning.engine import IsolatedCleaner
 from dataflow.modules.cleaning.public import (
@@ -401,5 +404,19 @@ def make_analysis_sessions(db: Session) -> AnalysisSessionService:
     return AnalysisSessionService(
         SQLAnalysisSessionRepository(db),
         AnalysisSessionInputs(ProjectPermissions(db), make_datasets(db), make_executions(db)),
+        SQLUnitOfWork(db),
+    )
+
+
+def make_automation(db: Session, objects: LocalObjects) -> AutomationService:
+    require_ready(db)
+    return AutomationService(
+        SQLPolicyRepository(db),
+        PolicyCleaningAccess(
+            make_cleaning(db, objects),
+            make_planning(db, objects),
+            make_executions(db),
+            ProjectPermissions(db),
+        ),
         SQLUnitOfWork(db),
     )

@@ -290,7 +290,12 @@ class EffectFinalizer:
                 "effect",
                 "effect",
                 "effect.json",
-                {"effect_sha256": sha, "manifest": manifest.model_dump(mode="json")},
+                {
+                    "effect_sha256": sha,
+                    "manifest": manifest.model_dump(mode="json"),
+                    # Fase 11B: desglose por columna, fuera del manifiesto (no altera el hash).
+                    "breakdown": [item.model_dump(mode="json") for item in (result.columns or [])],
+                },
                 rows,
             ),
             self.json_output(
