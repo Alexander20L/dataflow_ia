@@ -1724,6 +1724,40 @@ export interface components {
             /** Shares */
             shares: components["schemas"]["ShareTotal"][];
         };
+        /** AnalysisResultV3 */
+        AnalysisResultV3: {
+            /** Avg Scale */
+            avg_scale: number;
+            /** Change Scale */
+            change_scale: number;
+            /** Comparisons */
+            comparisons: ("previous_period" | "same_period_last_year")[];
+            /** Dimensions */
+            dimensions: components["schemas"]["ResultColumn"][];
+            /** Metrics */
+            metrics: components["schemas"]["MetricDefinitionV3"][];
+            /**
+             * @description discriminator enum property added by openapi-typescript
+             * @enum {string}
+             */
+            operation: "analytics.query@3";
+            ranking: components["schemas"]["RankingSummary"] | null;
+            /** Row Count */
+            row_count: number;
+            /** Rows */
+            rows: components["schemas"]["ResultRowV3"][];
+            /**
+             * Schema Version
+             * @default 3
+             * @constant
+             */
+            schema_version: 3;
+            scope: components["schemas"]["EvidenceScope"];
+            /** Share Scale */
+            share_scale: number;
+            /** Shares */
+            shares: components["schemas"]["ShareTotal"][];
+        };
         /** AnalysisSessionView */
         AnalysisSessionView: {
             active: components["schemas"]["SessionInput"] | null;
@@ -2974,7 +3008,7 @@ export interface components {
         EvidenceView: {
             comparison?: components["schemas"]["ComparisonCell"] | null;
             /** Definition */
-            definition: components["schemas"]["MetricDefinitionV2"] | components["schemas"]["MetricDefinition"];
+            definition: components["schemas"]["MetricDefinitionV3"] | components["schemas"]["MetricDefinitionV2"] | components["schemas"]["MetricDefinition"];
             /** Labels */
             labels: {
                 [key: string]: string | null;
@@ -2986,12 +3020,14 @@ export interface components {
              * @default analytics.query@1
              * @enum {string}
              */
-            operation: "analytics.query@1" | "analytics.query@2";
+            operation: "analytics.query@1" | "analytics.query@2" | "analytics.query@3";
             rank?: components["schemas"]["RankCell"] | null;
             ranking?: components["schemas"]["RankingSummary"] | null;
             reference: components["schemas"]["EvidenceReference"];
             share?: components["schemas"]["ShareCell"] | null;
             share_total?: components["schemas"]["ShareTotal"] | null;
+            /** Snapshot */
+            snapshot?: string | null;
             /** Value */
             value: string | null;
         };
@@ -3447,7 +3483,7 @@ export interface components {
              * Aggregation
              * @enum {string}
              */
-            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max";
+            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max" | "sum_product";
             base_table: components["schemas"]["BaseTable"];
             /** Description */
             description?: string | null;
@@ -3472,6 +3508,10 @@ export interface components {
              * @constant
              */
             schema_version: 1;
+            /** Second Measure Column Id */
+            second_measure_column_id?: string | null;
+            /** Semi Additive */
+            semi_additive?: "last_snapshot" | null;
             /** Time Column Id */
             time_column_id?: string | null;
         };
@@ -3508,7 +3548,7 @@ export interface components {
              * Aggregation
              * @enum {string}
              */
-            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max";
+            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max" | "sum_product";
             /** Content Sha256 */
             content_sha256: string;
             counts: components["schemas"]["MetricCounts"];
@@ -3556,7 +3596,7 @@ export interface components {
              * Aggregation
              * @enum {string}
              */
-            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max";
+            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max" | "sum_product";
             /** Base Counts */
             base_counts?: {
                 [key: string]: components["schemas"]["BaseCounts"];
@@ -3598,13 +3638,68 @@ export interface components {
             /** Unit */
             unit: string | null;
         };
+        /** MetricDefinitionV3 */
+        MetricDefinitionV3: {
+            /**
+             * Aggregation
+             * @enum {string}
+             */
+            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max" | "sum_product";
+            /** Base Counts */
+            base_counts?: {
+                [key: string]: components["schemas"]["BaseCounts"];
+            };
+            /** Content Sha256 */
+            content_sha256: string;
+            counts: components["schemas"]["MetricCounts"];
+            /** Currency */
+            currency: string | null;
+            /** Filters */
+            filters: components["schemas"]["Filter"][];
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+            /** Measure Column */
+            measure_column: string;
+            /**
+             * Measure Column Id
+             * Format: uuid
+             */
+            measure_column_id: string;
+            /**
+             * Null Policy
+             * @constant
+             */
+            null_policy: "exclude";
+            /** Revision */
+            revision: number;
+            /**
+             * Revision Id
+             * Format: uuid
+             */
+            revision_id: string;
+            /** Scale */
+            scale: number | null;
+            /** Second Measure Column */
+            second_measure_column?: string | null;
+            /** Second Measure Column Id */
+            second_measure_column_id?: string | null;
+            /** Semi Additive */
+            semi_additive?: "last_snapshot" | null;
+            snapshot?: components["schemas"]["SnapshotCounts"] | null;
+            /** Time Column Id */
+            time_column_id: string | null;
+            /** Unit */
+            unit: string | null;
+        };
         /** MetricDraft */
         MetricDraft: {
             /**
              * Aggregation
              * @enum {string}
              */
-            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max";
+            aggregation: "sum" | "count" | "count_distinct" | "avg" | "min" | "max" | "sum_product";
             /** Description */
             description?: string | null;
             /** Filters */
@@ -3622,6 +3717,10 @@ export interface components {
              * @constant
              */
             null_policy: "exclude";
+            /** Second Measure Column Id */
+            second_measure_column_id?: string | null;
+            /** Semi Additive */
+            semi_additive?: "last_snapshot" | null;
             /** Time Column Id */
             time_column_id?: string | null;
         };
@@ -4202,7 +4301,7 @@ export interface components {
              * Code
              * @enum {string}
              */
-            code: "EMPTY_PLAN" | "TOO_MANY_STEPS" | "DUPLICATE_STEP_ID" | "INVALID_STEP_REFERENCE" | "UNSUPPORTED_OPERATION" | "INPUT_KIND_MISMATCH" | "INVALID_PARAMETERS" | "UNKNOWN_COLUMN" | "SEMANTIC_REQUIREMENT_MISSING" | "COLUMN_TYPE_MISMATCH" | "IDENTIFIER_CONVERSION_UNCONFIRMED" | "QUALITY_RULESET_MISMATCH" | "METRIC_REFERENCE_MISMATCH" | "UNIT_MISMATCH" | "TIME_COLUMN_MISMATCH" | "SHARE_NOT_ADDITIVE";
+            code: "EMPTY_PLAN" | "TOO_MANY_STEPS" | "DUPLICATE_STEP_ID" | "INVALID_STEP_REFERENCE" | "UNSUPPORTED_OPERATION" | "INPUT_KIND_MISMATCH" | "INVALID_PARAMETERS" | "UNKNOWN_COLUMN" | "SEMANTIC_REQUIREMENT_MISSING" | "COLUMN_TYPE_MISMATCH" | "IDENTIFIER_CONVERSION_UNCONFIRMED" | "QUALITY_RULESET_MISMATCH" | "METRIC_REFERENCE_MISMATCH" | "UNIT_MISMATCH" | "TIME_COLUMN_MISMATCH" | "SHARE_NOT_ADDITIVE" | "METRIC_UNSUPPORTED";
             /** Message */
             message: string;
             /** Parameter */
@@ -4770,6 +4869,40 @@ export interface components {
             /** Share */
             share?: {
                 [key: string]: components["schemas"]["ShareCell"];
+            };
+            /** Values */
+            values: {
+                [key: string]: string | null;
+            };
+        };
+        /** ResultRowV3 */
+        ResultRowV3: {
+            /** Comparisons */
+            comparisons?: {
+                [key: string]: {
+                    [key: string]: components["schemas"]["ComparisonCell"];
+                };
+            };
+            /** Evidence */
+            evidence: {
+                [key: string]: string;
+            };
+            /** Key */
+            key: {
+                [key: string]: unknown;
+            };
+            /** Labels */
+            labels: {
+                [key: string]: string | null;
+            };
+            rank?: components["schemas"]["RankCell"] | null;
+            /** Share */
+            share?: {
+                [key: string]: components["schemas"]["ShareCell"];
+            };
+            /** Snapshots */
+            snapshots?: {
+                [key: string]: string;
             };
             /** Values */
             values: {
@@ -5377,6 +5510,20 @@ export interface components {
             tolerance: string;
             /** Total */
             total: string;
+        };
+        /**
+         * SnapshotCounts
+         * @description Último corte de una métrica semi-aditiva. `superseded_rows`: filas incluidas (pasan
+         *     filtros y nulos) de fechas anteriores al corte de su periodo; no entran en el valor. Las
+         *     filas que forman el valor son `included_rows - superseded_rows`.
+         */
+        SnapshotCounts: {
+            /** Base Superseded Rows */
+            base_superseded_rows?: {
+                [key: string]: number;
+            };
+            /** Superseded Rows */
+            superseded_rows: number;
         };
         /** StepAttempt */
         StepAttempt: {
@@ -8945,7 +9092,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["AnalysisResult"] | components["schemas"]["AnalysisResultV2"];
+                    "application/json": components["schemas"]["AnalysisResult"] | components["schemas"]["AnalysisResultV2"] | components["schemas"]["AnalysisResultV3"];
                 };
             };
             /** @description Bad Request */

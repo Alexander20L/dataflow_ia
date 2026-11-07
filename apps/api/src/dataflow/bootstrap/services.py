@@ -265,6 +265,7 @@ def make_operations(
             "quality.evaluate@2": QualityRulesStep(objects, analyzer, rulesets),
             "analytics.query@1": AnalyticsQueryStep(objects, objects.root, metrics),
             "analytics.query@2": AnalyticsQueryStep(objects, objects.root, metrics),
+            "analytics.query@3": AnalyticsQueryStep(objects, objects.root, metrics),
             "cleaning.trim_whitespace@1": TrimWhitespaceStep(objects, cleaner),
             "cleaning.filter_rows@1": FilterRowsStep(objects, cleaner),
             "cleaning.normalize_null_tokens@1": NormalizeNullTokensStep(objects, cleaner),

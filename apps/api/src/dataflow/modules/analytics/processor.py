@@ -1,4 +1,5 @@
-"""Proceso aislado de analytics.query@1 y @2: no importa ni utiliza conexiones de base de datos."""
+"""Proceso aislado de analytics.query@1, @2 y @3: no importa ni utiliza conexiones de base de
+datos."""
 
 import argparse
 import json
@@ -7,13 +8,15 @@ from pathlib import Path
 import polars as pl
 
 from dataflow.modules.analytics.contracts import (
+    AnyAnalysisResult,
     EvidenceScope,
     MetricContent,
     MetricReference,
     QueryParameters,
     QueryParametersV2,
+    QueryParametersV3,
 )
-from dataflow.modules.analytics.engine import Metric, run_query, run_query_v2
+from dataflow.modules.analytics.engine import Metric, run_query, run_query_v2, run_query_v3
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.tabular import frame_types
 
@@ -21,7 +24,7 @@ from dataflow.platform.tabular import frame_types
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--mode", choices=["query"], required=True)
-    parser.add_argument("--operation-version", type=int, choices=[1, 2], default=1)
+    parser.add_argument("--operation-version", type=int, choices=[1, 2, 3], default=1)
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--columns-json", required=True)
@@ -51,8 +54,17 @@ def main() -> None:
         rows = [list(row) for row in frame.iter_rows()]
         columns = json.loads(args.columns_json)
         scope = EvidenceScope.model_validate_json(args.scope_json)
-        result = (
-            run_query_v2(
+        result: AnyAnalysisResult = (
+            run_query_v3(
+                frame.columns,
+                rows,
+                columns,
+                metrics,
+                QueryParametersV3.model_validate_json(args.parameters_json),
+                scope,
+            )
+            if args.operation_version == 3
+            else run_query_v2(
                 frame.columns,
                 rows,
                 columns,
