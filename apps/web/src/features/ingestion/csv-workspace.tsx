@@ -17,6 +17,7 @@ import { errorMessage } from "@/lib/api";
 import { number } from "@/lib/utils";
 import { steps } from "@/lib/demo";
 import { useApp } from "@/lib/providers";
+import { ActiveSource } from "@/features/analysis-sessions/active-source";
 import { ExecutionPanel } from "@/features/executions/execution-panel";
 import { SemanticUnderstanding } from "@/features/understanding/semantic-editor";
 import { CleaningStage } from "@/features/cleaning/proposal";
@@ -312,6 +313,14 @@ export function CsvWorkspace({
               </span>
             )}
           </div>
+          <ActiveSource
+            projectId={projectId}
+            viewed={version}
+            archived={archived}
+            onShowVersion={(versionId) =>
+              requestChange({ kind: "version", value: versionId })
+            }
+          />
           <div className="original-meta">
             <span>
               {number(version.byte_size)} bytes

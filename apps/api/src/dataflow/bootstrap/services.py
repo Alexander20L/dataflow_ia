@@ -2,6 +2,7 @@ from uuid import uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.analysis_sessions_access import AnalysisSessionInputs
 from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
 from dataflow.bootstrap.cleaning_access import CleaningPlanAccess, CleaningProposalAccess
 from dataflow.bootstrap.copilot_access import CopilotAccess
@@ -17,6 +18,8 @@ from dataflow.bootstrap.reports_access import (
 )
 from dataflow.bootstrap.semantic_access import SemanticRepresentationAccess
 from dataflow.integrations.ai import AIProvider
+from dataflow.modules.analysis_sessions.application import AnalysisSessionService
+from dataflow.modules.analysis_sessions.infrastructure import SQLAnalysisSessionRepository
 from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.analytics.infrastructure import SQLMetricRepository
 from dataflow.modules.analytics.steps import AnalyticsQueryStep, MetricSource
@@ -390,4 +393,13 @@ def make_cleaning(db: Session, objects: LocalObjects) -> CleaningService:
 def make_cleaning_proposals(db: Session, objects: LocalObjects) -> CleaningProposals:
     return CleaningProposals(
         CleaningProposalAccess(make_semantics(db, objects), make_ingestion(db, objects))
+    )
+
+
+def make_analysis_sessions(db: Session) -> AnalysisSessionService:
+    require_ready(db)
+    return AnalysisSessionService(
+        SQLAnalysisSessionRepository(db),
+        AnalysisSessionInputs(ProjectPermissions(db), make_datasets(db), make_executions(db)),
+        SQLUnitOfWork(db),
     )
