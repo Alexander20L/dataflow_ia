@@ -354,3 +354,62 @@ export function useExtract(projectId: string) {
     },
   });
 }
+
+// --- Fase 12C: PDF ---------------------------------------------------------------------
+export type PdfInspection = components["schemas"]["PdfInspection"];
+
+export function useInspectPdf(projectId: string) {
+  return useMutation({
+    mutationFn: async (file: File) =>
+      requireData(
+        await api.POST("/api/v1/projects/{project_id}/imports/pdf/inspect", {
+          params: {
+            path: { project_id: projectId },
+            query: { file_name: file.name },
+          },
+          headers: { "Content-Type": "application/pdf" },
+          body: file,
+          bodySerializer: (body) => body,
+        }),
+      ),
+  });
+}
+
+export function useUploadPdf(projectId: string) {
+  const client = useQueryClient();
+  const keys = useRef(new WeakMap<File, Map<string, string>>());
+  return useMutation({
+    mutationFn: async ({ file, tables }: { file: File; tables: string[] }) => {
+      const signature = tables.join(",");
+      let map = keys.current.get(file);
+      if (!map) {
+        map = new Map();
+        keys.current.set(file, map);
+      }
+      let key = map.get(signature);
+      if (!key) {
+        key = crypto.randomUUID();
+        map.set(signature, key);
+      }
+      const version = requireData(
+        await api.POST("/api/v1/projects/{project_id}/imports/pdf", {
+          params: {
+            path: { project_id: projectId },
+            query: { file_name: file.name, tables },
+            header: { "Idempotency-Key": key },
+          },
+          headers: { "Content-Type": "application/pdf" },
+          body: file,
+          bodySerializer: (body) => body,
+        }),
+      );
+      keys.current.delete(file);
+      return version;
+    },
+    onSuccess: async (version) => {
+      await client.invalidateQueries({
+        queryKey: ["versions", version.project_id],
+      });
+    },
+  });
+}

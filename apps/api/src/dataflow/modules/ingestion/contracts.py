@@ -189,3 +189,34 @@ class ReadSqlServerParameters(BaseModel):
     columns: list[str] = Field(min_length=1, max_length=128)
     reader: Literal["sqlserver-reader-1"] = "sqlserver-reader-1"
     materialized: Literal["parquet-text"] = "parquet-text"
+
+
+# --- Fase 12C: PDF ---------------------------------------------------------------------------
+
+
+class ReadPdfTableParameters(BaseModel):
+    """Parámetros de ingestion.read_pdf_table@1: tablas elegidas por la persona (en orden).
+    Más de una sólo como continuación confirmada de la misma tabla en otras páginas."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    tables: list[str] = Field(min_length=1, max_length=20)
+    reader: Literal["pdf-reader-1"] = "pdf-reader-1"
+    header: Literal["first_row"] = "first_row"
+    empty_cells: Literal["null"] = "null"
+
+
+class PdfTable(BaseModel):
+    id: str
+    page: int
+    index: int
+    columns: list[str | None]
+    rows: list[list[str | None]]
+    row_count: int
+    issues: list[str]
+
+
+class PdfInspection(BaseModel):
+    """Tablas candidatas por página, con vista previa y problemas de estructura."""
+
+    pages: int
+    tables: list[PdfTable]

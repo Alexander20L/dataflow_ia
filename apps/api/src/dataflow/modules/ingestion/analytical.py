@@ -10,8 +10,10 @@ from dataflow.modules.ingestion.application import AnalysisOutput, ReadOutput
 from dataflow.modules.ingestion.connections import Materialized
 from dataflow.modules.ingestion.contracts import (
     Discovery,
+    PdfInspection,
     PreviewPage,
     PreviewRow,
+    ReadPdfTableParameters,
     ReadXlsxParameters,
     SqlColumn,
     SqlObject,
@@ -111,6 +113,36 @@ class IsolatedAnalyzer:
             int(meta["row_count"]),
             int(meta["column_count"]),
         )
+
+    def read_pdf(
+        self,
+        content: bytes,
+        parameters: ReadPdfTableParameters,
+        config: ProcessingConfig,
+        timeout: float,
+    ) -> ReadOutput:
+        files = self.run(
+            "read_pdf",
+            content,
+            config,
+            timeout,
+            ["data.parquet", "read.json"],
+            ["--xlsx-json", parameters.model_dump_json()],
+        )
+        meta = json.loads(files["read.json"])
+        return ReadOutput(
+            files["data.parquet"],
+            str(meta["separator"]),
+            str(meta["source_sha256"]),
+            int(meta["row_count"]),
+            int(meta["column_count"]),
+        )
+
+    def inspect_pdf(self, content: bytes, config: ProcessingConfig) -> PdfInspection:
+        files = self.run(
+            "inspect_pdf", content, config, float(config.timeout_seconds), ["inspect.json"]
+        )
+        return PdfInspection.model_validate_json(files["inspect.json"])
 
     def inspect_xlsx(
         self,

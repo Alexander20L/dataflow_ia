@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.data_types import DataType
 
-CATALOG_VERSION = "analysis-v9"
+CATALOG_VERSION = "analysis-v10"
 MAX_STEPS = 16
 # Marca en el esquema de parámetros: el campo contiene IDs de columna de la tabla fijada.
 COLUMN_REF = "x-dataflow-column-ref"

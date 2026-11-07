@@ -19,6 +19,7 @@ from dataflow.modules.executions.public import (
 from dataflow.modules.ingestion.application import Analyzer, ProjectAccess, ReadOutput
 from dataflow.modules.ingestion.contracts import (
     ReadCsvParameters,
+    ReadPdfTableParameters,
     ReadSqlServerParameters,
     ReadXlsxParameters,
 )
@@ -160,6 +161,25 @@ class ReadXlsxStep(AnalyzerStep):
         result = self.analyzer.read_xlsx(
             self.objects.read(source.content),
             ReadXlsxParameters.model_validate(step.parameters),
+            lease.execution.plan.config,
+            timeout,
+        )
+        return publish_read(self, lease, step, source, result)
+
+
+class ReadPdfTableStep(AnalyzerStep):
+    """ingestion.read_pdf_table@1 (Fase 12C): PDF original → tabla elegida."""
+
+    output_kind: ArtifactKind = "table"
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        self.require(source, "source")
+        assert lease.execution.plan
+        result = self.analyzer.read_pdf(
+            self.objects.read(source.content),
+            ReadPdfTableParameters.model_validate(step.parameters),
             lease.execution.plan.config,
             timeout,
         )

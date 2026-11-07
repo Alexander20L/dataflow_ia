@@ -5,7 +5,11 @@ from uuid import UUID, uuid4
 
 from dataflow.modules.datasets.contracts import DatasetVersion
 from dataflow.modules.executions.public import Artifact, PlanRevision, ProcessingConfig
-from dataflow.modules.ingestion.contracts import ReadSqlServerParameters, ReadXlsxParameters
+from dataflow.modules.ingestion.contracts import (
+    ReadPdfTableParameters,
+    ReadSqlServerParameters,
+    ReadXlsxParameters,
+)
 from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.canonical import digest
 
@@ -20,6 +24,13 @@ def xlsx_import_fingerprint(name: str, sha256: str, parameters: ReadXlsxParamete
     return digest(
         "import_request",
         {"name": name, "sha256": sha256, "xlsx": parameters.model_dump(mode="json")},
+    )
+
+
+def pdf_import_fingerprint(name: str, sha256: str, parameters: ReadPdfTableParameters) -> str:
+    return digest(
+        "import_request",
+        {"name": name, "sha256": sha256, "pdf": parameters.model_dump(mode="json")},
     )
 
 
@@ -67,6 +78,7 @@ def build_plan(
     semantic_ref: SemanticReference | None = None,
     xlsx: ReadXlsxParameters | None = None,
     sqlserver: ReadSqlServerParameters | None = None,
+    pdf: ReadPdfTableParameters | None = None,
 ) -> PlanRevision:
     if table:
         input_ref: dict[str, Any] = {
@@ -103,6 +115,14 @@ def build_plan(
                 "parameters": sqlserver.model_dump(mode="json"),
             }
             if sqlserver
+            else {
+                "id": "read",
+                "operation": "ingestion.read_pdf_table",
+                "version": 1,
+                "input": {"kind": "input", "alias": "source"},
+                "parameters": pdf.model_dump(mode="json"),
+            }
+            if pdf
             else {
                 "id": "read",
                 "operation": "ingestion.read_csv",

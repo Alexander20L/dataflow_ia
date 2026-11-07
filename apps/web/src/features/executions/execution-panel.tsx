@@ -88,7 +88,7 @@ export function ExecutionPanel({
             de la carga.
           </p>
         </div>
-        <span className="badge neutral">Catálogo analysis-v9</span>
+        <span className="badge neutral">Catálogo analysis-v10</span>
       </div>
       <PlanEditor
         projectId={projectId}

@@ -18,6 +18,7 @@ import { number } from "@/lib/utils";
 import { steps } from "@/lib/demo";
 import { useApp } from "@/lib/providers";
 import { ActiveSource } from "@/features/analysis-sessions/active-source";
+import { PdfSource } from "./pdf-source";
 import { SqlServerSource } from "./sqlserver-source";
 import { XlsxSource } from "./xlsx-source";
 import {
@@ -665,8 +666,10 @@ export function CsvUpload({
       );
       return;
     }
-    if (!name.endsWith(".csv") && !name.endsWith(".xlsx")) {
-      setError("Selecciona un archivo CSV o un libro de Excel (.xlsx).");
+    if (![".csv", ".xlsx", ".pdf"].some((ext) => name.endsWith(ext))) {
+      setError(
+        "Selecciona un archivo CSV, un libro de Excel (.xlsx) o un PDF.",
+      );
       return;
     }
     if (!value.size || value.size > 5 * 1024 * 1024) {
@@ -689,7 +692,7 @@ export function CsvUpload({
           variant={source === "file" ? undefined : "outline"}
           onClick={() => setSource("file")}
         >
-          Archivo (CSV o Excel)
+          Archivo (CSV, Excel o PDF)
         </Button>
         <Button
           role="tab"
@@ -708,8 +711,8 @@ export function CsvUpload({
             hidden
             ref={input}
             type="file"
-            accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-            aria-label="Archivo CSV o Excel"
+            accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.pdf,application/pdf"
+            aria-label="Archivo CSV, Excel o PDF"
             onChange={(e) => select(e.target.files?.[0])}
           />
           <div
@@ -721,10 +724,10 @@ export function CsvUpload({
             }}
           >
             <UploadCloud size={25} />
-            <h3>{file?.name ?? "Arrastra tu CSV o Excel aquí"}</h3>
+            <h3>{file?.name ?? "Arrastra tu CSV, Excel o PDF aquí"}</h3>
             <p>
-              CSV UTF-8 o .xlsx · hasta 5 MB · el original se conserva sin
-              cambios
+              CSV UTF-8, .xlsx o PDF con texto · hasta 5 MB · el original se
+              conserva sin cambios
             </p>
             <Button
               variant="outline"
@@ -734,7 +737,18 @@ export function CsvUpload({
               Seleccionar archivo
             </Button>
           </div>
-          {file && /\.xlsx$/i.test(file.name) ? (
+          {file && /\.pdf$/i.test(file.name) ? (
+            <PdfSource
+              key={`${file.name}-${file.size}-${file.lastModified}`}
+              projectId={projectId}
+              file={file}
+              onUploaded={() => {
+                setFile(null);
+                if (input.current) input.current.value = "";
+                onUploaded();
+              }}
+            />
+          ) : file && /\.xlsx$/i.test(file.name) ? (
             <XlsxSource
               key={`${file.name}-${file.size}-${file.lastModified}`}
               projectId={projectId}

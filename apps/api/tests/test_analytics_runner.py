@@ -256,7 +256,7 @@ def test_query_v2_ranking_share_and_evidence_of_every_cell(scenario: Scenario) -
         share_of_total=[income["id"], operations["id"]],
     )
     assert plan["validation"]["valid"], plan["validation"]
-    assert plan["content"]["config"]["operation_catalog"] == "analysis-v9"
+    assert plan["content"]["config"]["operation_catalog"] == "analysis-v10"
     run = execute(s, plan)
     result = s.client.get(f"/api/v1/executions/{run}/analysis").json()
     assert result["operation"] == "analytics.query@2"

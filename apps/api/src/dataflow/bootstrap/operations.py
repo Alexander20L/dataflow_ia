@@ -23,6 +23,7 @@ from dataflow.modules.cleaning.public import (
 from dataflow.modules.executions.public import StepExecutor
 from dataflow.modules.ingestion.contracts import (
     ReadCsvParameters,
+    ReadPdfTableParameters,
     ReadSqlServerParameters,
     ReadXlsxParameters,
 )
@@ -50,6 +51,14 @@ DESCRIPTORS: tuple[OperationDescriptor, ...] = (
         "source",
         "table",
         ReadSqlServerParameters,
+    ),
+    OperationDescriptor(
+        "ingestion.read_pdf_table",
+        1,
+        "Leer tabla de PDF",
+        "source",
+        "table",
+        ReadPdfTableParameters,
     ),
     OperationDescriptor(
         "understanding.profile", 1, "Perfil de columnas", "table", "profile", ProfileParameters

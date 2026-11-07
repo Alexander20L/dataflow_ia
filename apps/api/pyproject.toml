@@ -18,6 +18,8 @@ dependencies = [
   # Fase 12B: SQL Server (sólo en integrations/sources) y cifrado de contraseñas guardadas.
   "pyodbc>=5.2,<6",
   "cryptography>=44,<47",
+  # Fase 12C: tablas de PDF con capa de texto (sólo en integrations/sources).
+  "pdfplumber>=0.11,<0.12",
 ]
 
 [project.optional-dependencies]

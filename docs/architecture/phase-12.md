@@ -104,6 +104,19 @@ Decisiones tomadas: **pyodbc + Microsoft ODBC Driver 18** (licencia aceptada en 
 
 Cierre: un PDF de ejemplo produce exactamente la tabla esperada; uno con dos tablas pide elección; uno escaneado se rechaza con su código.
 
+### Estado: implementado (12C)
+
+| Pieza           | Detalle                                                                                                                                                                                                                                                                                                                     |
+| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Lector          | `integrations/sources/pdf_reader.py` (`pdf-reader-1`) con `pdfplumber`, sólo en el subproceso aislado. Tablas con rejilla (estrategia de líneas); texto de celda con espacios y saltos internos colapsados; vacía → nulo                                                                                                    |
+| Candidatas      | Cada tabla se identifica como `p<página>-t<n>` y se lista con 10 filas de vista previa y sus **problemas** (columnas desiguales, cabeceras vacías, combinadas o repetidas, sin filas, límites). Una tabla con problemas no se puede importar (`PDF_TABLE_AMBIGUOUS`)                                                        |
+| Elección humana | La importación **exige** los identificadores elegidos (`tables=`); no hay elección automática, así que una política activa (11C) sólo actúa después de esa elección                                                                                                                                                         |
+| Continuaciones  | Varias tablas sólo si la persona las marca juntas: mismas columnas (`PDF_UNION_MISMATCH` si no) y una cabecera repetida al inicio de la continuación se omite                                                                                                                                                               |
+| Rechazos        | `PDF_NO_TEXT_LAYER` (escaneado; el OCR queda para otro incremento), `UNSUPPORTED_FORMAT`, `PDF_ENCRYPTED`, `PDF_MALFORMED`, `PDF_PAGE_LIMIT` (100 páginas), `PDF_TABLE_NOT_FOUND`, `PDF_TABLE_REQUIRED`, `PDF_ROW_LIMIT`                                                                                                    |
+| API             | `POST /projects/{id}/imports/pdf/inspect` (no guarda) y `POST /projects/{id}/imports/pdf?tables=…` con `Idempotency-Key`; operación `ingestion.read_pdf_table@1`, catálogo `analysis-v10`                                                                                                                                   |
+| Interfaz        | El selector de archivo acepta `.pdf`: tablas candidatas con vista previa y problemas, casillas para elegir (y confirmar continuaciones) e «Importar tabla elegida»                                                                                                                                                          |
+| Pruebas         | `tests/test_pdf_ingestion.py`: varias tablas en una página, continuación entre páginas, cabeceras repetidas, PDF escaneado y el cierre con `examples/ventas_tabla.pdf`, que reproduce exactamente la tabla de `examples/ventas_calidad.csv` (salvo la celda de sólo espacios, que en un PDF es indistinguible de una vacía) |
+
 ## Cierre común
 
 Cada adaptador produce una única representación tabular identificable que recorre el mismo pipeline posterior de la Fase 11, sin rutas especiales por fuente.

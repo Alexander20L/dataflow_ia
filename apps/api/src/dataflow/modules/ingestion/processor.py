@@ -11,6 +11,8 @@ from typing import Any
 import polars as pl
 from pydantic import TypeAdapter
 
+from dataflow.integrations.sources.pdf_reader import inspect as inspect_pdf_tables
+from dataflow.integrations.sources.pdf_reader import read_tables
 from dataflow.integrations.sources.sqlserver_reader import (
     READER_VERSION as SQL_READER_VERSION,
 )
@@ -212,6 +214,31 @@ def inspect_xlsx(
     (output / "inspect.json").write_text(json.dumps(inspection), encoding="utf-8")
 
 
+def read_pdf(
+    source: Path, output: Path, selection: dict[str, Any], max_rows: int, max_columns: int
+) -> None:
+    """ingestion.read_pdf_table@1: PDF original → Parquet de texto nullable."""
+    content = source.read_bytes()
+    headers, rows = read_tables(content, list(selection["tables"]), max_rows, max_columns)
+    write_table(output, headers, rows)
+    (output / "read.json").write_text(
+        json.dumps(
+            {
+                "separator": ",",
+                "source_sha256": hashlib.sha256(content).hexdigest(),
+                "row_count": len(rows),
+                "column_count": len(headers),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def inspect_pdf(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
+    result = inspect_pdf_tables(source.read_bytes(), max_rows, max_columns)
+    (output / "inspect.json").write_text(json.dumps(result), encoding="utf-8")
+
+
 def sql_parameters(payload: dict[str, Any]) -> ConnectionParameters:
     return ConnectionParameters(**payload["connection"])
 
@@ -315,6 +342,8 @@ def main() -> None:
             "inspect_xlsx",
             "sql_discover",
             "sql_extract",
+            "read_pdf",
+            "inspect_pdf",
             "profile",
             "quality",
             "quality_rules",
@@ -335,6 +364,16 @@ def main() -> None:
     try:
         if args.mode == "read":
             read(args.input, args.output, args.separator, args.max_rows, args.max_columns)
+        elif args.mode == "read_pdf":
+            read_pdf(
+                args.input,
+                args.output,
+                json.loads(args.xlsx_json),
+                args.max_rows,
+                args.max_columns,
+            )
+        elif args.mode == "inspect_pdf":
+            inspect_pdf(args.input, args.output, args.max_rows, args.max_columns)
         elif args.mode == "sql_discover":
             sql_discover(args.input, args.output)
         elif args.mode == "sql_extract":

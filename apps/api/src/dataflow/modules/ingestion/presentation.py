@@ -19,7 +19,9 @@ from dataflow.modules.ingestion.contracts import (
     ExtractionProvenance,
     ExtractionRequest,
     IngestionSummary,
+    PdfInspection,
     PreviewPage,
+    ReadPdfTableParameters,
     ReadXlsxParameters,
     XlsxInspection,
 )
@@ -197,6 +199,81 @@ async def upload_xlsx(
         file_name,
         content,
         ReadXlsxParameters(sheet=sheet, table=table, header_row=header_row),
+        request_key,
+        request.state.correlation_id,
+    )
+    return VersionResponse.model_validate(version)
+
+
+PDF_BODY = {
+    "requestBody": {
+        "required": True,
+        "content": {"application/pdf": {"schema": {"type": "string", "format": "binary"}}},
+    }
+}
+
+
+async def pdf_body(request: Request) -> bytes:
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/pdf":
+        raise ApplicationError(
+            "PDF_CONTENT_TYPE", "Envía el PDF con Content-Type application/pdf.", 415
+        )
+    maximum = get_settings().max_upload_bytes
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > maximum:
+            raise ApplicationError("FILE_TOO_LARGE", "El PDF supera el límite de 5 MB.", 413)
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
+@router.post(
+    "/projects/{project_id}/imports/pdf/inspect",
+    response_model=PdfInspection,
+    operation_id="inspectPdf",
+    openapi_extra=PDF_BODY,
+)
+async def inspect_pdf(
+    project_id: UUID,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    file_name: Annotated[str, Query(min_length=1, max_length=255)],
+) -> PdfInspection:
+    """Fase 12C: tablas candidatas por página con vista previa; no guarda nada."""
+    content = await pdf_body(request)
+    return await run_in_threadpool(
+        service.inspect_pdf, identity.user.id, project_id, file_name, content
+    )
+
+
+@router.post(
+    "/projects/{project_id}/imports/pdf",
+    status_code=202,
+    response_model=VersionResponse,
+    operation_id="uploadPdf",
+    openapi_extra=PDF_BODY,
+)
+async def upload_pdf(
+    project_id: UUID,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    file_name: Annotated[str, Query(min_length=1, max_length=255)],
+    tables: Annotated[list[str], Query(min_length=1, max_length=20)],
+    request_key: Annotated[UUID, Header(alias="Idempotency-Key")],
+) -> VersionResponse:
+    """Fase 12C: importa la tabla elegida (o su continuación confirmada en otras páginas)."""
+    content = await pdf_body(request)
+    version = await run_in_threadpool(
+        service.submit_pdf,
+        identity.user.id,
+        project_id,
+        file_name,
+        content,
+        ReadPdfTableParameters(tables=tables),
         request_key,
         request.state.correlation_id,
     )

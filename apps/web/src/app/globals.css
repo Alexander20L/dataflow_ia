@@ -4744,3 +4744,16 @@ tbody tr:hover {
   gap: 8px;
   margin-top: 12px;
 }
+/* Fase 12C: tablas candidatas de un PDF */
+.pdf-candidate {
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+.pdf-candidate .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}

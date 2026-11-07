@@ -15,7 +15,9 @@ from dataflow.modules.executions.public import (
 from dataflow.modules.ingestion.contracts import (
     Diagnostic,
     IngestionSummary,
+    PdfInspection,
     PreviewPage,
+    ReadPdfTableParameters,
     ReadSqlServerParameters,
     ReadXlsxParameters,
     XlsxInspection,
@@ -25,6 +27,7 @@ from dataflow.modules.ingestion.plans import (
     analysis_fingerprint,
     build_plan,
     import_fingerprint,
+    pdf_import_fingerprint,
     resolve_separator,
     xlsx_import_fingerprint,
 )
@@ -80,6 +83,13 @@ class Analyzer(Protocol):
         config: ProcessingConfig,
         timeout: float,
     ) -> ReadOutput: ...
+    def read_pdf(
+        self,
+        content: bytes,
+        parameters: ReadPdfTableParameters,
+        config: ProcessingConfig,
+        timeout: float,
+    ) -> ReadOutput: ...
     def profile(
         self,
         table: bytes,
@@ -102,6 +112,8 @@ class XlsxInspector(Protocol):
         header_row: int,
         config: ProcessingConfig,
     ) -> XlsxInspection: ...
+
+    def inspect_pdf(self, content: bytes, config: ProcessingConfig) -> PdfInspection: ...
 
 
 XLSX_REJECTED = (".xls", ".xlsm", ".xlsb", ".xltm", ".xlt")
@@ -254,6 +266,52 @@ class IngestionService:
         if self.inspector is None:
             raise ApplicationError("XLSX_UNAVAILABLE", "La lectura de Excel no está activa.", 503)
         return self.inspector.inspect_xlsx(content, sheet, table, header_row, self.config)
+
+    def inspect_pdf(self, owner: UUID, project: UUID, name: str, content: bytes) -> PdfInspection:
+        """Fase 12C: tablas candidatas por página; no guarda nada."""
+        try:
+            self.projects.require(owner, project, writable=True)
+        finally:
+            self.uow.rollback()
+        self._check_pdf(name, content)
+        if self.inspector is None:
+            raise ApplicationError("PDF_UNAVAILABLE", "La lectura de PDF no está activa.", 503)
+        return self.inspector.inspect_pdf(content, self.config)
+
+    def submit_pdf(
+        self,
+        owner: UUID,
+        project: UUID,
+        name: str,
+        content: bytes,
+        parameters: ReadPdfTableParameters,
+        key: UUID,
+        correlation: str,
+    ) -> Version:
+        """Fase 12C: la tabla (o continuación confirmada) que la persona eligió."""
+        try:
+            self._check_pdf(name, content)
+        except Exception:
+            self.uow.rollback()
+            raise
+        return self._register(
+            owner,
+            project,
+            name,
+            content,
+            key,
+            correlation,
+            "pdf",
+            pdf_import_fingerprint(name, hashlib.sha256(content).hexdigest(), parameters),
+            lambda version: build_plan(owner, version, self.config, pdf=parameters),
+        )
+
+    def _check_pdf(self, name: str, content: bytes) -> None:
+        if any(c in name for c in UNSAFE_NAME) or len(name) > 255:
+            raise ApplicationError("PDF_REQUIRED", "Nombre de archivo no válido.", 422)
+        if not name.lower().endswith(".pdf"):
+            raise ApplicationError("PDF_REQUIRED", "Selecciona un archivo PDF.", 422)
+        self._check_content(content, "El PDF supera el límite de tamaño.")
 
     def _check_content(self, content: bytes, too_large: str) -> None:
         if not content:
