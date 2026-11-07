@@ -1,6 +1,6 @@
 # Fase 11 — Automatización determinista
 
-Estado: **11.0 implementada**; 11A–11F son plan objetivo y no describen funcionalidades implementadas. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
+Estado: **11.0 implementada**; de 11A, la **propuesta de limpieza en el backend** está implementada y la sesión de análisis no. El resto (11A–11F) es plan objetivo y no describe funcionalidades implementadas. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
 
 ## Objetivo
 
@@ -124,15 +124,27 @@ Reglas:
 
 Persistencia: `analysis_sessions` (selección vigente: referencia mutable, con `revision` y control de concurrencia) y `analysis_session_input_revisions` (cada selección, inmutable por trigger).
 
-### Propuesta de limpieza en el backend
+### Propuesta de limpieza en el backend (implementada)
 
-Hoy el borrador inicial se arma en el frontend (`initialDraft` en `features/cleaning/proposal.tsx`). Pasa a `cleaning/domain`:
+El borrador inicial se armaba en el frontend (`initialDraft` y `draftSteps` en `features/cleaning/proposal.tsx`). Ahora es una función pura del backend, `modules/cleaning/proposal.py`:
 
 ```
-propose(diagnostic, semantics, profile, policy) → proposed_plan
+propose(columnas, incidencias de calidad, marcadores confirmados) → CleaningProposal (cleaning-proposal@1)
 ```
 
-La interfaz y la automatización consumen la misma propuesta. Antes de moverla se captura una **prueba dorada** con la salida actual sobre los CSV del repositorio; la versión del backend debe reproducirla exactamente.
+| Regla                                  | Propuesta                                                         |
+| -------------------------------------- | ----------------------------------------------------------------- |
+| Q-003 (sólo espacios)                  | Recortar la columna, sólo si es texto                             |
+| Q-001 (celdas vacías)                  | Excluir registros con nulo en la columna, de cualquier tipo       |
+| Q-002 (filas repetidas)                | Deduplicar por todas las columnas agrupando nulos                 |
+| Marcadores confirmados en la semántica | Normalizarlos a nulo, sólo en columnas de texto                   |
+| Conversiones de tipo                   | Nunca se proponen; sólo se muestra el tipo sugerido por el perfil |
+
+La respuesta incluye el **borrador editable** por columna y los **pasos del catálogo** en el orden fijo (marcadores → recortar → convertir → excluir nulos → deduplicar), además de la tabla y la revisión semántica usadas. `GET /representations/{id}/cleaning-proposal` la expone (sólo lectura, sin guardar planes); bootstrap reúne los hechos con `CleaningProposalAccess` (columnas y revisión vigente de understanding, incidencias del diagnóstico de la versión).
+
+La interfaz parte de esa propuesta (`draftFromProposal`) y la persona sigue editándola como antes; `draftSteps` del frontend sólo convierte las ediciones en pasos. La política de automatización (11B) se aplicará sobre esta misma propuesta.
+
+Pruebas: `tests/test_cleaning_proposal.py` reproduce las reglas del frontend anterior (tipos admitidos por regla, orden de columnas, marcadores agrupados y sin repetidos, orden fijo de pasos, propuesta vacía) y, con PostgreSQL, comprueba la propuesta de `examples/ventas_calidad.csv` (recortar y excluir `importe`, deduplicar), que el plan resultante valida y que su vista previa se calcula. La arquitectura protege `proposal.py` igual que el resto del cálculo de cleaning (sin base de datos).
 
 ### Frontend
 

@@ -951,6 +951,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/representations/{artifact_id}/cleaning-proposal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Proposal
+         * @description Propuesta inicial de limpieza calculada en el servidor (Fase 11A). Sólo lectura.
+         */
+        get: operations["getCleaningProposal"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/representations/{artifact_id}/metrics": {
         parameters: {
             query?: never;
@@ -1732,6 +1752,39 @@ export interface components {
             /** Valid */
             valid: boolean;
         };
+        /**
+         * CleaningDraft
+         * @description Selección editable por columna; `draft_steps` la convierte en pasos del catálogo.
+         */
+        CleaningDraft: {
+            dedupe: components["schemas"]["DedupeProposal"];
+            /** Drop Nulls */
+            drop_nulls: string[];
+            /** Null Tokens */
+            null_tokens: components["schemas"]["NullTokenProposal"][];
+            /** Trim */
+            trim: string[];
+        };
+        /** CleaningProposal */
+        CleaningProposal: {
+            draft: components["schemas"]["CleaningDraft"];
+            /**
+             * Proposal Version
+             * @default cleaning-proposal@1
+             * @constant
+             */
+            proposal_version: "cleaning-proposal@1";
+            /**
+             * Representation Id
+             * Format: uuid
+             */
+            representation_id: string;
+            semantic_revision: components["schemas"]["ProposalSemanticRef"] | null;
+            /** Steps */
+            steps: components["schemas"]["PlanStep"][];
+            /** Table Sha256 */
+            table_sha256: string;
+        };
         /** ColumnDraft */
         ColumnDraft: {
             /**
@@ -2189,6 +2242,18 @@ export interface components {
             separator: string;
             /** Source Sha256 */
             source_sha256: string;
+        };
+        /** DedupeProposal */
+        DedupeProposal: {
+            /** Column Ids */
+            column_ids: string[];
+            /** Enabled */
+            enabled: boolean;
+            /**
+             * Null Keys
+             * @enum {string}
+             */
+            null_keys: "reject" | "group_nulls";
         };
         /** Diagnostic */
         Diagnostic: {
@@ -3043,6 +3108,16 @@ export interface components {
             /** Tokens */
             tokens?: string[];
         };
+        /** NullTokenProposal */
+        NullTokenProposal: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Tokens */
+            tokens: string[];
+        };
         /** NumericSummary */
         NumericSummary: {
             /** Count */
@@ -3398,6 +3473,18 @@ export interface components {
              * @enum {string}
              */
             resolve_in: "understanding" | "metrics" | "proposal" | "plan";
+        };
+        /** ProposalSemanticRef */
+        ProposalSemanticRef: {
+            /** Content Sha256 */
+            content_sha256: string;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /** Revision */
+            revision: number;
         };
         /**
          * Provenance
@@ -12296,6 +12383,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApplicableOperation"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getCleaningProposal: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                artifact_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CleaningProposal"];
                 };
             };
             /** @description Bad Request */

@@ -8,7 +8,26 @@ export type Approval = components["schemas"]["ApprovalView"];
 export type EffectSample = components["schemas"]["EffectSample"];
 export type EffectCounts = components["schemas"]["EffectCounts"];
 
+export type CleaningProposal = components["schemas"]["CleaningProposal"];
+
 const running = (state?: string) => state === "queued" || state === "running";
+
+/** Propuesta inicial de limpieza calculada en el servidor (Fase 11A). */
+export function useCleaningProposal(representationId: string) {
+  return useQuery({
+    queryKey: ["cleaning-proposal", representationId],
+    enabled: !!representationId,
+    queryFn: async ({ signal }) =>
+      requireData(
+        await api.GET(
+          "/api/v1/representations/{artifact_id}/cleaning-proposal",
+          { signal, params: { path: { artifact_id: representationId } } },
+        ),
+      ),
+    staleTime: 10000,
+    refetchOnWindowFocus: "always",
+  });
+}
 
 export function useCleaningPreview(executionId: string | null) {
   return useQuery({

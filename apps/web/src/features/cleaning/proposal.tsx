@@ -12,7 +12,11 @@ import type { DatasetVersion, Diagnostic } from "@/features/ingestion/api";
 import { useCreatePlan, type PlanStep } from "@/features/planning/api";
 import { useUnderstanding } from "@/features/understanding/api";
 import { EffectPreview } from "./effect-preview";
-import { useCreatePreview } from "./api";
+import {
+  useCleaningProposal,
+  useCreatePreview,
+  type CleaningProposal,
+} from "./api";
 
 type DataType = "string" | "integer" | "decimal" | "date" | "boolean";
 type CastType = Exclude<DataType, "string">;
@@ -61,47 +65,23 @@ export function splitTokens(value: string): string[] {
 }
 
 /**
- * Borrador inicial: Q-003 → recortar; Q-001 → excluir nulos; Q-002 → deduplicar filas
- * idénticas (nulos agrupados, como Q-002). Los marcadores de nulo salen de la revisión
- * semántica fijada. No se propone ninguna conversión: sólo se indica el tipo sugerido.
+ * Borrador inicial a partir de la propuesta del servidor (Fase 11A, `cleaning-proposal@1`):
+ * Q-003 → recortar; Q-001 → excluir nulos; Q-002 → deduplicar filas idénticas (nulos
+ * agrupados); marcadores de nulo confirmados en la revisión semántica. Nunca una conversión.
  */
-export function initialDraft(
-  diagnostic: Diagnostic,
-  columns: Column[],
-  semantic: Semantic | null,
-): Draft {
-  const ids = (rule: string) =>
-    columns
-      .filter((column) =>
-        column.type === "string" || rule === "Q-001"
-          ? diagnostic.quality.issues.some(
-              (issue) => issue.rule === rule && issue.column === column.name,
-            )
-          : false,
-      )
-      .map((column) => column.id);
+export function draftFromProposal(proposal: CleaningProposal): Draft {
   const tokens: Record<string, string> = {};
-  for (const column of semantic?.content.columns ?? []) {
-    const known = columns.find((c) => c.id === column.id);
-    if (
-      known?.type === "string" &&
-      column.review.state === "confirmed" &&
-      column.null_policy.mode === "explicit_tokens" &&
-      column.null_policy.tokens?.length
-    )
-      tokens[column.id] = column.null_policy.tokens.join(", ");
-  }
+  for (const item of proposal.draft.null_tokens)
+    tokens[item.column_id] = item.tokens.join(", ");
   return {
     tokens,
-    trim: ids("Q-003"),
+    trim: [...proposal.draft.trim],
     cast: {},
-    drop: ids("Q-001"),
+    drop: [...proposal.draft.drop_nulls],
     dedupe: {
-      enabled: diagnostic.quality.issues.some(
-        (issue) => issue.rule === "Q-002",
-      ),
-      column_ids: columns.map((column) => column.id),
-      null_keys: "group_nulls",
+      enabled: proposal.draft.dedupe.enabled,
+      column_ids: [...proposal.draft.dedupe.column_ids],
+      null_keys: proposal.draft.dedupe.null_keys,
     },
   };
 }
@@ -206,7 +186,12 @@ export function CleaningStage({
   const tables = useRepresentations(version.id);
   const table = tables.data?.[0];
   const understanding = useUnderstanding(table?.id ?? "");
-  if (tables.isPending || (table && understanding.isPending))
+  const proposal = useCleaningProposal(table?.columns ? table.id : "");
+  if (
+    tables.isPending ||
+    (table && understanding.isPending) ||
+    (table?.columns && proposal.isPending)
+  )
     return (
       <p className="empty-copy" role="status">
         Cargando la tabla publicada…
@@ -216,6 +201,13 @@ export function CleaningStage({
     return (
       <p className="empty-copy">
         No hay una tabla publicada con esquema para proponer una limpieza.
+      </p>
+    );
+  if (!proposal.data)
+    return (
+      <p className="empty-copy" role="alert">
+        No se pudo calcular la propuesta de limpieza:{" "}
+        {errorMessage(proposal.error)}
       </p>
     );
   // Sin contexto semántico (error de lectura) la propuesta sigue siendo técnica.
@@ -243,10 +235,11 @@ export function CleaningStage({
   });
   return (
     <Proposal
-      key={`${table.id}-${head?.id ?? "none"}`}
+      key={`${table.id}-${head?.id ?? "none"}-${proposal.data.semantic_revision?.id ?? "none"}`}
       projectId={projectId}
       table={{ id: table.id, sha256: table.sha256 }}
       columns={columns}
+      proposal={proposal.data}
       diagnostic={diagnostic}
       semantic={head}
       archived={archived}
@@ -262,6 +255,7 @@ function Proposal({
   projectId,
   table,
   columns,
+  proposal,
   diagnostic,
   semantic,
   archived,
@@ -273,6 +267,7 @@ function Proposal({
   projectId: string;
   table: { id: string; sha256: string };
   columns: Column[];
+  proposal: CleaningProposal;
   diagnostic: Diagnostic;
   semantic: Semantic | null;
   archived: boolean;
@@ -281,10 +276,7 @@ function Proposal({
   copilotPlanId: string | null;
   onDismissCopilotPlan?: () => void;
 }) {
-  const suggested = useMemo(
-    () => initialDraft(diagnostic, columns, semantic),
-    [diagnostic, columns, semantic],
-  );
+  const suggested = useMemo(() => draftFromProposal(proposal), [proposal]);
   const [draft, setDraft] = useState<Draft>(suggested);
   const [planId, setPlanId] = useState<string | null>(null);
   const [previewId, setPreviewId] = useState<string | null>(null);

@@ -113,6 +113,8 @@ export function useSaveSemantics(id: string) {
       await Promise.all([
         client.invalidateQueries({ queryKey: ["understanding", id] }),
         client.invalidateQueries({ queryKey: ["semantic-revisions", id] }),
+        // La propuesta de limpieza usa los marcadores de nulo confirmados (Fase 11A).
+        client.invalidateQueries({ queryKey: ["cleaning-proposal", id] }),
       ]);
     },
   });

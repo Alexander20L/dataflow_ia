@@ -97,7 +97,14 @@ def test_cleaning_compute_path_has_no_database_access() -> None:
         "dataflow.platform.database",
         "dataflow.modules.cleaning.repository",
     )
-    for name in ["infrastructure.py", "engine.py", "processor.py", "domain.py", "contracts.py"]:
+    for name in [
+        "infrastructure.py",
+        "engine.py",
+        "processor.py",
+        "domain.py",
+        "contracts.py",
+        "proposal.py",
+    ]:
         for module in imports(ast.parse((root / name).read_text(encoding="utf-8"))):
             assert not module.startswith(forbidden), (name, module)
 
