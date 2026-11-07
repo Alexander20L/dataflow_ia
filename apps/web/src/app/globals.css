@@ -1127,6 +1127,19 @@ fieldset.parameter-field {
   width: 100%;
   margin-bottom: 20px;
 }
+.xlsx-source > select,
+.xlsx-source > input {
+  width: 100%;
+  margin-bottom: 16px;
+}
+.xlsx-source > .btn {
+  width: 100%;
+  margin-top: 12px;
+}
+.xlsx-preview {
+  max-height: 260px;
+  margin: 8px 0 12px;
+}
 .csv-upload > .btn {
   width: 100%;
   margin-top: 12px;

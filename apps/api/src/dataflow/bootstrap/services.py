@@ -71,6 +71,7 @@ from dataflow.modules.ingestion.executor import (
     QualityRulesStep,
     QualityStep,
     ReadCsvStep,
+    ReadXlsxStep,
     RulesetSource,
     SourceInputResolver,
     TableInputResolver,
@@ -124,6 +125,12 @@ def make_ingestion(db: Session, objects: LocalObjects) -> IngestionService:
         processing_config(),
         settings.max_owner_storage_bytes,
         settings.max_upload_bytes,
+        IsolatedAnalyzer(
+            objects.root,
+            settings.processing_timeout_seconds,
+            settings.max_csv_rows,
+            settings.max_csv_columns,
+        ),
     )
 
 
@@ -260,6 +267,7 @@ def make_operations(
     return OperationRegistry(
         {
             "ingestion.read_csv@1": ReadCsvStep(objects, analyzer),
+            "ingestion.read_xlsx@1": ReadXlsxStep(objects, analyzer),
             "understanding.profile@1": ProfileStep(objects, analyzer),
             "quality.evaluate@1": QualityStep(objects, analyzer),
             "quality.evaluate@2": QualityRulesStep(objects, analyzer, rulesets),

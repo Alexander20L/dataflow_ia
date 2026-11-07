@@ -11,6 +11,7 @@ from typing import Any
 import polars as pl
 from pydantic import TypeAdapter
 
+from dataflow.integrations.sources.xlsx_reader import Workbook, read_xlsx
 from dataflow.modules.ingestion.domain import ENGINE_VERSION
 from dataflow.modules.quality.public import (
     Rule,
@@ -24,6 +25,7 @@ from dataflow.platform.data_types import DataType
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.tabular import Cell, frame_types
 
+PREVIEW_ROWS = 20
 RULES: TypeAdapter[list[Rule]] = TypeAdapter(list[Rule])
 
 
@@ -115,8 +117,7 @@ def read(source: Path, output: Path, separator: str, max_rows: int, max_columns:
     """ingestion.read_csv@1: CSV original → Parquet de texto nullable."""
     content = source.read_bytes()
     headers, rows, actual_separator = parse_csv(content, separator, max_rows, max_columns)
-    frame = pl.DataFrame(rows, schema={name: pl.String for name in headers}, orient="row")
-    frame.write_parquet(output / "data.parquet", compression="zstd", statistics=True)
+    write_table(output, headers, rows)
     (output / "read.json").write_text(
         json.dumps(
             {
@@ -128,6 +129,79 @@ def read(source: Path, output: Path, separator: str, max_rows: int, max_columns:
         ),
         encoding="utf-8",
     )
+
+
+def write_table(output: Path, headers: list[str], rows: list[list[str | None]]) -> None:
+    frame = pl.DataFrame(rows, schema={name: pl.String for name in headers}, orient="row")
+    frame.write_parquet(output / "data.parquet", compression="zstd", statistics=True)
+
+
+def read_xlsx_table(
+    source: Path, output: Path, selection: dict[str, Any], max_rows: int, max_columns: int
+) -> None:
+    """ingestion.read_xlsx@1: libro original → Parquet de texto nullable (una hoja/tabla)."""
+    content = source.read_bytes()
+    result = read_xlsx(
+        content,
+        selection["sheet"],
+        selection.get("table"),
+        int(selection.get("header_row") or 1),
+        max_rows,
+        max_columns,
+    )
+    write_table(output, result.headers, result.rows)
+    (output / "read.json").write_text(
+        json.dumps(
+            {
+                # Procedencia tabular neutra: igual que las tablas publicadas (contrato 0.4/0.5).
+                "separator": ",",
+                "source_sha256": hashlib.sha256(content).hexdigest(),
+                "row_count": len(result.rows),
+                "column_count": len(result.headers),
+                "sheet": result.sheet,
+                "table": result.table,
+                "warning_count": result.warning_count,
+                "warnings": result.warnings,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+def inspect_xlsx(
+    source: Path, output: Path, selection: dict[str, Any], max_rows: int, max_columns: int
+) -> None:
+    """Hojas, tablas y vista previa de la selección; un problema de la hoja elegida no
+    impide listar el libro (se devuelve en `problem`)."""
+    book = Workbook(source.read_bytes())
+    sheet, table = book.select(selection.get("sheet"), selection.get("table"))
+    header_row = int(selection.get("header_row") or 1)
+    inspection: dict[str, Any] = {
+        "sheets": [{"name": s.name, "hidden": s.hidden, "tables": s.tables} for s in book.sheets],
+        "sheet": sheet.name,
+        "table": table.name if table else None,
+        "header_row": table.first_row if table else header_row,
+        "columns": [],
+        "rows": [],
+        "row_count": 0,
+        "warnings": [],
+        "warning_count": 0,
+        "problem": None,
+    }
+    try:
+        result = book.read_table(
+            sheet.name, table.name if table else None, header_row, max_rows, max_columns
+        )
+        inspection.update(
+            columns=result.headers,
+            rows=result.rows[:PREVIEW_ROWS],
+            row_count=len(result.rows),
+            warnings=result.warnings,
+            warning_count=result.warning_count,
+        )
+    except ApplicationError as exc:
+        inspection["problem"] = {"code": exc.code, "message": exc.message}
+    (output / "inspect.json").write_text(json.dumps(inspection), encoding="utf-8")
 
 
 def profile(
@@ -183,7 +257,9 @@ def quality_rules(
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--mode", choices=["read", "profile", "quality", "quality_rules"], required=True
+        "--mode",
+        choices=["read", "read_xlsx", "inspect_xlsx", "profile", "quality", "quality_rules"],
+        required=True,
     )
     parser.add_argument("--input", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
@@ -194,10 +270,20 @@ def main() -> None:
     parser.add_argument("--columns-json")
     parser.add_argument("--rules-json")
     parser.add_argument("--reference-json")
+    parser.add_argument("--xlsx-json")
     args = parser.parse_args()
     try:
         if args.mode == "read":
             read(args.input, args.output, args.separator, args.max_rows, args.max_columns)
+        elif args.mode in {"read_xlsx", "inspect_xlsx"}:
+            handler = read_xlsx_table if args.mode == "read_xlsx" else inspect_xlsx
+            handler(
+                args.input,
+                args.output,
+                json.loads(args.xlsx_json),
+                args.max_rows,
+                args.max_columns,
+            )
         elif args.mode == "profile":
             if not args.source_sha256:
                 raise ApplicationError("PROCESSING_ERROR", "Falta el hash de procedencia.", 422)

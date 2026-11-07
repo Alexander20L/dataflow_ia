@@ -2,9 +2,10 @@
 # core.autocrlf: Prettier, el contrato OpenAPI y contracts:check comparan bytes exactos.
 * text=auto eol=lf
 
-# Binarios: nunca se convierten ni se comparan como texto. Hoy no hay ninguno versionado; se
-# declaran los que genera la aplicación (Parquet) o es previsible añadir (imágenes, iconos).
+# Binarios: nunca se convierten ni se comparan como texto. Se declaran los que genera la
+# aplicación (Parquet), los ejemplos versionados (.xlsx, Fase 12A) e imágenes o iconos.
 *.parquet binary
+*.xlsx binary
 *.png binary
 *.jpg binary
 *.jpeg binary

@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, Field
 
 from dataflow.modules.quality.contracts import QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
@@ -43,3 +43,47 @@ class ReadCsvParameters(BaseModel):
     strict: Literal[True] = True
     empty_cells: Literal["null"] = "null"
     blank_lines: Literal["skip"] = "skip"
+
+
+class ReadXlsxParameters(BaseModel):
+    """Parámetros de ingestion.read_xlsx@1 (Fase 12A): una hoja o tabla con nombre."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True)
+    sheet: str = Field(min_length=1, max_length=31)
+    table: str | None = Field(default=None, min_length=1, max_length=255)
+    header_row: int = Field(default=1, ge=1, le=1_048_576)
+    reader: Literal["xlsx-reader-1"] = "xlsx-reader-1"
+    formulas: Literal["stored_result"] = "stored_result"
+    empty_cells: Literal["null"] = "null"
+
+
+class XlsxSheet(BaseModel):
+    name: str
+    hidden: bool
+    tables: list[str]
+
+
+class XlsxWarning(BaseModel):
+    code: str
+    cell: str
+    message: str
+
+
+class XlsxProblem(BaseModel):
+    code: str
+    message: str
+
+
+class XlsxInspection(BaseModel):
+    """Hojas y tablas del libro y vista previa de la selección, antes de importar."""
+
+    sheets: list[XlsxSheet]
+    sheet: str
+    table: str | None
+    header_row: int
+    columns: list[str]
+    rows: list[list[str | None]]
+    row_count: int
+    warnings: list[XlsxWarning]
+    warning_count: int
+    problem: XlsxProblem | None = None

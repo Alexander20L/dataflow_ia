@@ -7,7 +7,12 @@ import polars as pl
 
 from dataflow.modules.executions.public import ProcessingConfig
 from dataflow.modules.ingestion.application import AnalysisOutput, ReadOutput
-from dataflow.modules.ingestion.contracts import PreviewPage, PreviewRow
+from dataflow.modules.ingestion.contracts import (
+    PreviewPage,
+    PreviewRow,
+    ReadXlsxParameters,
+    XlsxInspection,
+)
 from dataflow.modules.quality.contracts import WHITESPACE_CHARS, QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
 from dataflow.platform.errors import ApplicationError
@@ -77,6 +82,49 @@ class IsolatedAnalyzer:
             int(meta["row_count"]),
             int(meta["column_count"]),
         )
+
+    def read_xlsx(
+        self,
+        content: bytes,
+        parameters: ReadXlsxParameters,
+        config: ProcessingConfig,
+        timeout: float,
+    ) -> ReadOutput:
+        files = self.run(
+            "read_xlsx",
+            content,
+            config,
+            timeout,
+            ["data.parquet", "read.json"],
+            ["--xlsx-json", parameters.model_dump_json()],
+        )
+        meta = json.loads(files["read.json"])
+        return ReadOutput(
+            files["data.parquet"],
+            str(meta["separator"]),
+            str(meta["source_sha256"]),
+            int(meta["row_count"]),
+            int(meta["column_count"]),
+        )
+
+    def inspect_xlsx(
+        self,
+        content: bytes,
+        sheet: str | None,
+        table: str | None,
+        header_row: int,
+        config: ProcessingConfig,
+    ) -> XlsxInspection:
+        selection = {"sheet": sheet, "table": table, "header_row": header_row}
+        files = self.run(
+            "inspect_xlsx",
+            content,
+            config,
+            float(config.timeout_seconds),
+            ["inspect.json"],
+            ["--xlsx-json", json.dumps(selection, ensure_ascii=False)],
+        )
+        return XlsxInspection.model_validate_json(files["inspect.json"])
 
     def profile(
         self,

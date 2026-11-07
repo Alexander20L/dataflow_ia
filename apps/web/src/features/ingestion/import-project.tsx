@@ -54,10 +54,14 @@ export function ImportProject() {
     if (!selected) return;
     setError("");
     setFile(null);
-    if (!/\.csv$/i.test(selected.name)) {
+    if (/\.xlsx$/i.test(selected.name)) {
       setError(
-        "Selecciona un archivo CSV. XLSX y Parquet se integrarán después.",
+        "Para un libro de Excel, crea el proyecto y súbelo desde su espacio de trabajo: allí eliges la hoja y revisas la vista previa.",
       );
+      return;
+    }
+    if (!/\.csv$/i.test(selected.name)) {
+      setError("Selecciona un archivo CSV.");
       return;
     }
     if (selected.size > 5 * 1024 * 1024) {
@@ -190,7 +194,9 @@ export function ImportProject() {
             >
               Seleccionar archivo
             </Button>
-            <small>CSV UTF-8 · hasta 5 MB · XLSX y Parquet próximamente</small>
+            <small>
+              CSV UTF-8 · hasta 5 MB · Excel (.xlsx) desde el espacio de trabajo
+            </small>
           </div>
           {file && (
             <div className="selected-file">

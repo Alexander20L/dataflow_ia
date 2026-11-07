@@ -148,3 +148,91 @@ export function useCancelImport(projectId: string) {
     },
   });
 }
+
+export const XLSX_MIME =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+export type XlsxInspection = components["schemas"]["XlsxInspection"];
+export type XlsxSelection = {
+  sheet?: string;
+  table?: string | null;
+  header_row: number;
+};
+
+/** Fase 12A: hojas, tablas y vista previa de la selección; no guarda nada. */
+export function useInspectXlsx(projectId: string) {
+  return useMutation({
+    mutationFn: async ({
+      file,
+      selection,
+    }: {
+      file: File;
+      selection: XlsxSelection;
+    }) =>
+      requireData(
+        await api.POST("/api/v1/projects/{project_id}/imports/xlsx/inspect", {
+          params: {
+            path: { project_id: projectId },
+            query: {
+              file_name: file.name,
+              sheet: selection.sheet,
+              table: selection.table ?? undefined,
+              header_row: selection.header_row,
+            },
+          },
+          headers: { "Content-Type": XLSX_MIME },
+          body: file,
+          bodySerializer: (body) => body,
+        }),
+      ),
+  });
+}
+
+export function useUploadXlsx(projectId: string) {
+  const client = useQueryClient();
+  const keys = useRef(new WeakMap<File, Map<string, string>>());
+  return useMutation({
+    mutationFn: async ({
+      file,
+      selection,
+    }: {
+      file: File;
+      selection: Required<XlsxSelection>;
+    }) => {
+      const signature = JSON.stringify(selection);
+      let map = keys.current.get(file);
+      if (!map) {
+        map = new Map();
+        keys.current.set(file, map);
+      }
+      let key = map.get(signature);
+      if (!key) {
+        key = crypto.randomUUID();
+        map.set(signature, key);
+      }
+      const version = requireData(
+        await api.POST("/api/v1/projects/{project_id}/imports/xlsx", {
+          params: {
+            path: { project_id: projectId },
+            query: {
+              file_name: file.name,
+              sheet: selection.sheet,
+              table: selection.table ?? undefined,
+              header_row: selection.header_row,
+            },
+            header: { "Idempotency-Key": key },
+          },
+          headers: { "Content-Type": XLSX_MIME },
+          body: file,
+          bodySerializer: (body) => body,
+        }),
+      );
+      keys.current.delete(file);
+      return version;
+    },
+    onSuccess: async (version) => {
+      await client.invalidateQueries({
+        queryKey: ["versions", version.project_id],
+      });
+    },
+  });
+}
