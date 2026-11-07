@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 
 test("dos revisiones de un plan sobre una tabla conservan el baseline y sus resultados independientes", async ({
   page,
@@ -21,6 +22,7 @@ test("dos revisiones de un plan sobre una tabla conservan el baseline y sus resu
     .locator('input[type="file"]')
     .setInputFiles({ name: "test.csv", mimeType: "text/csv", buffer: content });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });
@@ -123,6 +125,7 @@ test("dos revisiones de un plan sobre una tabla conservan el baseline y sus resu
     panel.getByText("#1 · succeeded", { exact: true }),
   ).toBeVisible();
   await page.reload();
+  await openAdvanced(page);
   await expect(page.getByLabel("Versión", { exact: true })).toHaveValue(
     version,
   );
@@ -131,7 +134,10 @@ test("dos revisiones de un plan sobre una tabla conservan el baseline y sus resu
       .getByRole("region", { name: "Ejecuciones independientes" })
       .getByLabel("Ejecución", { exact: true })
       .locator("option"),
-  ).toHaveCount(3);
+  ).toHaveCount(4); // Baseline, explicación automática y dos ejecuciones del plan.
+  await expect(
+    panel.getByRole("option", { name: /Explicación automática IA/ }),
+  ).toHaveCount(1);
   await page.setViewportSize({ width: 390, height: 844 });
   expect(
     await page.evaluate(

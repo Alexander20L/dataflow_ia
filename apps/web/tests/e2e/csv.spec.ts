@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 
 const csv = Buffer.from(
   "\ufeffid,importe,region,unidades\r\n001,10.50,Norte,1\r\n002,,Sur,2\r\n001,10.50,Norte,1\r\n003, ,Sur,4\r\n",
@@ -29,6 +30,7 @@ test("CSV real: perfil, incidencias, descarga íntegra y versiones independiente
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });
@@ -106,6 +108,7 @@ test("CSV real: perfil, incidencias, descarga íntegra y versiones independiente
     page.getByText("Q-001 · importe", { exact: true }),
   ).toBeVisible();
   await page.reload();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Calidad de mis ventas CSV" }),
   ).toBeVisible();

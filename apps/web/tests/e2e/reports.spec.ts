@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 import {
   confirmSemantics,
   csv,
@@ -29,6 +30,7 @@ test("informe de un CSV propio exportado a PDF y CSV de una versión derivada", 
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });
@@ -36,6 +38,7 @@ test("informe de un CSV propio exportado a PDF y CSV de una versión derivada", 
   await confirmSemantics(page.request);
   await saveMetric(page.request, "Ingresos", "sum", "importe");
   await page.reload();
+  await openAdvanced(page);
   await expect(
     page.getByRole("status", { name: "Versión que estás viendo" }),
   ).toContainText("Estás viendo v2", { timeout: 20000 });

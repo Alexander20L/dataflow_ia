@@ -3,7 +3,7 @@ from uuid import UUID
 
 from fastapi import APIRouter, Header, Request
 
-from dataflow.bootstrap.dependencies import Copilot, CurrentIdentity
+from dataflow.bootstrap.dependencies import Copilot, CurrentIdentity, OverviewAudits
 from dataflow.modules.copilot.contracts import (
     ActionResult,
     Conversation,
@@ -16,9 +16,27 @@ from dataflow.modules.copilot.contracts import (
     TextAuditResponse,
     TurnResponse,
 )
+from dataflow.modules.copilot.overview import OverviewAuditView, OverviewEvidence
 
 router = APIRouter(prefix="/api/v1", tags=["Copiloto"])
 IdempotencyKey = Annotated[UUID, Header(alias="Idempotency-Key")]
+
+
+@router.get("/versions/{version_id}/overview-audit", operation_id="getOverviewAudit")
+def overview_audit(
+    version_id: UUID, identity: CurrentIdentity, service: OverviewAudits
+) -> OverviewAuditView:
+    return service.view(identity.user.id, version_id)
+
+
+@router.get(
+    "/versions/{version_id}/overview-audit/evidence/{evidence_id}",
+    operation_id="getOverviewAuditEvidence",
+)
+def overview_evidence(
+    version_id: UUID, evidence_id: str, identity: CurrentIdentity, service: OverviewAudits
+) -> OverviewEvidence:
+    return service.evidence(identity.user.id, version_id, evidence_id)
 
 
 @router.get(

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 import { csv, typedVersion } from "./analytics-support";
 
 test("copiloto: petición → aclaración → métrica → consulta → explicación con cifras verificadas", async ({
@@ -23,11 +24,13 @@ test("copiloto: petición → aclaración → métrica → consulta → explicac
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });
   await typedVersion(page);
   await page.reload();
+  await openAdvanced(page);
   await expect(
     page.getByRole("status", { name: "Versión que estás viendo" }),
   ).toContainText("Estás viendo v2", { timeout: 20000 });
@@ -128,6 +131,7 @@ test("copiloto: petición → aclaración → métrica → consulta → explicac
 
   // La conversación queda guardada.
   await page.reload();
+  await openAdvanced(page);
   await expect(
     page
       .getByRole("region", { name: "Copiloto de análisis" })
@@ -163,6 +167,7 @@ test("copiloto: un plan de limpieza propuesto sigue la vista previa y la aprobac
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });

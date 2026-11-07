@@ -20,7 +20,7 @@ from dataflow.modules.quality.public import (
     evaluate_rules,
 )
 from dataflow.modules.understanding.contracts import DatasetProfile
-from dataflow.modules.understanding.public import profile_rows
+from dataflow.modules.understanding.public import automatic_overview, interpret, profile_rows
 from dataflow.platform.data_types import DataType
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.tabular import Cell, frame_types
@@ -211,6 +211,8 @@ def profile(
     source_sha256: str,
     max_rows: int,
     max_columns: int,
+    include_overview: bool = False,
+    include_interpretation: bool = False,
 ) -> None:
     """understanding.profile@1 sobre una tabla; separador y hash son procedencia del original."""
     headers, rows, types = load_table(source, max_rows, max_columns)
@@ -223,7 +225,17 @@ def profile(
         column_count=len(headers),
         columns=profile_rows(headers, rows, types),
     )
-    (output / "profile.json").write_text(result.model_dump_json(), encoding="utf-8")
+    if include_overview or include_interpretation:
+        result.overview = automatic_overview(
+            result, rows, types, interpret(result) if include_interpretation else None
+        )
+    if include_interpretation:
+        content = result.model_dump_json()
+    elif include_overview:
+        content = result.model_dump_json(exclude={"overview": {"interpretation"}})
+    else:
+        content = result.model_dump_json(exclude={"overview"})
+    (output / "profile.json").write_text(content, encoding="utf-8")
 
 
 def quality(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
@@ -258,7 +270,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode",
-        choices=["read", "read_xlsx", "inspect_xlsx", "profile", "quality", "quality_rules"],
+        choices=[
+            "read",
+            "read_xlsx",
+            "inspect_xlsx",
+            "profile",
+            "automatic_profile",
+            "interpreted_profile",
+            "quality",
+            "quality_rules",
+        ],
         required=True,
     )
     parser.add_argument("--input", type=Path, required=True)
@@ -284,7 +305,7 @@ def main() -> None:
                 args.max_rows,
                 args.max_columns,
             )
-        elif args.mode == "profile":
+        elif args.mode in {"profile", "automatic_profile", "interpreted_profile"}:
             if not args.source_sha256:
                 raise ApplicationError("PROCESSING_ERROR", "Falta el hash de procedencia.", 422)
             profile(
@@ -294,6 +315,8 @@ def main() -> None:
                 args.source_sha256,
                 args.max_rows,
                 args.max_columns,
+                include_overview=args.mode == "automatic_profile",
+                include_interpretation=args.mode == "interpreted_profile",
             )
         elif args.mode == "quality":
             quality(args.input, args.output, args.max_rows, args.max_columns)

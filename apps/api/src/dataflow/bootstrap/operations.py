@@ -29,7 +29,11 @@ from dataflow.modules.planning.public import (
 )
 from dataflow.modules.quality.contracts import QualityParameters
 from dataflow.modules.quality.public import QualityRulesParameters
-from dataflow.modules.understanding.contracts import ProfileParameters
+from dataflow.modules.understanding.contracts import (
+    AutomaticProfileParameters,
+    InterpretedProfileParameters,
+    ProfileParameters,
+)
 from dataflow.platform.data_types import ALL_TYPES, NUMERIC
 
 # Sólo operaciones con ejecutor real; ninguna exige revisión semántica (Fase 3). Las de
@@ -41,6 +45,22 @@ DESCRIPTORS: tuple[OperationDescriptor, ...] = (
     ),
     OperationDescriptor(
         "understanding.profile", 1, "Perfil de columnas", "table", "profile", ProfileParameters
+    ),
+    OperationDescriptor(
+        "understanding.profile",
+        2,
+        "Perfil y dashboard automático",
+        "table",
+        "profile",
+        AutomaticProfileParameters,
+    ),
+    OperationDescriptor(
+        "understanding.profile",
+        3,
+        "Dashboard e interpretación automática",
+        "table",
+        "profile",
+        InterpretedProfileParameters,
     ),
     OperationDescriptor(
         "quality.evaluate", 1, "Evaluar calidad", "table", "quality", QualityParameters

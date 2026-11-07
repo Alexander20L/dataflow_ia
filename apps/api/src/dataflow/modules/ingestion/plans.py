@@ -113,13 +113,25 @@ def build_plan(
         ]
         step_input = {"kind": "step", "step_id": "read"}
     if analysis_kind == "profile_quality":
+        profile_version = 1
+        if table is None:
+            if config.operation_catalog == "analysis-v10":
+                profile_version = 3
+            elif config.operation_catalog == "analysis-v9":
+                profile_version = 2
         steps.append(
             {
                 "id": "profile",
                 "operation": "understanding.profile",
-                "version": 1,
+                "version": profile_version,
                 "input": step_input,
-                "parameters": {"algorithm": "column-profile-v1"},
+                "parameters": {
+                    "algorithm": {
+                        1: "column-profile-v1",
+                        2: "column-profile-overview-v1",
+                        3: "column-profile-interpreted-v1",
+                    }[profile_version]
+                },
             }
         )
     steps.append(

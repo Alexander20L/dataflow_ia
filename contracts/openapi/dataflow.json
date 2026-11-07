@@ -932,7 +932,8 @@
               "row_lineage",
               "quality_rules",
               "analysis_result",
-              "report_pdf"
+              "report_pdf",
+              "overview_audit"
             ],
             "title": "Kind",
             "type": "string"
@@ -1316,6 +1317,222 @@
           "unverified_numbers"
         ],
         "title": "AuditContent",
+        "type": "object"
+      },
+      "AutomaticColumnHint": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ordinal": {
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "identifier",
+              "date",
+              "numeric",
+              "category",
+              "text",
+              "empty"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "statistics_allowed": {
+            "default": false,
+            "title": "Statistics Allowed",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ordinal",
+          "name",
+          "role",
+          "evidence"
+        ],
+        "title": "AutomaticColumnHint",
+        "type": "object"
+      },
+      "AutomaticInterpretation": {
+        "additionalProperties": false,
+        "description": "Lectura heurística, no una revisión semántica confirmada.",
+        "properties": {
+          "available_analyses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available Analyses",
+            "type": "array"
+          },
+          "candidates": {
+            "items": {
+              "$ref": "#/components/schemas/AutomaticTemplateHint"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/AutomaticColumnHint"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "context": {
+            "enum": [
+              "generic",
+              "sales",
+              "inventory",
+              "ambiguous"
+            ],
+            "title": "Context",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "rules_version": {
+            "const": "automatic-interpretation-v1",
+            "default": "automatic-interpretation-v1",
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "context",
+          "label",
+          "summary",
+          "columns",
+          "candidates",
+          "available_analyses",
+          "limitations"
+        ],
+        "title": "AutomaticInterpretation",
+        "type": "object"
+      },
+      "AutomaticOverview": {
+        "additionalProperties": false,
+        "description": "Snapshot calculado al importar: no requiere semántica, política ni IA.",
+        "properties": {
+          "algorithm": {
+            "default": "automatic-overview-v1",
+            "enum": [
+              "automatic-overview-v1",
+              "automatic-overview-v2"
+            ],
+            "title": "Algorithm",
+            "type": "string"
+          },
+          "charts": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewChart"
+            },
+            "title": "Charts",
+            "type": "array"
+          },
+          "interpretation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutomaticInterpretation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "kpis": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewKpi"
+            },
+            "title": "Kpis",
+            "type": "array"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "source_sha256": {
+            "title": "Source Sha256",
+            "type": "string"
+          },
+          "table_detail": {
+            "$ref": "#/components/schemas/OverviewDetail"
+          }
+        },
+        "required": [
+          "source_sha256",
+          "kpis",
+          "charts",
+          "table_detail",
+          "limitations"
+        ],
+        "title": "AutomaticOverview",
+        "type": "object"
+      },
+      "AutomaticTemplateHint": {
+        "additionalProperties": false,
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "matched_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Matched Roles",
+            "type": "array"
+          },
+          "missing_roles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing Roles",
+            "type": "array"
+          },
+          "template": {
+            "enum": [
+              "sales@1",
+              "inventory@1"
+            ],
+            "title": "Template",
+            "type": "string"
+          }
+        },
+        "required": [
+          "template",
+          "label",
+          "matched_roles",
+          "missing_roles"
+        ],
+        "title": "AutomaticTemplateHint",
         "type": "object"
       },
       "AutomationRunPage": {
@@ -3326,6 +3543,16 @@
             "title": "Engine Version",
             "type": "string"
           },
+          "overview": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutomaticOverview"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "polars_version": {
             "title": "Polars Version",
             "type": "string"
@@ -4129,7 +4356,8 @@
               "plan",
               "cleaning_preview",
               "cleaning_apply",
-              "report_render"
+              "report_render",
+              "overview_audit"
             ],
             "title": "Kind",
             "type": "string"
@@ -4298,7 +4526,8 @@
               "plan",
               "cleaning_preview",
               "cleaning_apply",
-              "report_render"
+              "report_render",
+              "overview_audit"
             ],
             "title": "Kind",
             "type": "string"
@@ -6339,6 +6568,466 @@
           "requirements"
         ],
         "title": "OperationResponse",
+        "type": "object"
+      },
+      "OverviewAudit": {
+        "additionalProperties": false,
+        "properties": {
+          "call": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewCall"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "content": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuditContent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/OverviewEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "producer_execution_id": {
+            "format": "uuid",
+            "title": "Producer Execution Id",
+            "type": "string"
+          },
+          "profile_id": {
+            "format": "uuid",
+            "title": "Profile Id",
+            "type": "string"
+          },
+          "profile_sha256": {
+            "title": "Profile Sha256",
+            "type": "string"
+          },
+          "prompt_id": {
+            "default": "automatic-overview-audit",
+            "title": "Prompt Id",
+            "type": "string"
+          },
+          "prompt_version": {
+            "default": "1",
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "schema_version": {
+            "const": "overview-audit-v1",
+            "default": "overview-audit-v1",
+            "title": "Schema Version",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "ready",
+              "unavailable",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "profile_id",
+          "profile_sha256",
+          "producer_execution_id",
+          "state"
+        ],
+        "title": "OverviewAudit",
+        "type": "object"
+      },
+      "OverviewAuditView": {
+        "properties": {
+          "audit": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OverviewAudit"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "execution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "ready",
+              "unavailable",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "OverviewAuditView",
+        "type": "object"
+      },
+      "OverviewCall": {
+        "properties": {
+          "cache_read_tokens": {
+            "title": "Cache Read Tokens",
+            "type": "integer"
+          },
+          "cache_write_tokens": {
+            "title": "Cache Write Tokens",
+            "type": "integer"
+          },
+          "context_sha256": {
+            "title": "Context Sha256",
+            "type": "string"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "accepted",
+              "rejected",
+              "provider_error"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          }
+        },
+        "required": [
+          "provider",
+          "model",
+          "parameters",
+          "context_sha256",
+          "input_tokens",
+          "output_tokens",
+          "cache_read_tokens",
+          "cache_write_tokens",
+          "cost_usd",
+          "latency_ms",
+          "outcome"
+        ],
+        "title": "OverviewCall",
+        "type": "object"
+      },
+      "OverviewChart": {
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "excluded_rows": {
+            "title": "Excluded Rows",
+            "type": "integer"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "omitted_groups": {
+            "default": 0,
+            "title": "Omitted Groups",
+            "type": "integer"
+          },
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/OverviewPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "bar",
+              "line"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "valid_rows": {
+            "title": "Valid Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "id",
+          "title",
+          "type",
+          "points",
+          "valid_rows",
+          "excluded_rows"
+        ],
+        "title": "OverviewChart",
+        "type": "object"
+      },
+      "OverviewDetail": {
+        "properties": {
+          "cells_truncated": {
+            "default": false,
+            "title": "Cells Truncated",
+            "type": "boolean"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "rows": {
+            "items": {
+              "items": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "type": "array"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "total_rows": {
+            "title": "Total Rows",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "columns",
+          "rows",
+          "total_rows",
+          "truncated"
+        ],
+        "title": "OverviewDetail",
+        "type": "object"
+      },
+      "OverviewEvidence": {
+        "additionalProperties": false,
+        "properties": {
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "path": {
+            "title": "Path",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "value",
+          "unit",
+          "path"
+        ],
+        "title": "OverviewEvidence",
+        "type": "object"
+      },
+      "OverviewKpi": {
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "excluded_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Excluded Rows"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "count",
+              "percent",
+              "number"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "valid_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Valid Rows"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "label",
+          "value",
+          "unit"
+        ],
+        "title": "OverviewKpi",
+        "type": "object"
+      },
+      "OverviewPoint": {
+        "properties": {
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "minimum": 0.0,
+            "title": "Value",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "label",
+          "value"
+        ],
+        "title": "OverviewPoint",
         "type": "object"
       },
       "PdfRender": {
@@ -11688,7 +12377,7 @@
   "info": {
     "description": "Identidad y proyectos del monolito modular.",
     "title": "DataFlow AI API",
-    "version": "0.14.0"
+    "version": "0.17.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -29192,6 +29881,343 @@
         "summary": "Original",
         "tags": [
           "Datasets"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/overview-audit": {
+      "get": {
+        "operationId": "getOverviewAudit",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewAuditView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Overview Audit",
+        "tags": [
+          "Copiloto"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/overview-audit/evidence/{evidence_id}": {
+      "get": {
+        "operationId": "getOverviewAuditEvidence",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OverviewEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Overview Evidence",
+        "tags": [
+          "Copiloto"
         ]
       }
     },

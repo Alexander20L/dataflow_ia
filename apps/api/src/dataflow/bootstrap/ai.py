@@ -20,14 +20,18 @@ def simulated(request: AIRequest[Any]) -> dict[str, Any]:
 
 
 @lru_cache
-def anthropic_provider(key: str, model: str, effort: str, timeout: int) -> AIProvider:
+def anthropic_provider(
+    key: str, model: str, effort: str, timeout: int, max_retries: int = 1
+) -> AIProvider:
     # Import diferido: el SDK sólo se carga si la IA real está activada.
     from dataflow.integrations.ai.anthropic_provider import AnthropicProvider
 
-    return AnthropicProvider(key, model, effort, timeout)  # type: ignore[arg-type]
+    return AnthropicProvider(key, model, effort, timeout, max_retries)  # type: ignore[arg-type]
 
 
-def configured(settings: Settings | None = None) -> tuple[AIProvider | None, CopilotConfig]:
+def configured(
+    settings: Settings | None = None, *, max_retries: int = 1
+) -> tuple[AIProvider | None, CopilotConfig]:
     settings = settings or get_settings()
     provider: AIProvider | None = None
     unavailable: Any = None
@@ -43,7 +47,7 @@ def configured(settings: Settings | None = None) -> tuple[AIProvider | None, Cop
             unavailable = "missing_key"
         else:
             provider = anthropic_provider(
-                key, settings.ai_model, settings.ai_effort, settings.ai_timeout_seconds
+                key, settings.ai_model, settings.ai_effort, settings.ai_timeout_seconds, max_retries
             )
     return provider, CopilotConfig(
         provider=settings.ai_provider,

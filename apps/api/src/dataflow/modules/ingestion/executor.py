@@ -24,7 +24,11 @@ from dataflow.modules.quality.public import (
     RulesetReference,
     RulesetRevision,
 )
-from dataflow.modules.understanding.contracts import ProfileParameters
+from dataflow.modules.understanding.contracts import (
+    AutomaticProfileParameters,
+    InterpretedProfileParameters,
+    ProfileParameters,
+)
 from dataflow.modules.understanding.public import SemanticReference, SemanticService, TableReference
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.tabular import frame_types, table_logical_sha256
@@ -185,7 +189,7 @@ def publish_read(
 
 
 class ProfileStep(AnalyzerStep):
-    """understanding.profile@1: tabla → perfil."""
+    """understanding.profile@1/@2: tabla → perfil, con snapshot automático sólo en @2."""
 
     output_kind: ArtifactKind = "profile"
 
@@ -194,17 +198,34 @@ class ProfileStep(AnalyzerStep):
     ) -> StepResult:
         self.require(source, "table")
         assert lease.execution.plan
-        ProfileParameters.model_validate(step.parameters)
+        if step.version == 3:
+            InterpretedProfileParameters.model_validate(step.parameters)
+        elif step.version == 2:
+            AutomaticProfileParameters.model_validate(step.parameters)
+        else:
+            ProfileParameters.model_validate(step.parameters)
         profile = self.analyzer.profile(
             self.objects.read(source.content),
             source.separator,
             source.source_sha256,
             lease.execution.plan.config,
             timeout,
+            include_overview=step.version == 2,
+            include_interpretation=step.version == 3,
         )
         if profile.source_sha256 != source.source_sha256:
             raise ApplicationError("INTEGRITY_ERROR", "La salida no corresponde al original.", 409)
-        content = self.put(lease, step, "profile.json", profile.model_dump_json().encode())
+        excluded: Any = (
+            {"overview"}
+            if step.version == 1
+            else ({"overview": {"interpretation"}} if step.version == 2 else set())
+        )
+        content = self.put(
+            lease,
+            step,
+            "profile.json",
+            profile.model_dump_json(exclude=excluded).encode(),
+        )
         output = ArtifactOutput(
             uuid4(),
             step.id,

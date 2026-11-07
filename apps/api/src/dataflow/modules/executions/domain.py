@@ -20,6 +20,8 @@ def plan_input_kind(content: dict[str, Any]) -> InputKind:
         return "table"
     if kind == "report":
         return "report"
+    if kind == "overview":
+        return "overview"
     raise ApplicationError("INPUT_MISMATCH", "El plan no declara un input admitido.", 409)
 
 

@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 import { csv, typedVersion } from "./analytics-support";
 
 test("requisito semántico y «importe total por región y mes» con procedencia de cada cifra", async ({
@@ -23,11 +24,13 @@ test("requisito semántico y «importe total por región y mes» con procedencia
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });
   await typedVersion(page);
   await page.reload();
+  await openAdvanced(page);
   const lineage = page.getByRole("status", {
     name: "Versión que estás viendo",
   });

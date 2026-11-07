@@ -107,6 +107,7 @@ class Executions:
         correlation: str,
         input_artifact: UUID,
         input_sha256: str,
+        kind: RunKind = "table_analysis",
     ) -> Execution:
         """Análisis de sistema encolado dentro de la publicación de otra ejecución (misma
         transacción). No aplica el límite de trabajos activos: la ejecución que publica aún
@@ -117,7 +118,7 @@ class Executions:
             owner,
             project,
             version,
-            "table_analysis",
+            kind,
             key,
             fingerprint,
             plan,

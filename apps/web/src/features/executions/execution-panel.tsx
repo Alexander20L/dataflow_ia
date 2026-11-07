@@ -30,6 +30,7 @@ function runLabel(run: Execution) {
   if (run.kind === "cleaning_preview") return "Vista previa de limpieza";
   if (run.kind === "cleaning_apply") return "Aplicación de limpieza";
   if (run.kind === "report_render") return "Informe a PDF";
+  if (run.kind === "overview_audit") return "Explicación automática IA";
   const steps = run.plan?.content.steps;
   return Array.isArray(steps) && steps.length === 1
     ? "Sólo calidad (0.5)"
@@ -57,7 +58,8 @@ export function ExecutionPanel({
   // Sólo se consulta el resultado que el plan produce: csv-quality-v1 o reglas v2.
   const quality = useExecutionQuality(
     run,
-    run?.kind !== "plan" || runHasStep(run, "quality.evaluate@1"),
+    run?.kind !== "overview_audit" &&
+      (run?.kind !== "plan" || runHasStep(run, "quality.evaluate@1")),
   );
   const rules = useQualityRulesReport(
     run,

@@ -6,6 +6,7 @@ from fastapi.security import APIKeyCookie
 from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.ai import configured
+from dataflow.bootstrap.overview_audit import OverviewAuditAccess
 from dataflow.bootstrap.services import (
     make_analysis,
     make_analysis_sessions,
@@ -93,6 +94,13 @@ def object_store() -> LocalObjects:
 
 
 Objects = Annotated[LocalObjects, Depends(object_store)]
+
+
+def overview_audit_service(db: Db, objects: Objects) -> OverviewAuditAccess:
+    return OverviewAuditAccess(make_datasets(db), make_executions(db), objects)
+
+
+OverviewAudits = Annotated[OverviewAuditAccess, Depends(overview_audit_service)]
 
 
 def ingestion_service(db: Db, objects: Objects) -> IngestionService:

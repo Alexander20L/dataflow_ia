@@ -36,10 +36,13 @@ def message_param(message: AIMessage) -> BetaMessageParam:
 
 
 class AnthropicProvider:
-    def __init__(self, api_key: str, model: str, effort: Effort, timeout_seconds: int) -> None:
+    def __init__(
+        self, api_key: str, model: str, effort: Effort, timeout_seconds: int, max_retries: int = 1
+    ) -> None:
         self._model, self.effort, self.timeout = model, effort, timeout_seconds
+        self.max_retries = max_retries
         self.client = anthropic.Anthropic(
-            api_key=api_key, timeout=float(timeout_seconds), max_retries=1
+            api_key=api_key, timeout=float(timeout_seconds), max_retries=max_retries
         )
 
     @property
@@ -54,7 +57,7 @@ class AnthropicProvider:
         return {
             "effort": self.effort,
             "timeout_seconds": self.timeout,
-            "max_retries": 1,
+            "max_retries": self.max_retries,
             "fallbacks": "default" if self._model in FALLBACK_MODELS else None,
         }
 

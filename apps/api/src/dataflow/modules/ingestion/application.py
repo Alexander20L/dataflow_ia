@@ -86,6 +86,8 @@ class Analyzer(Protocol):
         source_sha256: str,
         config: ProcessingConfig,
         timeout: float,
+        include_overview: bool = False,
+        include_interpretation: bool = False,
     ) -> DatasetProfile: ...
     def quality(self, table: bytes, config: ProcessingConfig, timeout: float) -> QualityReport: ...
 

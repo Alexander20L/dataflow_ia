@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 
 const csv = readFileSync(
   path.resolve(__dirname, "../../../../examples/ventas_calidad.csv"),
@@ -33,6 +34,7 @@ test("limpiar espacios en una columna: vista previa, aprobación y versión deri
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });
@@ -165,6 +167,7 @@ test("limpiar espacios en una columna: vista previa, aprobación y versión deri
     await route.fulfill({ response, json: body });
   });
   await page.reload();
+  await openAdvanced(page);
   await expect(lineage).toContainText("Estás viendo v2", { timeout: 20000 });
   await expect(versionSelect.locator(`option[value="${v1}"]`)).toHaveCount(0);
   await lineage.getByRole("button", { name: "Ver v1" }).click();

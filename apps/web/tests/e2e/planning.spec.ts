@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 
 const csv = Buffer.from("id,importe\n001,10\n002,\n001,10\n");
 const origin = { Origin: "http://127.0.0.1:3100" };
@@ -26,6 +27,7 @@ test("crear un plan, ver su requisito pendiente, corregirlo y ejecutarlo sobre l
     .locator('input[type="file"]')
     .setInputFiles({ name: "ventas.csv", mimeType: "text/csv", buffer: csv });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });
@@ -133,6 +135,7 @@ test("crear un plan, ver su requisito pendiente, corregirlo y ejecutarlo sobre l
 
   // 5. Recargar conserva la revisión guardada.
   await page.reload();
+  await openAdvanced(page);
   await expect(planSelect).toContainText("revisión 2 · válido");
   await expect(summary.getByTestId("plan-input-sha")).toHaveText(
     `SHA-256 ${table.sha256}`,
@@ -160,6 +163,7 @@ test("crear un plan, ver su requisito pendiente, corregirlo y ejecutarlo sobre l
     .poll(() => state(page, newerVersion.execution_id), { timeout: 20000 })
     .toBe("succeeded");
   await page.reload();
+  await openAdvanced(page);
   await expect(page.getByLabel("Versión", { exact: true })).toHaveValue(
     newerVersion.id,
   );

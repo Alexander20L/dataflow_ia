@@ -71,8 +71,12 @@ test("un archivo de usuario no recibe resultados del fixture", async ({
     page.getByRole("heading", { name: "Mis ventas privadas" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
+    page.getByRole("heading", { name: "Tu análisis automático", exact: true }),
   ).toBeVisible({ timeout: 20000 });
+  await page
+    .getByRole("region", { name: "Dashboard automático", exact: true })
+    .getByText("Detalle de los datos", { exact: true })
+    .click();
   await expect(
     page.getByRole("cell", { name: "90", exact: true }),
   ).toBeVisible();

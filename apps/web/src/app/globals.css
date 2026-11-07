@@ -1,6 +1,68 @@
 @import "tailwindcss";
 @import "@fontsource-variable/inter";
 
+.automatic-overview {
+  margin: 24px 0 32px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  min-width: 0;
+}
+.automatic-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 16px;
+  margin: 20px 0;
+}
+.automatic-kpi,
+.automatic-chart {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.automatic-kpi strong {
+  display: block;
+  font-size: 1.65rem;
+  margin: 10px 0;
+}
+.automatic-kpi small {
+  display: block;
+}
+.automatic-charts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 320px), 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
+}
+.automatic-overview .table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.automatic-overview td {
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+.automatic-overview details {
+  margin-top: 20px;
+  overflow-wrap: anywhere;
+}
+
+.advanced-workspace {
+  margin-top: 24px;
+}
+.automatic-interpretation {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin: 20px 0;
+  overflow-wrap: anywhere;
+}
+.real-dataset .stage-content:empty {
+  display: none;
+}
+
 .semantic-editor {
   margin-top: 30px;
   padding-top: 25px;

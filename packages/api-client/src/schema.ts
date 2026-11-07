@@ -1561,6 +1561,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/versions/{version_id}/overview-audit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overview Audit */
+        get: operations["getOverviewAudit"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/overview-audit/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Overview Evidence */
+        get: operations["getOverviewAuditEvidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/versions/{version_id}/preview": {
         parameters: {
             query?: never;
@@ -1986,7 +2020,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf";
+            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit";
             /** Logical Content Sha256 */
             logical_content_sha256: string | null;
             /**
@@ -2109,6 +2143,90 @@ export interface components {
             resumen_ejecutivo: components["schemas"]["Segment"][];
             /** Unverified Numbers */
             unverified_numbers: number;
+        };
+        /** AutomaticColumnHint */
+        AutomaticColumnHint: {
+            /** Evidence */
+            evidence: string[];
+            /** Name */
+            name: string;
+            /** Ordinal */
+            ordinal: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "identifier" | "date" | "numeric" | "category" | "text" | "empty";
+            /**
+             * Statistics Allowed
+             * @default false
+             */
+            statistics_allowed: boolean;
+        };
+        /**
+         * AutomaticInterpretation
+         * @description Lectura heurística, no una revisión semántica confirmada.
+         */
+        AutomaticInterpretation: {
+            /** Available Analyses */
+            available_analyses: string[];
+            /** Candidates */
+            candidates: components["schemas"]["AutomaticTemplateHint"][];
+            /** Columns */
+            columns: components["schemas"]["AutomaticColumnHint"][];
+            /**
+             * Context
+             * @enum {string}
+             */
+            context: "generic" | "sales" | "inventory" | "ambiguous";
+            /** Label */
+            label: string;
+            /** Limitations */
+            limitations: string[];
+            /**
+             * Rules Version
+             * @default automatic-interpretation-v1
+             * @constant
+             */
+            rules_version: "automatic-interpretation-v1";
+            /** Summary */
+            summary: string;
+        };
+        /**
+         * AutomaticOverview
+         * @description Snapshot calculado al importar: no requiere semántica, política ni IA.
+         */
+        AutomaticOverview: {
+            /**
+             * Algorithm
+             * @default automatic-overview-v1
+             * @enum {string}
+             */
+            algorithm: "automatic-overview-v1" | "automatic-overview-v2";
+            /** Charts */
+            charts: components["schemas"]["OverviewChart"][];
+            interpretation?: components["schemas"]["AutomaticInterpretation"] | null;
+            /** Kpis */
+            kpis: components["schemas"]["OverviewKpi"][];
+            /** Limitations */
+            limitations: string[];
+            /** Source Sha256 */
+            source_sha256: string;
+            table_detail: components["schemas"]["OverviewDetail"];
+        };
+        /** AutomaticTemplateHint */
+        AutomaticTemplateHint: {
+            /** Label */
+            label: string;
+            /** Matched Roles */
+            matched_roles: string[];
+            /** Missing Roles */
+            missing_roles: string[];
+            /**
+             * Template
+             * @enum {string}
+             */
+            template: "sales@1" | "inventory@1";
         };
         /** AutomationRunPage */
         AutomationRunPage: {
@@ -2895,6 +3013,7 @@ export interface components {
             encoding: "utf-8-sig";
             /** Engine Version */
             engine_version: string;
+            overview?: components["schemas"]["AutomaticOverview"] | null;
             /** Polars Version */
             polars_version: string;
             /** Row Count */
@@ -3174,7 +3293,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -3229,7 +3348,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -4004,6 +4123,177 @@ export interface components {
             transforms_data: boolean;
             /** Version */
             version: number;
+        };
+        /** OverviewAudit */
+        OverviewAudit: {
+            call?: components["schemas"]["OverviewCall"] | null;
+            content?: components["schemas"]["AuditContent"] | null;
+            /**
+             * Evidence
+             * @default []
+             */
+            evidence: components["schemas"]["OverviewEvidence"][];
+            /**
+             * Producer Execution Id
+             * Format: uuid
+             */
+            producer_execution_id: string;
+            /**
+             * Profile Id
+             * Format: uuid
+             */
+            profile_id: string;
+            /** Profile Sha256 */
+            profile_sha256: string;
+            /**
+             * Prompt Id
+             * @default automatic-overview-audit
+             */
+            prompt_id: string;
+            /**
+             * Prompt Version
+             * @default 1
+             */
+            prompt_version: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Schema Version
+             * @default overview-audit-v1
+             * @constant
+             */
+            schema_version: "overview-audit-v1";
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "ready" | "unavailable" | "failed";
+        };
+        /** OverviewAuditView */
+        OverviewAuditView: {
+            audit?: components["schemas"]["OverviewAudit"] | null;
+            /** Execution Id */
+            execution_id?: string | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "ready" | "unavailable" | "failed";
+        };
+        /** OverviewCall */
+        OverviewCall: {
+            /** Cache Read Tokens */
+            cache_read_tokens: number;
+            /** Cache Write Tokens */
+            cache_write_tokens: number;
+            /** Context Sha256 */
+            context_sha256: string;
+            /** Cost Usd */
+            cost_usd: string | null;
+            /** Error Code */
+            error_code?: string | null;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Model */
+            model: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "accepted" | "rejected" | "provider_error";
+            /** Output Tokens */
+            output_tokens: number;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Provider */
+            provider: string;
+        };
+        /** OverviewChart */
+        OverviewChart: {
+            /** Column */
+            column?: string | null;
+            /** Excluded Rows */
+            excluded_rows: number;
+            /** Id */
+            id: string;
+            /**
+             * Omitted Groups
+             * @default 0
+             */
+            omitted_groups: number;
+            /** Points */
+            points: components["schemas"]["OverviewPoint"][];
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "bar" | "line";
+            /** Valid Rows */
+            valid_rows: number;
+        };
+        /** OverviewDetail */
+        OverviewDetail: {
+            /**
+             * Cells Truncated
+             * @default false
+             */
+            cells_truncated: boolean;
+            /** Columns */
+            columns: string[];
+            /** Rows */
+            rows: (string | null)[][];
+            /** Total Rows */
+            total_rows: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** OverviewEvidence */
+        OverviewEvidence: {
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Path */
+            path: string;
+            /** Unit */
+            unit: string;
+            /** Value */
+            value: string;
+        };
+        /** OverviewKpi */
+        OverviewKpi: {
+            /** Column */
+            column?: string | null;
+            /** Excluded Rows */
+            excluded_rows?: number | null;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "count" | "percent" | "number";
+            /** Valid Rows */
+            valid_rows?: number | null;
+            /** Value */
+            value: string;
+        };
+        /** OverviewPoint */
+        OverviewPoint: {
+            /** Label */
+            label: string;
+            /** Value */
+            value: number;
         };
         /** PdfRender */
         PdfRender: {
@@ -18666,6 +18956,253 @@ export interface operations {
                 };
                 content: {
                     "application/octet-stream": Blob;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getOverviewAudit: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewAuditView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getOverviewAuditEvidence: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OverviewEvidence"];
                 };
             };
             /** @description Bad Request */

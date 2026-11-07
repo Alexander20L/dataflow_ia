@@ -9,7 +9,13 @@ from dataflow.modules.datasets.contracts import StoredObject
 
 # report_render (Fase 9): informe exacto a PDF; su entrada es una instantánea del informe.
 RunKind = Literal[
-    "csv_import", "table_analysis", "plan", "cleaning_preview", "cleaning_apply", "report_render"
+    "csv_import",
+    "table_analysis",
+    "plan",
+    "cleaning_preview",
+    "cleaning_apply",
+    "report_render",
+    "overview_audit",
 ]
 RunState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 ArtifactKind = Literal[
@@ -23,6 +29,7 @@ ArtifactKind = Literal[
     "quality_rules",
     "analysis_result",
     "report_pdf",
+    "overview_audit",
 ]
 
 
@@ -35,6 +42,8 @@ class ProcessingConfig(BaseModel):
     # analysis-v6: analytics.query@2 con comparaciones, ranking y participación (Fase 7B);
     # analysis-v7: analytics.query@3 con sum_product y último corte (Fase 11E);
     # analysis-v8: ingestion.read_xlsx@1 (Fase 12A).
+    # analysis-v9: understanding.profile@2 (perfil y dashboard descriptivo automático).
+    # analysis-v10: understanding.profile@3 (interpretación técnica y contextos candidatos).
     # Los planes guardados conservan el valor con el que se crearon (y su hash).
     operation_catalog: Literal[
         "analysis-v1",
@@ -45,7 +54,9 @@ class ProcessingConfig(BaseModel):
         "analysis-v6",
         "analysis-v7",
         "analysis-v8",
-    ] = "analysis-v8"
+        "analysis-v9",
+        "analysis-v10",
+    ] = "analysis-v10"
     rule_catalog: Literal["csv-quality-v1"] = "csv-quality-v1"
     max_rows: int = Field(ge=1, le=100000)
     max_columns: int = Field(ge=1, le=128)
@@ -165,7 +176,7 @@ class Artifact:
     logical_content_sha256: str | None
 
 
-InputKind = Literal["source", "table", "report"]
+InputKind = Literal["source", "table", "report", "overview"]
 
 
 @dataclass(frozen=True)

@@ -133,9 +133,13 @@ class IsolatedAnalyzer:
         source_sha256: str,
         config: ProcessingConfig,
         timeout: float,
+        include_overview: bool = False,
+        include_interpretation: bool = False,
     ) -> DatasetProfile:
         files = self.run(
-            "profile",
+            "interpreted_profile"
+            if include_interpretation
+            else ("automatic_profile" if include_overview else "profile"),
             table,
             config,
             timeout,

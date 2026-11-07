@@ -45,6 +45,8 @@ export function ImportProject() {
   const {
     register,
     handleSubmit,
+    getValues,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -73,6 +75,16 @@ export function ImportProject() {
       return;
     }
     setFile(selected);
+    if (!getValues("name").trim()) {
+      const base = selected.name.replace(/\.csv$/i, "").trim();
+      setValue(
+        "name",
+        (base.length >= 3 ? base : `Análisis de ${base}`).slice(0, 80),
+        {
+          shouldValidate: true,
+        },
+      );
+    }
     setExample(false);
   }
   async function submit(data: FormData) {
@@ -111,17 +123,23 @@ export function ImportProject() {
         <div>
           <p className="eyebrow">UN NUEVO PUNTO DE PARTIDA</p>
           <h1>Crea tu próximo análisis</h1>
-          <p>Organiza tu proyecto y elige los datos que quieres explorar.</p>
+          <p>
+            Sube tu CSV y obtén indicadores y gráficos sin configurar el
+            análisis.
+          </p>
         </div>
-        <span className="badge calculated">Paso 1 de 9 · Ingesta</span>
+        <span className="badge calculated">Análisis automático</span>
       </div>
       <div className="import-layout">
         <form className="panel import-form" onSubmit={handleSubmit(submit)}>
           <div className="section-title">
             <span className="section-number">01</span>
             <div>
-              <h2>Dale un nombre a tu proyecto</h2>
-              <p>Un espacio para tus datos, hallazgos y decisiones.</p>
+              <h2>Identifica tu análisis</h2>
+              <p>
+                Al elegir un CSV, el nombre se completa automáticamente. Puedes
+                cambiarlo.
+              </p>
             </div>
           </div>
           <label htmlFor="project-name">
@@ -324,7 +342,7 @@ export function ImportProject() {
               <Database size={22} />
             </span>
             <h2>De un archivo a una visión completa</h2>
-            <p>Un proceso claro, con el control en tus manos.</p>
+            <p>Sube los datos; el sistema prepara el primer dashboard.</p>
             <ol className="benefits-list">
               <li>
                 <CheckCircle2 size={17} />
@@ -332,11 +350,11 @@ export function ImportProject() {
               </li>
               <li>
                 <CheckCircle2 size={17} />
-                <span>Revisa su calidad antes de analizar</span>
+                <span>Calidad evaluada automáticamente</span>
               </li>
               <li>
                 <CheckCircle2 size={17} />
-                <span>Aprueba cada transformación</span>
+                <span>Indicadores y gráficos sin confirmaciones</span>
               </li>
               <li>
                 <CheckCircle2 size={17} />

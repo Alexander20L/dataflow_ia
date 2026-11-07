@@ -2,6 +2,7 @@ from uuid import uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.ai import configured
 from dataflow.bootstrap.analysis_sessions_access import AnalysisSessionInputs
 from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
 from dataflow.bootstrap.automation_access import PolicyCleaningAccess
@@ -9,6 +10,12 @@ from dataflow.bootstrap.cleaning_access import CleaningPlanAccess, CleaningPropo
 from dataflow.bootstrap.copilot_access import CopilotAccess
 from dataflow.bootstrap.dashboards_access import DashboardAccess
 from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry
+from dataflow.bootstrap.overview_audit import (
+    OverviewAuditStep,
+    OverviewInput,
+    enqueue_audit,
+    record_audit_call,
+)
 from dataflow.bootstrap.pipeline_access import PipelineAccess, start_pipeline
 from dataflow.bootstrap.planning_access import PlanningTableAccess
 from dataflow.bootstrap.provenance import environment_snapshot
@@ -181,11 +188,18 @@ class DatasetPublication:
         executions: Executions,
         approvals: ApprovalSource,
         config: ProcessingConfig,
+        objects: LocalObjects,
     ) -> None:
         self.db, self.datasets, self.executions = db, datasets, executions
         self.approvals, self.config = approvals, config
+        self.objects = objects
 
     def prepare(self, lease: Lease, outputs: list[ArtifactOutput]) -> None:
+        if lease.execution.kind == "overview_audit":
+            record_audit_call(
+                self.db, lease, next(o for o in outputs if o.kind == "overview_audit"), self.objects
+            )
+            return
         if lease.execution.kind != "cleaning_apply":
             return
         # Revocación comprobada otra vez al confirmar, no sólo al empezar el cálculo.
@@ -213,6 +227,16 @@ class DatasetPublication:
             # misma transacción que la publica.
             version = self.datasets.get(lease.owner_id, lease.version_id)
             start_pipeline(self.db, lease.owner_id, version.project_id, version.id)
+            profile = next((a for a in artifacts if a.kind == "profile"), None)
+            if (
+                profile is not None
+                and lease.execution.plan
+                and any(
+                    s.get("operation") == "understanding.profile" and s.get("version") in {2, 3}
+                    for s in lease.execution.plan.content["steps"]
+                )
+            ):
+                enqueue_audit(self.executions, lease, profile, self.config)
         elif kind == "table_analysis":
             self.datasets.materialize_derived(
                 lease.version_id,
@@ -248,6 +272,7 @@ class DatasetPublication:
 
 
 WORKER_KINDS: set[RunKind] = {
+    "overview_audit",
     "csv_import",
     "table_analysis",
     "plan",
@@ -269,6 +294,8 @@ def make_operations(
             "ingestion.read_csv@1": ReadCsvStep(objects, analyzer),
             "ingestion.read_xlsx@1": ReadXlsxStep(objects, analyzer),
             "understanding.profile@1": ProfileStep(objects, analyzer),
+            "understanding.profile@2": ProfileStep(objects, analyzer),
+            "understanding.profile@3": ProfileStep(objects, analyzer),
             "quality.evaluate@1": QualityStep(objects, analyzer),
             "quality.evaluate@2": QualityRulesStep(objects, analyzer, rulesets),
             "analytics.query@1": AnalyticsQueryStep(objects, objects.root, metrics),
@@ -298,6 +325,17 @@ def make_runner(
     projects = ProjectPermissions(db)
     cleaner = IsolatedCleaner(objects.root)
     approvals = SQLApprovalSource(db)
+    settings = get_settings()
+    provider, ai_config = configured(
+        settings.model_copy(
+            update={
+                "ai_timeout_seconds": min(
+                    settings.ai_timeout_seconds, max(1, config.timeout_seconds - 5)
+                )
+            }
+        ),
+        max_retries=0,
+    )
     return ExecutionRunner(
         SQLExecutionRepository(db, datasets),
         SQLUnitOfWork(db),
@@ -308,6 +346,7 @@ def make_runner(
                 datasets, executions, projects, make_semantics(db, objects)
             ),
             "report": ReportInputResolver(lambda: make_reports(db, objects), objects),
+            "overview": OverviewInput(datasets, executions, projects),
         },
         WorkerRegistry(
             make_operations(
@@ -317,9 +356,14 @@ def make_runner(
                 make_rulesets(db, objects),
                 AnalyticsMetricSource(make_metrics(db, objects), make_semantics(db, objects)),
             ),
-            {"reports.render_pdf@1": RenderReportStep(objects, objects.root)},
+            {
+                "reports.render_pdf@1": RenderReportStep(objects, objects.root),
+                "copilot.audit_overview@1": OverviewAuditStep(
+                    objects, make_copilot(db, objects, provider, ai_config)
+                ),
+            },
         ),
-        DatasetPublication(db, datasets, executions, approvals, config),
+        DatasetPublication(db, datasets, executions, approvals, config, objects),
         environment_snapshot(),
         {
             "cleaning_preview": PreviewFinalizer(objects, cleaner),

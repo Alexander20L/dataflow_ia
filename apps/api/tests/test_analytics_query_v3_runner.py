@@ -120,7 +120,7 @@ def test_query_v3_sum_product_and_last_snapshot_end_to_end(scenario: Scenario) -
 
     plan = query_plan(s, table, [value], semantic, version=3, dimensions=[c["region"]])
     assert plan["validation"]["valid"], plan["validation"]
-    assert plan["content"]["config"]["operation_catalog"] == "analysis-v8"
+    assert plan["content"]["config"]["operation_catalog"] == "analysis-v10"
     run = execute(s, plan)
     result = s.client.get(f"/api/v1/executions/{run}/analysis").json()
     assert result["operation"] == "analytics.query@3"

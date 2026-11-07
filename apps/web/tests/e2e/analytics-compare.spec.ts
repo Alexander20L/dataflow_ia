@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 import {
   confirmSemantics,
   csv,
@@ -28,6 +29,7 @@ test("top N con empate declarado, % del total y comparación con el periodo ante
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });
@@ -36,6 +38,7 @@ test("top N con empate declarado, % del total y comparación con el periodo ante
   await saveMetric(page.request, "Ingresos", "sum", "importe");
   await saveMetric(page.request, "Operaciones", "count", "id");
   await page.reload();
+  await openAdvanced(page);
   await expect(
     page.getByRole("status", { name: "Versión que estás viendo" }),
   ).toContainText("Estás viendo v2", { timeout: 20000 });

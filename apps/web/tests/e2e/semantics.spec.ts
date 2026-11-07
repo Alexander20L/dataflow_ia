@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 
 const csv = Buffer.from(
   "id,fecha,region,importe\n001,2026-01-01,Norte,10.50\n002,2026-01-02,Sur,\n001,2026-01-01,Norte,10.50\n",
@@ -21,6 +22,7 @@ async function prepare(page: Page) {
     .locator('input[type="file"]')
     .setInputFiles({ name: "semantic.csv", mimeType: "text/csv", buffer: csv });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });
@@ -85,6 +87,7 @@ test("guardar contexto, consultar revisiones y fijar una revisión histórica a 
     editor.getByText("La clave tiene 1 repeticiones.", { exact: false }),
   ).toBeVisible();
   await page.reload();
+  await openAdvanced(page);
   await page
     .getByRole("navigation", { name: "Etapas del CSV real" })
     .getByRole("button", { name: "Entendimiento", exact: false })

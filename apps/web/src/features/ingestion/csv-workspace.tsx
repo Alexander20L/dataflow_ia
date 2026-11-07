@@ -19,6 +19,8 @@ import { steps } from "@/lib/demo";
 import { useApp } from "@/lib/providers";
 import { ActiveSource } from "@/features/analysis-sessions/active-source";
 import { XlsxSource } from "./xlsx-source";
+import { AutomaticOverview } from "./automatic-overview";
+import { OverviewAudit } from "./overview-audit";
 import {
   AutomationNotices,
   PipelineStatus,
@@ -70,6 +72,7 @@ export function CsvWorkspace({
   const versions = useVersions(projectId, offset);
   const [selected, setSelected] = useState<string | null>(null);
   const [stage, setStage] = useState(0);
+  const [advanced, setAdvanced] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   const [semanticDirty, setSemanticDirty] = useState(false);
@@ -83,13 +86,16 @@ export function CsvWorkspace({
   // Plan de limpieza guardado desde el copiloto: Limpieza lo abre para la vista previa.
   const [copilotPlan, setCopilotPlan] = useState<string | null>(null);
   const [pendingChange, setPendingChange] = useState<{
-    kind: "stage" | "version" | "offset" | "upload";
+    kind: "stage" | "version" | "offset" | "upload" | "advanced";
     value?: string | number;
   } | null>(null);
   function applyChange(change: NonNullable<typeof pendingChange>) {
     if (change.kind !== "stage") setCopilotPlan(null); // el plan está fijado a su tabla
     if (change.kind === "stage") setStage(Number(change.value));
-    else if (change.kind === "version") setSelected(String(change.value));
+    else if (change.kind === "advanced") {
+      setAdvanced(Boolean(change.value));
+      if (!change.value) setStage(0);
+    } else if (change.kind === "version") setSelected(String(change.value));
     else if (change.kind === "offset") {
       setOffset(Number(change.value));
       setSelected(null);
@@ -191,8 +197,8 @@ export function CsvWorkspace({
           <FileSpreadsheet size={40} />
           <h3>Tu primer dataset empieza aquí</h3>
           <p>
-            Sube un CSV en UTF-8 de hasta 5 MB. El worker comprobará su
-            estructura y calculará el perfil y las reglas de calidad.
+            Sube un CSV en UTF-8 de hasta 5 MB. El sistema comprobará su
+            estructura y preparará tu dashboard automáticamente.
           </p>
           {!archived && (
             <CsvUpload
@@ -318,225 +324,260 @@ export function CsvWorkspace({
               </span>
             )}
           </div>
-          <ActiveSource
-            projectId={projectId}
-            viewed={version}
-            archived={archived}
-            onShowVersion={(versionId) =>
-              requestChange({ kind: "version", value: versionId })
+          {diagnostic.data?.profile.overview && (
+            <>
+              <AutomaticOverview
+                overview={diagnostic.data.profile.overview}
+                versionNumber={version.number}
+              />
+              <OverviewAudit key={version.id} versionId={version.id} />
+            </>
+          )}
+          <Button
+            variant="outline"
+            size="sm"
+            aria-expanded={advanced}
+            aria-controls={`advanced-tools-${projectId}`}
+            onClick={() =>
+              requestChange({ kind: "advanced", value: advanced ? 0 : 1 })
             }
-          />
-          <PipelineStatus
-            projectId={projectId}
-            versionId={version.id}
-            onShowVersion={(versionId) =>
-              requestChange({ kind: "version", value: versionId })
-            }
-            onShowDashboard={() =>
-              requestChange({ kind: "stage", value: DASHBOARD_STAGE })
-            }
-          />
-          <AutomationNotices
-            projectId={projectId}
-            onShowVersion={(versionId) =>
-              requestChange({ kind: "version", value: versionId })
-            }
-          />
-          <div className="original-meta">
-            <span>
-              {number(version.byte_size)} bytes
-              {version.kind === "derived" ? " · Parquet" : ""}
-            </span>
-            <span className="mono" title={version.sha256}>
-              SHA-256 {version.sha256}
-            </span>
-          </div>
-          <nav className="stepper" aria-label="Etapas del CSV real">
-            {steps.map((step, i) => (
-              <button
-                key={step}
-                className={`step ${stage === i ? "current" : ""}`}
-                disabled={i > 3 && !REAL_STAGES.has(i)}
-                title={
-                  i > 3 && !REAL_STAGES.has(i)
-                    ? "Se integrará en el siguiente incremento"
-                    : undefined
-                }
-                onClick={() => {
-                  if (i !== stage) requestChange({ kind: "stage", value: i });
-                }}
-              >
-                <span
-                  className={`step-number ${version.state === "succeeded" && i <= 2 ? "done" : ""}`}
-                >
-                  {version.state === "succeeded" && i <= 2 ? (
-                    <Check size={13} />
-                  ) : (
-                    i + 1
-                  )}
-                </span>
-                <span>{step}</span>
-              </button>
-            ))}
-          </nav>
-          <div className="stage-content">
-            <div className="stage-title">
-              <div>
-                <p className="eyebrow">ETAPA {stage + 1} · DATOS REALES</p>
-                <h2>{steps[stage]}</h2>
-              </div>
-              <span className="badge calculated">v{version.number}</span>
-            </div>
-            {["queued", "processing"].includes(version.state) ? (
-              <div className="processing-state" role="status">
-                <LoaderCircle className="spin" size={30} />
-                <h3>
-                  {version.state === "queued"
-                    ? "Esperando al worker"
-                    : "Analizando el CSV"}
-                </h3>
-                <p>
-                  El original ya está guardado. Puedes salir y volver; la
-                  ejecución permanece en PostgreSQL.
-                </p>
-                <small>
-                  Intento {version.attempts} de 3 · no se publican resultados
-                  parciales
-                </small>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCancelling(true)}
-                >
-                  Cancelar procesamiento
-                </Button>
-              </div>
-            ) : version.state === "failed" ? (
-              <div className="empty-state">
-                <h3>No se pudo procesar este CSV</h3>
-                <p role="alert">{version.error_message}</p>
-                <code>{version.error_code}</code>
-                <p>
-                  El original sigue disponible. Corrige el archivo y súbelo como
-                  una nueva versión.
-                </p>
-              </div>
-            ) : version.state === "cancelled" ? (
-              <div className="empty-state">
-                <h3>Procesamiento cancelado</h3>
-                <p>No se publicaron resultados. El original se conserva.</p>
-              </div>
-            ) : diagnostic.isPending ? (
-              <p className="empty-copy" role="status">
-                Cargando diagnóstico…
-              </p>
-            ) : diagnostic.isError ? (
-              <div className="empty-state">
-                <p role="alert">{errorMessage(diagnostic.error)}</p>
-                <Button onClick={() => void diagnostic.refetch()}>
-                  Reintentar
-                </Button>
-              </div>
-            ) : diagnostic.data ? (
+          >
+            {advanced
+              ? "Ocultar herramientas avanzadas"
+              : "Herramientas avanzadas (opcionales)"}
+          </Button>
+          <div
+            id={`advanced-tools-${projectId}`}
+            className={advanced ? "advanced-workspace" : undefined}
+          >
+            {advanced && (
               <>
-                {!REAL_STAGES.has(stage) && (
-                  <RealResults
-                    key={`${version.id}-${stage}`}
-                    version={version}
-                    diagnostic={diagnostic.data}
-                    stage={stage}
-                  />
-                )}
-                {stage === ANALYSIS_STAGE && (
-                  <AnalysisStage
-                    projectId={projectId}
-                    versionId={version.id}
-                    archived={archived}
-                    onOpenUnderstanding={() =>
-                      requestChange({ kind: "stage", value: 1 })
-                    }
-                  />
-                )}
-                {stage === REPORT_STAGE && (
-                  <ReportStage
-                    projectId={projectId}
-                    versionId={version.id}
-                    versionNumber={version.number}
-                    archived={archived}
-                  />
-                )}
-                {stage === DASHBOARD_STAGE && (
-                  <DashboardStage
-                    projectId={projectId}
-                    versionId={version.id}
-                    versionNumber={version.number}
-                    archived={archived}
-                  />
-                )}
-                {stage === 2 && (
-                  <QualityRules
-                    key={`${version.id}-${rulesEpoch}`}
-                    projectId={projectId}
-                    versionId={version.id}
-                    archived={archived}
-                    onDirtyChange={setRulesDirty}
-                  />
-                )}
-                {stage === CLEANING_STAGE && (
-                  <CleaningStage
-                    key={`${version.id}-${cleaningEpoch}-${copilotPlan ?? ""}`}
-                    projectId={projectId}
-                    version={version}
-                    diagnostic={diagnostic.data}
-                    archived={archived}
-                    copilotPlanId={copilotPlan}
-                    onDismissCopilotPlan={() => setCopilotPlan(null)}
-                    onShowDerived={(id) => void showDerived(id)}
-                    onDirtyChange={setCleaningDirty}
-                  />
-                )}
-                {stage === 1 && (
-                  <SemanticUnderstanding
-                    key={`${version.id}-${semanticEpoch}`}
-                    versionId={version.id}
-                    baselineExecutionId={version.execution_id}
-                    archived={archived}
-                    onDirtyChange={setSemanticDirty}
-                  />
-                )}
+                <ActiveSource
+                  projectId={projectId}
+                  viewed={version}
+                  archived={archived}
+                  onShowVersion={(versionId) =>
+                    requestChange({ kind: "version", value: versionId })
+                  }
+                />
+                <PipelineStatus
+                  projectId={projectId}
+                  versionId={version.id}
+                  onShowVersion={(versionId) =>
+                    requestChange({ kind: "version", value: versionId })
+                  }
+                  onShowDashboard={() =>
+                    requestChange({ kind: "stage", value: DASHBOARD_STAGE })
+                  }
+                />
+                <AutomationNotices
+                  projectId={projectId}
+                  onShowVersion={(versionId) =>
+                    requestChange({ kind: "version", value: versionId })
+                  }
+                />
+                <div className="original-meta">
+                  <span>
+                    {number(version.byte_size)} bytes
+                    {version.kind === "derived" ? " · Parquet" : ""}
+                  </span>
+                  <span className="mono" title={version.sha256}>
+                    SHA-256 {version.sha256}
+                  </span>
+                </div>
+                <nav className="stepper" aria-label="Etapas del CSV real">
+                  {steps.map((step, i) => (
+                    <button
+                      key={step}
+                      className={`step ${stage === i ? "current" : ""}`}
+                      disabled={i > 3 && !REAL_STAGES.has(i)}
+                      title={
+                        i > 3 && !REAL_STAGES.has(i)
+                          ? "Se integrará en el siguiente incremento"
+                          : undefined
+                      }
+                      onClick={() => {
+                        if (i !== stage)
+                          requestChange({ kind: "stage", value: i });
+                      }}
+                    >
+                      <span
+                        className={`step-number ${version.state === "succeeded" && i <= 2 ? "done" : ""}`}
+                      >
+                        {version.state === "succeeded" && i <= 2 ? (
+                          <Check size={13} />
+                        ) : (
+                          i + 1
+                        )}
+                      </span>
+                      <span>{step}</span>
+                    </button>
+                  ))}
+                </nav>
               </>
-            ) : null}
+            )}
+            <div className="stage-content">
+              {advanced && (
+                <div className="stage-title">
+                  <div>
+                    <p className="eyebrow">ETAPA {stage + 1} · DATOS REALES</p>
+                    <h2>{steps[stage]}</h2>
+                  </div>
+                  <span className="badge calculated">v{version.number}</span>
+                </div>
+              )}
+              {["queued", "processing"].includes(version.state) ? (
+                <div className="processing-state" role="status">
+                  <LoaderCircle className="spin" size={30} />
+                  <h3>
+                    {version.state === "queued"
+                      ? "Esperando al worker"
+                      : "Analizando tus datos"}
+                  </h3>
+                  <p>
+                    El original ya está guardado. Puedes salir y volver; la
+                    ejecución permanece en PostgreSQL.
+                  </p>
+                  <small>
+                    Intento {version.attempts} de 3 · no se publican resultados
+                    parciales
+                  </small>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setCancelling(true)}
+                  >
+                    Cancelar procesamiento
+                  </Button>
+                </div>
+              ) : version.state === "failed" ? (
+                <div className="empty-state">
+                  <h3>No se pudo procesar este CSV</h3>
+                  <p role="alert">{version.error_message}</p>
+                  <code>{version.error_code}</code>
+                  <p>
+                    El original sigue disponible. Corrige el archivo y súbelo
+                    como una nueva versión.
+                  </p>
+                </div>
+              ) : version.state === "cancelled" ? (
+                <div className="empty-state">
+                  <h3>Procesamiento cancelado</h3>
+                  <p>No se publicaron resultados. El original se conserva.</p>
+                </div>
+              ) : diagnostic.isPending ? (
+                <p className="empty-copy" role="status">
+                  Cargando diagnóstico…
+                </p>
+              ) : diagnostic.isError ? (
+                <div className="empty-state">
+                  <p role="alert">{errorMessage(diagnostic.error)}</p>
+                  <Button onClick={() => void diagnostic.refetch()}>
+                    Reintentar
+                  </Button>
+                </div>
+              ) : diagnostic.data &&
+                (advanced || !diagnostic.data.profile.overview) ? (
+                <>
+                  {!REAL_STAGES.has(stage) && (
+                    <RealResults
+                      key={`${version.id}-${stage}`}
+                      version={version}
+                      diagnostic={diagnostic.data}
+                      stage={stage}
+                    />
+                  )}
+                  {stage === ANALYSIS_STAGE && (
+                    <AnalysisStage
+                      projectId={projectId}
+                      versionId={version.id}
+                      archived={archived}
+                      onOpenUnderstanding={() =>
+                        requestChange({ kind: "stage", value: 1 })
+                      }
+                    />
+                  )}
+                  {stage === REPORT_STAGE && (
+                    <ReportStage
+                      projectId={projectId}
+                      versionId={version.id}
+                      versionNumber={version.number}
+                      archived={archived}
+                    />
+                  )}
+                  {stage === DASHBOARD_STAGE && (
+                    <DashboardStage
+                      projectId={projectId}
+                      versionId={version.id}
+                      versionNumber={version.number}
+                      archived={archived}
+                    />
+                  )}
+                  {stage === 2 && (
+                    <QualityRules
+                      key={`${version.id}-${rulesEpoch}`}
+                      projectId={projectId}
+                      versionId={version.id}
+                      archived={archived}
+                      onDirtyChange={setRulesDirty}
+                    />
+                  )}
+                  {stage === CLEANING_STAGE && (
+                    <CleaningStage
+                      key={`${version.id}-${cleaningEpoch}-${copilotPlan ?? ""}`}
+                      projectId={projectId}
+                      version={version}
+                      diagnostic={diagnostic.data}
+                      archived={archived}
+                      copilotPlanId={copilotPlan}
+                      onDismissCopilotPlan={() => setCopilotPlan(null)}
+                      onShowDerived={(id) => void showDerived(id)}
+                      onDirtyChange={setCleaningDirty}
+                    />
+                  )}
+                  {stage === 1 && (
+                    <SemanticUnderstanding
+                      key={`${version.id}-${semanticEpoch}`}
+                      versionId={version.id}
+                      baselineExecutionId={version.execution_id}
+                      archived={archived}
+                      onDirtyChange={setSemanticDirty}
+                    />
+                  )}
+                </>
+              ) : null}
+            </div>
+            {advanced && version.state === "succeeded" && (
+              <CopilotPanel
+                projectId={projectId}
+                versionId={version.id}
+                versionNumber={version.number}
+                archived={archived}
+                onOpenStage={(target) =>
+                  requestChange({
+                    kind: "stage",
+                    value: target === "understanding" ? 1 : ANALYSIS_STAGE,
+                  })
+                }
+                onOpenCleaningPlan={(plan) => {
+                  setCopilotPlan(plan);
+                  requestChange({ kind: "stage", value: CLEANING_STAGE });
+                }}
+              />
+            )}
+            {advanced && version.state === "succeeded" && (
+              <ExecutionPanel
+                key={`${version.id}-${planEpoch}`}
+                projectId={projectId}
+                versionId={version.id}
+                archived={archived}
+                onDirtyChange={setPlanDirty}
+                onOpenUnderstanding={() =>
+                  requestChange({ kind: "stage", value: 1 })
+                }
+              />
+            )}
           </div>
-          {version.state === "succeeded" && (
-            <CopilotPanel
-              projectId={projectId}
-              versionId={version.id}
-              versionNumber={version.number}
-              archived={archived}
-              onOpenStage={(target) =>
-                requestChange({
-                  kind: "stage",
-                  value: target === "understanding" ? 1 : ANALYSIS_STAGE,
-                })
-              }
-              onOpenCleaningPlan={(plan) => {
-                setCopilotPlan(plan);
-                requestChange({ kind: "stage", value: CLEANING_STAGE });
-              }}
-            />
-          )}
-          {version.state === "succeeded" && (
-            <ExecutionPanel
-              key={`${version.id}-${planEpoch}`}
-              projectId={projectId}
-              versionId={version.id}
-              archived={archived}
-              onDirtyChange={setPlanDirty}
-              onOpenUnderstanding={() =>
-                requestChange({ kind: "stage", value: 1 })
-              }
-            />
-          )}
         </>
       )}
       {uploading && (
@@ -569,7 +610,8 @@ export function CsvWorkspace({
         >
           <p className="dialog-copy">
             Puedes seguir editando o descartar el borrador antes de cambiar de
-            etapa, versión o carga. Las revisiones guardadas no se alteran.
+            etapa, versión, carga o cerrar las herramientas avanzadas. Las
+            revisiones guardadas no se alteran.
           </p>
           <div className="form-footer">
             <Button variant="ghost" onClick={() => setPendingChange(null)}>

@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { expect, test, type Page } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 
 const csv = readFileSync(
   path.resolve(__dirname, "../../../../examples/ventas_calidad.csv"),
@@ -24,6 +25,7 @@ async function prepare(page: Page, name: string) {
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });

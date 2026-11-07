@@ -80,9 +80,11 @@ def test_step_runner_reproduces_single_process_outputs(
     owner = owner_id(client)
     version = import_csv(client, headers, name, golden["requested_separator"])
     assert make_runner(db, objects).run_once()
-    assert published(db, objects, owner, UUID(version["execution_id"])) == expected(
-        golden["csv_import"]
-    )
+    actual = published(db, objects, owner, UUID(version["execution_id"]))
+    # El perfil @2 añade un snapshot; el núcleo @1 conserva exactamente las referencias.
+    overview = actual["profile"].pop("overview")
+    assert overview["algorithm"] == "automatic-overview-v2"
+    assert actual == expected(golden["csv_import"])
     table = next(
         a
         for a in make_executions(db).artifacts(owner, UUID(version["execution_id"]))

@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 import {
   confirmSemantics,
   csv,
@@ -95,6 +96,7 @@ test("crear un dashboard con un CSV propio, cerrar sesión, volver y encontrarlo
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });
@@ -103,6 +105,7 @@ test("crear un dashboard con un CSV propio, cerrar sesión, volver y encontrarlo
   await confirmSemantics(page.request);
   await saveMetric(page.request, "Ingresos", "sum", "importe");
   await page.reload();
+  await openAdvanced(page);
   await expect(
     page.getByRole("status", { name: "Versión que estás viendo" }),
   ).toContainText("Estás viendo v2", { timeout: 20000 });
@@ -174,6 +177,7 @@ test("crear un dashboard con un CSV propio, cerrar sesión, volver y encontrarlo
     page.getByRole("button", { name: "Cerrar sesión", exact: true }),
   ).toBeVisible();
   await page.goto(projectPath);
+  await openAdvanced(page);
   await expect(
     page.getByRole("status", { name: "Versión que estás viendo" }),
   ).toContainText("Estás viendo v2", { timeout: 20000 });

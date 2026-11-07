@@ -1,4 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
+import { openAdvanced } from "./workspace-support";
 
 // Fase 11A: una sola fuente activa por proyecto; una carga inválida no la sustituye.
 test.beforeEach(async ({ page }) => {
@@ -54,6 +55,7 @@ test("fuente activa: una carga inválida no sustituye a la activa", async ({
     buffer: Buffer.from("id,importe\n001,10\n"),
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAdvanced(page);
   await expect(
     page.getByRole("heading", { name: "Vista previa del CSV", exact: true }),
   ).toBeVisible({ timeout: 20000 });
@@ -85,6 +87,7 @@ test("fuente activa: una carga inválida no sustituye a la activa", async ({
   await expect(history.getByRole("listitem")).toHaveCount(2);
 
   await page.reload();
+  await openAdvanced(page);
   await expect(page.getByTestId("active-source")).toHaveText(
     "v3 · ventas_c.csv",
   );

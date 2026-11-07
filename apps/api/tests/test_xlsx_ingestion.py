@@ -222,6 +222,12 @@ def test_xlsx_import_inspects_imports_and_matches_the_csv_figures(
     xlsx_version = created.json()["id"]
     assert client.get(f"/api/v1/versions/{xlsx_version}").json()["state"] == "succeeded"
     assert client.get(f"/api/v1/versions/{xlsx_version}/original").content == book
+    overview = client.get(f"/api/v1/versions/{xlsx_version}/diagnostic").json()["profile"][
+        "overview"
+    ]
+    assert overview["algorithm"] == "automatic-overview-v2"
+    assert overview["kpis"][0]["value"] == "6"
+    assert overview["table_detail"]["rows"][0][0] == "001"
 
     csv_content = (EXAMPLE / "ventas_calidad.csv").read_bytes()
     csv_version = upload(client, headers, project_id, content=csv_content).json()["id"]
