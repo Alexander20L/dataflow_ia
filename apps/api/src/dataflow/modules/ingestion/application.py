@@ -16,6 +16,7 @@ from dataflow.modules.ingestion.contracts import (
     Diagnostic,
     IngestionSummary,
     PreviewPage,
+    ReadSqlServerParameters,
     ReadXlsxParameters,
     XlsxInspection,
 )
@@ -285,6 +286,7 @@ class IngestionService:
         extension: str,
         fingerprint: str,
         plan: Callable[[DatasetVersion], PlanRevision],
+        before_commit: Callable[[UUID], None] | None = None,
     ) -> Version:
         try:
             self.projects.require(owner, project)
@@ -317,11 +319,53 @@ class IngestionService:
                 correlation,
             )
             self.datasets.bind_import(version_id, run.id)
+            if before_commit:
+                before_commit(version_id)
             self.uow.commit()
             return legacy_view(version, run)
         except Exception:
             self.uow.rollback()
             raise
+
+    def find_import(
+        self, owner: UUID, project: UUID, key: UUID, fingerprint: str
+    ) -> Version | None:
+        """Importación ya registrada con esa clave (idempotencia antes de un trabajo caro)."""
+        try:
+            existing = self.executions.find_request(owner, project, "csv_import", key, fingerprint)
+            return (
+                legacy_view(self.datasets.get(owner, existing.version_id), existing)
+                if existing
+                else None
+            )
+        finally:
+            self.uow.rollback()
+
+    def submit_extraction(
+        self,
+        owner: UUID,
+        project: UUID,
+        name: str,
+        content: bytes,
+        parameters: ReadSqlServerParameters,
+        key: UUID,
+        correlation: str,
+        fingerprint: str,
+        provenance: Callable[[UUID], None],
+    ) -> Version:
+        """Fase 12B: la extracción materializada de SQL Server es el original de la versión."""
+        return self._register(
+            owner,
+            project,
+            name,
+            content,
+            key,
+            correlation,
+            "parquet",
+            fingerprint,
+            lambda version: build_plan(owner, version, self.config, sqlserver=parameters),
+            provenance,
+        )
 
     def versions(
         self, owner: UUID, project: UUID, limit: int, offset: int

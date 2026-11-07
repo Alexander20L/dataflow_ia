@@ -4707,3 +4707,40 @@ tbody tr:hover {
   gap: 8px;
   margin-top: 8px;
 }
+/* Fase 12B: origen de datos y conexión de SQL Server */
+.source-switch {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.source-switch > .btn {
+  flex: 1;
+}
+.sql-source > input,
+.sql-source > select {
+  width: 100%;
+  margin-bottom: 12px;
+}
+.sql-source > .btn {
+  width: 100%;
+  margin-top: 10px;
+}
+.sql-source .check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  margin: 6px 0;
+}
+.sql-objects {
+  max-height: 200px;
+  overflow: auto;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 6px 10px;
+}
+.sql-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}

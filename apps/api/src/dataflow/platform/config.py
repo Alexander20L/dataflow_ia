@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     # Fase 11C: pipelines automáticos simultáneos por propietario; los demás quedan para revisión.
     automation_max_running_per_owner: int = Field(default=5, ge=1, le=100)
 
+    # Fase 12B: SQL Server. La clave cifra las contraseñas de las conexiones guardadas (Fernet,
+    # 32 bytes en base64 url-safe); sin clave no se pueden guardar conexiones. Igual que la de IA:
+    # DATAFLOW_SOURCES_KEY o DATAFLOW_SOURCES_KEY_FILE (secreto de Docker).
+    sources_key: SecretStr | None = None
+    sources_key_file: Path | None = None
+    sql_max_bytes: int = Field(default=50 * 1024 * 1024, ge=1, le=200 * 1024 * 1024)
+    sql_driver: str = Field(default="ODBC Driver 18 for SQL Server", min_length=1, max_length=80)
+
     # Copiloto IA (Fase 10, ADR-022). Desactivado por defecto: sin IA todo lo demás funciona.
     # La clave nunca se registra ni llega al frontend: DATAFLOW_AI_API_KEY (local, en un .env
     # ignorado por git) o DATAFLOW_AI_API_KEY_FILE (secreto de Docker en /run/secrets).
@@ -57,6 +65,17 @@ class Settings(BaseSettings):
             return value or None
         if self.ai_api_key is not None:
             return self.ai_api_key.get_secret_value().strip() or None
+        return None
+
+    def sources_cipher_key(self) -> str | None:
+        if self.sources_key_file is not None:
+            try:
+                value = self.sources_key_file.read_text(encoding="utf-8").strip()
+            except OSError:
+                return None
+            return value or None
+        if self.sources_key is not None:
+            return self.sources_key.get_secret_value().strip() or None
         return None
 
 

@@ -46,6 +46,8 @@ DATAFLOW_AI_API_KEY=<tu clave de la API de Anthropic>
 ```
 
 Con Docker, guarda la clave en un archivo fuera del repositorio (o en `infrastructure/compose/secrets/`, que git ignora) y arranca con `DATAFLOW_AI_PROVIDER=anthropic` y `DATAFLOW_AI_API_KEY_SECRET_FILE=<ruta del archivo>`: se monta como secreto en `/run/secrets/ai_api_key`. Límites de uso por usuario y día (tokens) y por proyecto y mes (costo estimado) en `apps/api/.env.example`. `DATAFLOW_AI_PROVIDER=fake` usa un proveedor determinista sin red (pruebas y E2E). Casos reales opcionales contra el modelo: `DATAFLOW_AI_LIVE_TESTS=1` con la clave configurada y `pytest apps/api/tests/ai/test_ai_live.py` (generan costo).
+**SQL Server (Fase 12B)**: las contraseñas de las conexiones se guardan cifradas con una clave Fernet del servidor (`DATAFLOW_SOURCES_KEY`, o `DATAFLOW_SOURCES_KEY_SECRET_FILE` con Docker, montada en `/run/secrets/sources_key`). Generarla con `python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`. Requiere Microsoft ODBC Driver 18 (la imagen de Docker lo instala aceptando su licencia). Se recomienda un usuario de sólo lectura; cada conexión sólo extrae los objetos de su lista blanca.
+
 Variables opcionales en `apps/api/.env` y `apps/web/.env.local`: consultar sus `.env.example`. El frontend usa un proxy same-origin, `API_INTERNAL_URL` privado y cookies HttpOnly. No requiere CORS abierto.
 
 ### Calidad y pruebas

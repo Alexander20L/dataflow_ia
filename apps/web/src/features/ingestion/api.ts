@@ -236,3 +236,121 @@ export function useUploadXlsx(projectId: string) {
     },
   });
 }
+
+// --- Fase 12B: SQL Server --------------------------------------------------------------
+export type Connection = components["schemas"]["ConnectionResponse"];
+export type ConnectionDraft = components["schemas"]["ConnectionDraft"];
+export type SqlObject = components["schemas"]["SqlObject"];
+export type Discovery = components["schemas"]["Discovery"];
+export type ExtractionPreview = components["schemas"]["ExtractionPreview"];
+
+export function useConnections(projectId: string) {
+  return useQuery({
+    queryKey: ["connections", projectId],
+    queryFn: async ({ signal }) =>
+      requireData(
+        await api.GET("/api/v1/projects/{project_id}/connections", {
+          signal,
+          params: { path: { project_id: projectId } },
+        }),
+      ),
+  });
+}
+
+export function useDiscoverConnection(projectId: string) {
+  return useMutation({
+    mutationFn: async (draft: ConnectionDraft) =>
+      requireData(
+        await api.POST("/api/v1/projects/{project_id}/connections/discover", {
+          params: { path: { project_id: projectId } },
+          body: draft,
+        }),
+      ),
+  });
+}
+
+export function useCreateConnection(projectId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (
+      body: ConnectionDraft & { allowed_objects: SqlObject[] },
+    ) =>
+      requireData(
+        await api.POST("/api/v1/projects/{project_id}/connections", {
+          params: { path: { project_id: projectId } },
+          body,
+        }),
+      ),
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["connections", projectId] });
+    },
+  });
+}
+
+export function useRevokeConnection(projectId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (connectionId: string) => {
+      const result = await api.DELETE("/api/v1/connections/{connection_id}", {
+        params: { path: { connection_id: connectionId } },
+      });
+      if (result.error) throw result.error;
+    },
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["connections", projectId] });
+    },
+  });
+}
+
+export function usePreviewExtraction() {
+  return useMutation({
+    mutationFn: async ({
+      connectionId,
+      target,
+    }: {
+      connectionId: string;
+      target: SqlObject;
+    }) =>
+      requireData(
+        await api.POST("/api/v1/connections/{connection_id}/preview", {
+          params: { path: { connection_id: connectionId } },
+          body: target,
+        }),
+      ),
+  });
+}
+
+export function useExtract(projectId: string) {
+  const client = useQueryClient();
+  const keys = useRef(new Map<string, string>());
+  return useMutation({
+    mutationFn: async ({
+      connectionId,
+      target,
+    }: {
+      connectionId: string;
+      target: SqlObject;
+    }) => {
+      const signature = `${connectionId}/${target.schema_name}/${target.name}`;
+      let key = keys.current.get(signature);
+      if (!key) {
+        key = crypto.randomUUID();
+        keys.current.set(signature, key);
+      }
+      const version = requireData(
+        await api.POST("/api/v1/connections/{connection_id}/extractions", {
+          params: {
+            path: { connection_id: connectionId },
+            header: { "Idempotency-Key": key },
+          },
+          body: target,
+        }),
+      );
+      keys.current.delete(signature);
+      return version;
+    },
+    onSuccess: async () => {
+      await client.invalidateQueries({ queryKey: ["versions", projectId] });
+    },
+  });
+}

@@ -12,6 +12,7 @@ from dataflow.bootstrap.services import (
     make_automation,
     make_cleaning,
     make_cleaning_proposals,
+    make_connections,
     make_copilot,
     make_dashboards,
     make_datasets,
@@ -40,6 +41,7 @@ from dataflow.modules.identity.application import IdentityService
 from dataflow.modules.identity.contracts import SessionIdentity
 from dataflow.modules.identity.infrastructure import ArgonPasswords, SQLIdentityRepository
 from dataflow.modules.ingestion.application import AnalysisService, IngestionService
+from dataflow.modules.ingestion.connections import ConnectionService
 from dataflow.modules.planning.application import PlanningService
 from dataflow.modules.projects.application import ProjectService
 from dataflow.modules.projects.infrastructure import SQLProjectRepository
@@ -100,6 +102,13 @@ def ingestion_service(db: Db, objects: Objects) -> IngestionService:
 
 
 Ingestion = Annotated[IngestionService, Depends(ingestion_service)]
+
+
+def connection_service(db: Db, objects: Objects) -> ConnectionService:
+    return make_connections(db, objects)
+
+
+Connections = Annotated[ConnectionService, Depends(connection_service)]
 
 
 def analysis_service(db: Db, objects: Objects) -> AnalysisService:

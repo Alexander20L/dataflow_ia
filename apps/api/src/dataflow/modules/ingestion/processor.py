@@ -11,6 +11,14 @@ from typing import Any
 import polars as pl
 from pydantic import TypeAdapter
 
+from dataflow.integrations.sources.sqlserver_reader import (
+    READER_VERSION as SQL_READER_VERSION,
+)
+from dataflow.integrations.sources.sqlserver_reader import (
+    ConnectionParameters,
+    discover,
+    extract,
+)
 from dataflow.integrations.sources.xlsx_reader import Workbook, read_xlsx
 from dataflow.modules.ingestion.domain import ENGINE_VERSION
 from dataflow.modules.quality.public import (
@@ -204,6 +212,49 @@ def inspect_xlsx(
     (output / "inspect.json").write_text(json.dumps(inspection), encoding="utf-8")
 
 
+def sql_parameters(payload: dict[str, Any]) -> ConnectionParameters:
+    return ConnectionParameters(**payload["connection"])
+
+
+def sql_discover(source: Path, output: Path) -> None:
+    """Objetos visibles, permisos de escritura y versión del servidor (Fase 12B)."""
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    result = discover(sql_parameters(payload), int(payload["timeout"]))
+    (output / "discover.json").write_text(json.dumps(result), encoding="utf-8")
+
+
+def sql_extract(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
+    """Extracción materializada: Parquet de texto nullable + procedencia (Fase 12B)."""
+    payload = json.loads(source.read_text(encoding="utf-8"))
+    result = extract(
+        sql_parameters(payload),
+        str(payload["schema"]),
+        str(payload["name"]),
+        max_rows,
+        max_columns,
+        int(payload["max_bytes"]),
+        int(payload["timeout"]),
+        bool(payload.get("truncate")),
+    )
+    write_table(output, result.headers, result.rows)
+    (output / "extraction.json").write_text(
+        json.dumps(
+            {
+                "columns": [
+                    {"name": n, "sql_type": t}
+                    for n, t in zip(result.headers, result.sql_types, strict=True)
+                ],
+                "row_count": len(result.rows),
+                "byte_count": result.byte_count,
+                "consistency": result.consistency,
+                "server_version": result.server_version,
+                "reader": SQL_READER_VERSION,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def profile(
     source: Path,
     output: Path,
@@ -258,7 +309,16 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--mode",
-        choices=["read", "read_xlsx", "inspect_xlsx", "profile", "quality", "quality_rules"],
+        choices=[
+            "read",
+            "read_xlsx",
+            "inspect_xlsx",
+            "sql_discover",
+            "sql_extract",
+            "profile",
+            "quality",
+            "quality_rules",
+        ],
         required=True,
     )
     parser.add_argument("--input", type=Path, required=True)
@@ -275,6 +335,10 @@ def main() -> None:
     try:
         if args.mode == "read":
             read(args.input, args.output, args.separator, args.max_rows, args.max_columns)
+        elif args.mode == "sql_discover":
+            sql_discover(args.input, args.output)
+        elif args.mode == "sql_extract":
+            sql_extract(args.input, args.output, args.max_rows, args.max_columns)
         elif args.mode in {"read_xlsx", "inspect_xlsx"}:
             handler = read_xlsx_table if args.mode == "read_xlsx" else inspect_xlsx
             handler(

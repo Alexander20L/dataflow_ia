@@ -10,6 +10,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from migration_support import TABLES_AFTER_0018
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
@@ -28,6 +29,13 @@ from dataflow.modules.projects.application import ProjectService
 from dataflow.modules.projects.infrastructure import SQLProjectRepository
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import Base
+
+
+def exists_at_0018(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    table = name if type_ == "table" else getattr(getattr(obj, "table", None), "name", None)
+    return table not in TABLES_AFTER_0018
 
 
 def test_0018_is_additive_and_text_audits_are_immutable(
@@ -97,7 +105,9 @@ def test_0018_is_additive_and_text_audits_are_immutable(
 
         with Session(engine, expire_on_commit=False) as db:
             with engine.connect() as connection:
-                context = MigrationContext.configure(connection, opts={})
+                context = MigrationContext.configure(
+                    connection, opts={"include_object": exists_at_0018}
+                )
                 diff = compare_metadata(context, Base.metadata)
             assert diff == [], diff
             assert db.get(DashboardRevisionRecord, revision) is not None  # nada cambia

@@ -26,11 +26,15 @@ TABLES_AFTER_0012 = {
     "automation_run_analyses",
     # 0018: auditorías textuales guardadas (11F)
     "copilot_text_audits",
+    # 0019: conexiones de SQL Server y procedencia de extracciones (12B)
+    "ingestion_connections",
+    "ingestion_extractions",
 }
 
 
 # Tablas posteriores a 0017 (para la prueba de 0017).
-TABLES_AFTER_0017 = {"copilot_text_audits"}
+TABLES_AFTER_0018 = {"ingestion_connections", "ingestion_extractions"}
+TABLES_AFTER_0017 = {"copilot_text_audits"} | TABLES_AFTER_0018
 
 
 def exists_at_0012(

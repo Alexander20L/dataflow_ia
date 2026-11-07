@@ -1,3 +1,4 @@
+import hashlib
 import io
 from typing import Any, Literal, Protocol
 from uuid import UUID, uuid4, uuid5
@@ -16,7 +17,11 @@ from dataflow.modules.executions.public import (
     StepResult,
 )
 from dataflow.modules.ingestion.application import Analyzer, ProjectAccess, ReadOutput
-from dataflow.modules.ingestion.contracts import ReadCsvParameters, ReadXlsxParameters
+from dataflow.modules.ingestion.contracts import (
+    ReadCsvParameters,
+    ReadSqlServerParameters,
+    ReadXlsxParameters,
+)
 from dataflow.modules.quality.contracts import QualityParameters
 from dataflow.modules.quality.public import (
     QualityRulesParameters,
@@ -157,6 +162,35 @@ class ReadXlsxStep(AnalyzerStep):
             ReadXlsxParameters.model_validate(step.parameters),
             lease.execution.plan.config,
             timeout,
+        )
+        return publish_read(self, lease, step, source, result)
+
+
+class ReadSqlServerStep(AnalyzerStep):
+    """ingestion.read_sqlserver@1 (Fase 12B): extracción materializada → tabla publicada.
+
+    El original ya es un Parquet de texto nullable escrito por el lector aislado; aquí se
+    comprueba que coincide con las columnas fijadas en el plan y se publica tal cual."""
+
+    output_kind: ArtifactKind = "table"
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        self.require(source, "source")
+        parameters = ReadSqlServerParameters.model_validate(step.parameters)
+        content = self.objects.read(source.content)
+        frame = pl.read_parquet(io.BytesIO(content))
+        if frame.columns != parameters.columns or any(dtype != pl.String for dtype in frame.dtypes):
+            raise ApplicationError(
+                "INTEGRITY_ERROR", "La extracción no coincide con las columnas del plan.", 409
+            )
+        result = ReadOutput(
+            content,
+            ",",
+            hashlib.sha256(content).hexdigest(),
+            frame.height,
+            frame.width,
         )
         return publish_read(self, lease, step, source, result)
 

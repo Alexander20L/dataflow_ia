@@ -7,10 +7,17 @@ from fastapi import APIRouter, Header, Query, Request, Response
 from pydantic import BaseModel, ConfigDict, Field
 from starlette.concurrency import run_in_threadpool
 
-from dataflow.bootstrap.dependencies import Analysis, CurrentIdentity, Ingestion
+from dataflow.bootstrap.dependencies import Analysis, Connections, CurrentIdentity, Ingestion
 from dataflow.modules.executions.contracts import ExecutionResponse, execution_response
 from dataflow.modules.ingestion.contracts import (
+    ConnectionCreate,
+    ConnectionDraft,
+    ConnectionResponse,
     Diagnostic,
+    Discovery,
+    ExtractionPreview,
+    ExtractionProvenance,
+    ExtractionRequest,
     IngestionSummary,
     PreviewPage,
     ReadXlsxParameters,
@@ -354,3 +361,99 @@ def execution_profile(
     execution_id: UUID, identity: CurrentIdentity, service: Analysis
 ) -> DatasetProfile:
     return service.profile(identity.user.id, execution_id)
+
+
+# --- Fase 12B: SQL Server -----------------------------------------------------------------
+
+
+@router.post(
+    "/projects/{project_id}/connections/discover",
+    response_model=Discovery,
+    operation_id="discoverSqlServer",
+)
+def discover_connection(
+    project_id: UUID, body: ConnectionDraft, identity: CurrentIdentity, service: Connections
+) -> Discovery:
+    """Prueba credenciales y lista tablas y vistas visibles; no guarda nada."""
+    return service.discover(identity.user.id, project_id, body)
+
+
+@router.post(
+    "/projects/{project_id}/connections",
+    status_code=201,
+    response_model=ConnectionResponse,
+    operation_id="createConnection",
+)
+def create_connection(
+    project_id: UUID,
+    body: ConnectionCreate,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Connections,
+) -> ConnectionResponse:
+    """Guarda la conexión con la contraseña cifrada y su lista blanca de objetos."""
+    return service.create(identity.user.id, project_id, body, request.state.correlation_id)
+
+
+@router.get(
+    "/projects/{project_id}/connections",
+    response_model=list[ConnectionResponse],
+    operation_id="listConnections",
+)
+def list_connections(
+    project_id: UUID, identity: CurrentIdentity, service: Connections
+) -> list[ConnectionResponse]:
+    return service.list(identity.user.id, project_id)
+
+
+@router.delete("/connections/{connection_id}", status_code=204, operation_id="revokeConnection")
+def revoke_connection(
+    connection_id: UUID, request: Request, identity: CurrentIdentity, service: Connections
+) -> Response:
+    """Revoca la conexión y borra su contraseña cifrada; las versiones extraídas se conservan."""
+    service.revoke(identity.user.id, connection_id, request.state.correlation_id)
+    return Response(status_code=204)
+
+
+@router.post(
+    "/connections/{connection_id}/preview",
+    response_model=ExtractionPreview,
+    operation_id="previewExtraction",
+)
+def preview_extraction(
+    connection_id: UUID, body: ExtractionRequest, identity: CurrentIdentity, service: Connections
+) -> ExtractionPreview:
+    """Primeras filas de un objeto autorizado, antes de extraer."""
+    return service.preview(identity.user.id, connection_id, body)
+
+
+@router.post(
+    "/connections/{connection_id}/extractions",
+    status_code=202,
+    response_model=VersionResponse,
+    operation_id="extractFromSqlServer",
+)
+def extract(
+    connection_id: UUID,
+    body: ExtractionRequest,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Connections,
+    request_key: Annotated[UUID, Header(alias="Idempotency-Key")],
+) -> VersionResponse:
+    """Extrae y materializa el objeto como una versión nueva (ingestion.read_sqlserver@1)."""
+    version = service.extract(
+        identity.user.id, connection_id, body, request_key, request.state.correlation_id
+    )
+    return VersionResponse.model_validate(version)
+
+
+@router.get(
+    "/versions/{version_id}/extraction",
+    response_model=ExtractionProvenance,
+    operation_id="getExtraction",
+)
+def extraction(
+    version_id: UUID, identity: CurrentIdentity, service: Connections
+) -> ExtractionProvenance:
+    return service.provenance(identity.user.id, version_id)

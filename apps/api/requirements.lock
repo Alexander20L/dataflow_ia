@@ -12,6 +12,7 @@ cffi==2.1.1
 charset-normalizer==3.5.2
 click==8.5.0
 colorama==0.4.6
+cryptography==46.0.7
 dnspython==2.9.0
 docstring_parser==0.18.0
 email-validator==2.3.0
@@ -44,6 +45,7 @@ pydantic==2.14.1
 pydantic-settings==2.16.1
 pydantic_core==2.50.1
 Pygments==2.21.0
+pyodbc==5.4.0
 pytest==9.1.1
 python-dotenv==1.2.4
 PyYAML==6.0.3

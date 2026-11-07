@@ -64,13 +64,20 @@ from dataflow.modules.executions.contracts import (
     RunKind,
 )
 from dataflow.modules.executions.infrastructure import SQLExecutionRepository
-from dataflow.modules.ingestion.analytical import IsolatedAnalyzer, PolarsPreview
+from dataflow.modules.ingestion.analytical import (
+    IsolatedAnalyzer,
+    IsolatedSqlServer,
+    PolarsPreview,
+)
 from dataflow.modules.ingestion.application import AnalysisService, Analyzer, IngestionService
+from dataflow.modules.ingestion.connection_records import SQLConnectionRepository
+from dataflow.modules.ingestion.connections import ConnectionService, SqlGateway
 from dataflow.modules.ingestion.executor import (
     ProfileStep,
     QualityRulesStep,
     QualityStep,
     ReadCsvStep,
+    ReadSqlServerStep,
     ReadXlsxStep,
     RulesetSource,
     SourceInputResolver,
@@ -93,6 +100,7 @@ from dataflow.platform.config import get_settings
 from dataflow.platform.database import SQLUnitOfWork
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.runtime import require_ready
+from dataflow.platform.secrets import FernetCipher
 
 
 def processing_config() -> ProcessingConfig:
@@ -131,6 +139,25 @@ def make_ingestion(db: Session, objects: LocalObjects) -> IngestionService:
             settings.max_csv_rows,
             settings.max_csv_columns,
         ),
+    )
+
+
+def make_connections(
+    db: Session, objects: LocalObjects, gateway: SqlGateway | None = None
+) -> ConnectionService:
+    """Fase 12B: conexiones de SQL Server (contraseñas cifradas con la clave del servidor)."""
+    settings = get_settings()
+    key = settings.sources_cipher_key()
+    return ConnectionService(
+        SQLConnectionRepository(db),
+        gateway or IsolatedSqlServer(objects.root),
+        FernetCipher(key) if key else None,
+        ProjectPermissions(db),
+        make_ingestion(db, objects),
+        SQLUnitOfWork(db),
+        processing_config(),
+        settings.sql_max_bytes,
+        settings.sql_driver,
     )
 
 
@@ -268,6 +295,7 @@ def make_operations(
         {
             "ingestion.read_csv@1": ReadCsvStep(objects, analyzer),
             "ingestion.read_xlsx@1": ReadXlsxStep(objects, analyzer),
+            "ingestion.read_sqlserver@1": ReadSqlServerStep(objects, analyzer),
             "understanding.profile@1": ProfileStep(objects, analyzer),
             "quality.evaluate@1": QualityStep(objects, analyzer),
             "quality.evaluate@2": QualityRulesStep(objects, analyzer, rulesets),

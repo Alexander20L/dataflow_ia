@@ -1,0 +1,48 @@
+"""Migración 0019 (Fase 12B): conexiones de SQL Server, aditiva; procedencia inmutable."""
+
+from pathlib import Path
+from uuid import uuid4
+
+import pytest
+from alembic import command
+from alembic.autogenerate import compare_metadata
+from alembic.config import Config
+from alembic.migration import MigrationContext
+from sqlalchemy import create_engine, text
+from sqlalchemy.engine import make_url
+from sqlalchemy.orm import Session
+
+from dataflow.bootstrap.cutover import cutover
+from dataflow.modules.datasets.objects import LocalObjects
+from dataflow.platform.config import get_settings
+from dataflow.platform.database import Base
+
+
+def test_0019_is_additive_and_reversible_without_connections(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    original_url = get_settings().database_url
+    admin = create_engine(original_url, connect_args={"connect_timeout": 5})
+    schema = "connections_migration_" + uuid4().hex
+    with admin.begin() as connection:
+        connection.execute(text(f'CREATE SCHEMA "{schema}"'))
+    url = make_url(original_url).update_query_dict({"options": f"-csearch_path={schema}"})
+    monkeypatch.setattr(get_settings(), "database_url", url.render_as_string(hide_password=False))
+    engine = create_engine(url, connect_args={"connect_timeout": 5})
+    config = Config(str(Path(__file__).resolve().parents[1] / "alembic.ini"))
+    objects = LocalObjects(tmp_path / "migration_objects")
+    try:
+        command.upgrade(config, "0003")
+        with Session(engine, expire_on_commit=False) as db:
+            cutover(db, objects, apply=True)
+        command.upgrade(config, "0019")
+        command.downgrade(config, "0018")  # sin conexiones: ida y vuelta
+        command.upgrade(config, "0019")
+        with engine.connect() as connection:
+            context = MigrationContext.configure(connection, opts={})
+            assert compare_metadata(context, Base.metadata) == []
+    finally:
+        engine.dispose()
+        with admin.begin() as connection:
+            connection.execute(text(f'DROP SCHEMA "{schema}" CASCADE'))
+        admin.dispose()

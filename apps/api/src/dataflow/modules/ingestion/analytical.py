@@ -7,10 +7,15 @@ import polars as pl
 
 from dataflow.modules.executions.public import ProcessingConfig
 from dataflow.modules.ingestion.application import AnalysisOutput, ReadOutput
+from dataflow.modules.ingestion.connections import Materialized
 from dataflow.modules.ingestion.contracts import (
+    Discovery,
     PreviewPage,
     PreviewRow,
     ReadXlsxParameters,
+    SqlColumn,
+    SqlObject,
+    SqlObjectInfo,
     XlsxInspection,
 )
 from dataflow.modules.quality.contracts import WHITESPACE_CHARS, QualityReport
@@ -188,6 +193,93 @@ class IsolatedAnalyzer:
             self.profile(table.parquet, table.separator, table.source_sha256, effective, timeout),
             self.quality(table.parquet, effective, timeout),
             table.parquet,
+        )
+
+
+class IsolatedSqlServer:
+    """Fase 12B: el controlador ODBC sólo se carga en el subproceso aislado. Las credenciales
+    viajan en el archivo de entrada de su directorio privado, nunca en argumentos."""
+
+    def __init__(self, root: Path) -> None:
+        self.root = root
+
+    def call(
+        self,
+        mode: str,
+        payload: dict[str, Any],
+        outputs: list[str],
+        timeout: float,
+        max_rows: int = 1,
+        max_columns: int = 128,
+    ) -> dict[str, bytes]:
+        return run_isolated(
+            self.root,
+            "dataflow.modules.ingestion.processor",
+            {"input.bin": json.dumps(payload).encode("utf-8")},
+            [
+                "--mode",
+                mode,
+                "--input",
+                "{dir}/input.bin",
+                "--max-rows",
+                str(max_rows),
+                "--max-columns",
+                str(max_columns),
+            ],
+            outputs,
+            timeout,
+        )
+
+    def discover(self, credentials: dict[str, Any], timeout: int) -> Discovery:
+        files = self.call(
+            "sql_discover",
+            {"connection": credentials, "timeout": timeout},
+            ["discover.json"],
+            timeout + 10,
+        )
+        raw = json.loads(files["discover.json"])
+        return Discovery(
+            objects=[
+                SqlObjectInfo(schema_name=o["schema"], name=o["name"], kind=o["kind"])
+                for o in raw["objects"]
+            ],
+            can_write=bool(raw["can_write"]),
+            server_version=str(raw["server_version"]),
+        )
+
+    def extract(
+        self,
+        credentials: dict[str, Any],
+        target: SqlObject,
+        config: ProcessingConfig,
+        max_bytes: int,
+        truncate: bool,
+    ) -> Materialized:
+        files = self.call(
+            "sql_extract",
+            {
+                "connection": credentials,
+                "schema": target.schema_name,
+                "name": target.name,
+                "max_bytes": max_bytes,
+                "timeout": config.timeout_seconds,
+                "truncate": truncate,
+            },
+            ["data.parquet", "extraction.json"],
+            config.timeout_seconds + 10,
+            config.max_rows,
+            config.max_columns,
+        )
+        meta = json.loads(files["extraction.json"])
+        frame = pl.read_parquet(io.BytesIO(files["data.parquet"]))
+        return Materialized(
+            parquet=files["data.parquet"],
+            columns=[SqlColumn.model_validate(c) for c in meta["columns"]],
+            rows=[list(row) for row in frame.iter_rows()],
+            row_count=int(meta["row_count"]),
+            byte_count=int(meta["byte_count"]),
+            consistency=meta["consistency"],
+            server_version=str(meta["server_version"]),
         )
 
 

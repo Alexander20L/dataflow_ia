@@ -15,6 +15,9 @@ dependencies = [
   "reportlab>=5.1,<6",
   # Proveedor de IA del copiloto (Fase 10, ADR-022); sólo lo importa integrations/ai.
   "anthropic>=2.6,<3",
+  # Fase 12B: SQL Server (sólo en integrations/sources) y cifrado de contraseñas guardadas.
+  "pyodbc>=5.2,<6",
+  "cryptography>=44,<47",
 ]
 
 [project.optional-dependencies]
@@ -44,4 +47,9 @@ files = ["src"]
 # ReportLab no publica tipos (Fase 9): se acota su uso a modules/reports/pdf.py.
 [[tool.mypy.overrides]]
 module = ["reportlab.*"]
+ignore_missing_imports = true
+
+# pyodbc (Fase 12B) no publica tipos; se acota su uso a integrations/sources/sqlserver_reader.py.
+[[tool.mypy.overrides]]
+module = ["pyodbc"]
 ignore_missing_imports = true

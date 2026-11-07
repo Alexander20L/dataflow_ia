@@ -27,8 +27,10 @@ services:
       DATAFLOW_AI_PROVIDER: ${DATAFLOW_AI_PROVIDER:-disabled}
       DATAFLOW_AI_MODEL: ${DATAFLOW_AI_MODEL:-claude-opus-5-5}
       DATAFLOW_AI_API_KEY_FILE: /run/secrets/ai_api_key
+      DATAFLOW_SOURCES_KEY_FILE: /run/secrets/sources_key
     secrets:
       - ai_api_key
+      - sources_key
     volumes:
       - objects_data:/app/.data/objects
     healthcheck:
@@ -85,3 +87,8 @@ secrets:
   # o en ./secrets/, que git ignora) y DATAFLOW_AI_PROVIDER=anthropic.
   ai_api_key:
     file: ${DATAFLOW_AI_API_KEY_SECRET_FILE:-./secrets/ai_api_key.empty}
+  # Fase 12B: clave Fernet que cifra las contraseñas de conexiones de SQL Server. Sin ella no
+  # se pueden guardar conexiones (todo lo demás funciona). Generarla con:
+  #   python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
+  sources_key:
+    file: ${DATAFLOW_SOURCES_KEY_SECRET_FILE:-./secrets/ai_api_key.empty}
