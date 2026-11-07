@@ -11,6 +11,7 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from dataflow.bootstrap.schemas import ErrorResponse
+from dataflow.modules.analysis_sessions.presentation import router as analysis_sessions_router
 from dataflow.modules.analytics.presentation import router as analytics_router
 from dataflow.modules.cleaning.presentation import router as cleaning_router
 from dataflow.modules.copilot.presentation import router as copilot_router
@@ -156,3 +157,4 @@ app.include_router(analytics_router)
 app.include_router(dashboards_router)
 app.include_router(reports_router)
 app.include_router(copilot_router)
+app.include_router(analysis_sessions_router)

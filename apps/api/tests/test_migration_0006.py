@@ -7,6 +7,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from migration_support import TABLES_AFTER_0012
 from sqlalchemy import create_engine, func, select, text, update
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
@@ -208,4 +209,4 @@ def exists_at_0006(
     obj: object, name: str | None, type_: str, reflected: bool, other: object
 ) -> bool:
     table = name if type_ == "table" else getattr(getattr(obj, "table", None), "name", None)
-    return table not in LATER_TABLES
+    return table not in LATER_TABLES | TABLES_AFTER_0012

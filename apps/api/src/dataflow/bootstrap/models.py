@@ -1,5 +1,9 @@
 """Registro explícito de modelos exclusivamente en el límite de composición."""
 
+from dataflow.modules.analysis_sessions.infrastructure import (
+    AnalysisSessionInputRecord,
+    AnalysisSessionRecord,
+)
 from dataflow.modules.analytics.infrastructure import (
     MetricFamilyRecord,
     MetricRevisionRecord,
@@ -110,4 +114,6 @@ __all__ = [
     "MessageRecord",
     "ActionLinkRecord",
     "CopilotRequest",
+    "AnalysisSessionRecord",
+    "AnalysisSessionInputRecord",
 ]

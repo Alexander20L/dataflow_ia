@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session
 from dataflow.bootstrap.ai import configured
 from dataflow.bootstrap.services import (
     make_analysis,
+    make_analysis_sessions,
     make_cleaning,
     make_cleaning_proposals,
     make_copilot,
@@ -22,6 +23,7 @@ from dataflow.bootstrap.services import (
     make_semantics,
 )
 from dataflow.integrations.ai import AIProvider
+from dataflow.modules.analysis_sessions.application import AnalysisSessionService
 from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
 from dataflow.modules.copilot.application import CopilotConfig, CopilotService
@@ -190,3 +192,10 @@ def cleaning_proposal_service(db: Db, objects: Objects) -> CleaningProposals:
 
 
 CleaningProposalsDep = Annotated[CleaningProposals, Depends(cleaning_proposal_service)]
+
+
+def analysis_session_service(db: Db) -> AnalysisSessionService:
+    return make_analysis_sessions(db)
+
+
+AnalysisSessions = Annotated[AnalysisSessionService, Depends(analysis_session_service)]

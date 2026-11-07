@@ -8,6 +8,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from migration_support import exists_at_0012
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
@@ -74,7 +75,9 @@ def test_0012_is_additive_and_copilot_records_are_immutable(
 
         with Session(engine, expire_on_commit=False) as db:
             with engine.connect() as connection:
-                context = MigrationContext.configure(connection, opts={})
+                context = MigrationContext.configure(
+                    connection, opts={"include_object": exists_at_0012}
+                )
                 diff = compare_metadata(context, Base.metadata)
             assert diff == [], diff
             executions = make_executions(db)

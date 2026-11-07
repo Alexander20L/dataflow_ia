@@ -1,6 +1,6 @@
 # Fase 11 — Automatización determinista
 
-Estado: **11.0 implementada**; de 11A, la **propuesta de limpieza en el backend** está implementada y la sesión de análisis no. El resto (11A–11F) es plan objetivo y no describe funcionalidades implementadas. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
+Estado: **11.0 y 11A implementadas** (propuesta de limpieza en el backend y sesión de análisis con fuente única). 11B–11F son plan objetivo y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
 
 ## Objetivo
 
@@ -124,6 +124,24 @@ Reglas:
 
 Persistencia: `analysis_sessions` (selección vigente: referencia mutable, con `revision` y control de concurrencia) y `analysis_session_input_revisions` (cada selección, inmutable por trigger).
 
+**Implementado** (módulo `analysis_sessions`, migración **0013**, sólo aditiva):
+
+- Una versión está **lista** cuando su procesamiento terminó bien y tiene tabla publicada (`AnalysisSessionInputs` en bootstrap). Seleccionar una en cola o en proceso responde 409 `INPUT_NOT_READY`; una que falló o se canceló, 409 `INPUT_INVALID`; una de otro proyecto, 404 `INPUT_NOT_FOUND`. En los tres casos la fuente activa no cambia.
+- Cada selección guarda la versión, su número, tipo y nombre de archivo, y la **tabla exacta** (artefacto y SHA-256), con autor y fecha. Seleccionar la misma tabla activa no crea revisión; una `expected_revision` antigua responde 409 `ANALYSIS_SESSION_CONFLICT`. Auditoría: `analysis_session.input_selected`.
+- Proyecto archivado: se puede consultar la sesión, no cambiar la fuente (409 `PROJECT_ARCHIVED`).
+- Los planes, ejecuciones y resultados ya fijan su tabla de entrada (Fases 2 y 4): cambiar la fuente activa no los altera y un resultado que termina después conserva su entrada original.
+- El módulo sólo usa sus puertos y `audit` (prueba AST); las pruebas de migraciones anteriores excluyen las tablas nuevas mediante `tests/migration_support.py`, que cada migración de la Fase 11 amplía.
+
+| Ruta                                    | Función                                                          |
+| --------------------------------------- | ---------------------------------------------------------------- |
+| POST `/projects/{id}/analysis-sessions` | Crea la sesión del proyecto (201) o devuelve la existente (200)  |
+| GET `/projects/{id}/analysis-session`   | Sesión del proyecto (404 si todavía no existe)                   |
+| GET `/analysis-sessions/{id}`           | Fuente activa, revisión y estado (`empty` o `ready`)             |
+| POST `/analysis-sessions/{id}/inputs`   | Selecciona una versión lista (`version_id`, `expected_revision`) |
+| GET `/analysis-sessions/{id}/inputs`    | Historial de selecciones, de la más reciente a la más antigua    |
+
+Pruebas: `tests/test_analysis_sessions.py` (una sesión por proyecto, candidata inválida o en cola que no sustituye a la activa, cambio de fuente con historial, plan anterior intacto, conflicto, sin cambios sin revisión, accesos y archivado) y `tests/test_migration_0013.py` (ida y vuelta, comparación de esquema, inmutabilidad y downgrade bloqueado).
+
 ### Propuesta de limpieza en el backend (implementada)
 
 El borrador inicial se armaba en el frontend (`initialDraft` y `draftSteps` en `features/cleaning/proposal.tsx`). Ahora es una función pura del backend, `modules/cleaning/proposal.py`:
@@ -149,6 +167,8 @@ Pruebas: `tests/test_cleaning_proposal.py` reproduce las reglas del frontend ant
 ### Frontend
 
 Indicador visible de fuente activa; sustitución explícita de fuente; aviso de cambios sin guardar (hook compartido existente); historial de entradas utilizadas.
+
+**Implementado** (`features/analysis-sessions`): bajo la franja de la versión, «Fuente activa: vN · archivo» con «Es la que estás viendo» o «Ver fuente activa»; en una versión procesada que no es la activa, «Usar vN como fuente activa» abre una confirmación que explica que planes y resultados no cambian; «Historial (N)» lista las selecciones. Cambiar la fuente no navega, así que no puede perder borradores; cambiar de versión sigue pasando por el aviso de cambios sin guardar. E2E: `analysis-session.spec.ts`.
 
 Cierre: subir CSV A; intentar un CSV B inválido y comprobar que A sigue activo; cambiar después a C sin alterar los análisis de A.
 

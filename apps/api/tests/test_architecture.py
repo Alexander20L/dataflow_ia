@@ -138,6 +138,20 @@ def test_dashboards_depend_only_on_their_ports() -> None:
             assert not module.startswith(("polars", "duckdb")), (file, module)
 
 
+def test_analysis_sessions_depend_only_on_their_ports() -> None:
+    # La sesión no lee datos ni ejecuta: bootstrap le dice si una versión está lista.
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules"
+    files = list((root / "analysis_sessions").rglob("*.py"))
+    assert files
+    for file in files:
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            if module.startswith("dataflow.modules.") and not module.startswith(
+                "dataflow.modules.analysis_sessions"
+            ):
+                assert module == "dataflow.modules.audit.public", (file, module)
+            assert not module.startswith(("polars", "duckdb")), (file, module)
+
+
 def test_copilot_depends_only_on_its_ports_and_the_ai_port() -> None:
     # El copiloto no planifica, no calcula ni conoce al proveedor: bootstrap le da planes,
     # métricas y resultados, y el puerto AIProvider le da la salida estructurada.

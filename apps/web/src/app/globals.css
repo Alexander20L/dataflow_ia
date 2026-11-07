@@ -328,6 +328,32 @@
 .version-lineage > svg {
   color: var(--primary);
 }
+.active-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 8px 23px 0;
+  padding: 8px 14px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.active-source-label {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.active-source-label > svg {
+  color: var(--primary);
+}
+.active-source-history {
+  flex-basis: 100%;
+  margin: 4px 0 0 18px;
+  display: grid;
+  gap: 4px;
+}
 .cleaning-stage {
   display: grid;
   gap: 14px;
