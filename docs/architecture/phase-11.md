@@ -1,6 +1,6 @@
 # Fase 11 — Automatización determinista
 
-Estado: **11.0, 11A, 11B y 11C implementadas** (propuesta de limpieza en el backend, sesión de análisis con fuente única, aprobación por política y pipeline automático durable). 11D–11F son plan objetivo y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
+Estado: **11.0 a 11D implementadas** (propuesta de limpieza en el backend, sesión de análisis con fuente única, aprobación por política, pipeline automático durable y moldes con interpretación reutilizable). 11E–11F son plan objetivo y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
 
 ## Objetivo
 
@@ -354,6 +354,20 @@ Una configuración confirmada por la persona (molde + columna para cada rol + mo
 La igualdad de nombres o del hash de esquema **no** es prueba de equivalencia de negocio. Los IDs de columna cambian en cada importación (Fase 6B), así que el mapeo se resuelve por la descripción de cada columna (nombre, tipo, rol) y se valida antes de usarse.
 
 Cierre: la primera carga pide las definiciones necesarias; otra carga compatible reutiliza el mapeo sin preguntar; una incompatible pide revisión en vez de inventar significado.
+
+### Implementación (11D)
+
+Módulo `templates` (sólo sus puertos y `audit`, prueba AST), `TemplateTablesAccess` en bootstrap y migración **0016**, sólo aditiva: `template_mapping_families` (una por proyecto y molde), `template_mapping_revisions` y `template_mapping_save_requests` (inmutables), y `automation_run_interpretations` (1:1 con el pipeline: mapeo aplicado, revisión semántica y número de pasada; tabla aparte para no añadir columnas a `automation_runs`, como en los ADR-014 y ADR-015).
+
+- **Candidatos** (`GET /representations/{id}/template-candidates`): reglas por nombre y tipo; la sugerencia de rol del perfil sólo se usa donde no es ambigua (fechas, importe y dimensión de Ventas, fecha de corte de Inventario), para que un CSV de ventas no parezca un inventario completo. Si el proyecto ya tiene un mapeo de ese molde, se indica si es compatible con la tabla.
+- **Mapeo confirmado** (`POST /projects/{id}/template-mappings`, revisiones con `expected_revision` e `Idempotency-Key`): rol → columna por nombre, tipo destino (y escala), moneda (roles de importe), unidad (cantidad) y grano (Ventas: `venta`, `pedido` o `linea`). Se valida contra el molde (422 `TEMPLATE_MAPPING_INVALID`).
+- **Compatibilidad:** columnas por nombre; mismo tipo y escala, o texto que se convierte con la conversión confirmada; un tipo distinto o una columna ausente es incompatible.
+- **En el pipeline:** antes de proponer, un mapeo incompatible detiene (`MAPPING_INCOMPATIBLE`) sin limpiar nada; uno compatible añade sus **conversiones confirmadas** a la propuesta (`cleaning-proposal@1` admite `casts`; la UI no las envía). Tras activar la versión limpia, el paso `interpret` guarda una revisión semántica normal que confirma los roles, la moneda o unidad y el grano. Sin mapeo, se detiene con `MAPPING_REQUIRED` (la versión limpia ya es la fuente activa).
+- **Reanudar** (`POST /automation-runs/{id}/resume`): sólo para paradas de interpretación. Desde `interpret` hace **otra pasada** sobre la importación original con la interpretación confirmada (claves idempotentes propias de la pasada), así la nueva versión limpia queda tipada; la anterior se conserva en el historial.
+
+**Interfaz:** cuando un pipeline pide la interpretación, la franja muestra el editor (molde candidato, columna y tipo por rol, moneda, unidad y grano); «Confirmar interpretación» guarda el mapeo y reanuda el pipeline.
+
+Pruebas: `test_templates.py` (candidatos de ventas e inventario, validación, compatibilidad, borrador semántico y API con revisiones, conflicto y compatibilidad) y `test_automation_interpretation.py` (primera carga que pide la interpretación y, al reanudar, reprocesa con conversiones y confirma la semántica; carga compatible sin preguntar; incompatible que se detiene antes de limpiar; sólo se reanudan paradas de interpretación), `test_migration_0016.py`.
 
 ## 11E · Dashboard automático determinista
 

@@ -19,6 +19,7 @@ from dataflow.bootstrap.reports_access import (
     WorkerRegistry,
 )
 from dataflow.bootstrap.semantic_access import SemanticRepresentationAccess
+from dataflow.bootstrap.templates_access import TemplateTablesAccess
 from dataflow.integrations.ai import AIProvider
 from dataflow.modules.analysis_sessions.application import AnalysisSessionService
 from dataflow.modules.analysis_sessions.infrastructure import SQLAnalysisSessionRepository
@@ -83,6 +84,8 @@ from dataflow.modules.quality.infrastructure import SQLRulesetRepository
 from dataflow.modules.reports.application import ReportService
 from dataflow.modules.reports.infrastructure import SQLReportRepository
 from dataflow.modules.reports.steps import RenderReportStep
+from dataflow.modules.templates.application import TemplateService
+from dataflow.modules.templates.infrastructure import SQLMappingRepository
 from dataflow.modules.understanding.application import SemanticService
 from dataflow.modules.understanding.semantic_repository import SQLSemanticRepository
 from dataflow.platform.config import get_settings
@@ -442,6 +445,20 @@ def make_pipeline(db: Session, objects: LocalObjects) -> PipelineService:
             make_automation(db, objects),
             make_rulesets(db, objects),
             make_analysis_sessions(db),
+            make_templates(db, objects),
+            make_template_tables(db, objects),
+            make_semantics(db, objects),
         ),
         SQLUnitOfWork(db),
+    )
+
+
+def make_template_tables(db: Session, objects: LocalObjects) -> TemplateTablesAccess:
+    return TemplateTablesAccess(make_semantics(db, objects), ProjectPermissions(db))
+
+
+def make_templates(db: Session, objects: LocalObjects) -> TemplateService:
+    require_ready(db)
+    return TemplateService(
+        SQLMappingRepository(db), make_template_tables(db, objects), SQLUnitOfWork(db)
     )

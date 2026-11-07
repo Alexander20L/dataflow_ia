@@ -90,8 +90,9 @@ def test_full_pipeline_cleans_publishes_and_activates_the_derived_version(pipe: 
     pipe.policy(FULL_POLICY)
     version = pipe.load()
     run = pipe.drive(version["id"])
-    assert run["state"] == "completed", run
-    assert run["step"] == "done" and run["reasons"] == []
+    # Sin mapeo confirmado (11D) termina pidiendo la interpretación, con la limpia ya activa.
+    assert run["state"] == "needs_review" and run["step"] == "interpret", run
+    assert [r["code"] for r in run["reasons"]] == ["MAPPING_REQUIRED"]
     assert run["derived_version_id"] and run["result_version_id"] == run["derived_version_id"]
     derived = pipe.client.get(f"/api/v1/versions/{run['derived_version_id']}").json()
     assert derived["kind"] == "derived" and derived["parent_version_id"] == version["id"]
@@ -102,7 +103,7 @@ def test_full_pipeline_cleans_publishes_and_activates_the_derived_version(pipe: 
     assert origin["automatic"] and origin["executor"] == "pipeline"
     assert origin["pipeline_run_id"] == run["id"]
     assert ("quality_rules", "succeeded") in steps(run)
-    assert steps(run)[-1] == ("select", "succeeded")
+    assert ("select", "succeeded") in steps(run)
     # El original no cambia y queda seleccionable.
     assert pipe.client.get(f"/api/v1/versions/{version['id']}").json()["state"] == "succeeded"
 
@@ -136,7 +137,7 @@ def test_nothing_to_clean_activates_the_imported_version(pipe: Pipeline) -> None
     pipe.policy(FULL_POLICY)
     version = pipe.load(CLEAN)
     run = pipe.drive(version["id"])
-    assert run["state"] == "completed" and run["plan_revision_id"] is None
+    assert run["step"] == "interpret" and run["plan_revision_id"] is None
     assert run["result_version_id"] == version["id"]
     assert pipe.active()["version_id"] == version["id"]  # type: ignore[index]
 
@@ -168,7 +169,7 @@ def test_steps_are_idempotent_under_repeated_reconciliation(pipe: Pipeline) -> N
     )
     assert previews == 1
     run = pipe.drive(version["id"])
-    assert run["state"] == "completed"
+    assert run["state"] == "needs_review" and run["step"] == "interpret"
     assert [s for s in steps(run) if s == ("preview", "started")] == [("preview", "started")]
 
 

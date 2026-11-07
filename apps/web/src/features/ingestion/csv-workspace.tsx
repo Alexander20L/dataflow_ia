@@ -326,6 +326,7 @@ export function CsvWorkspace({
             }
           />
           <PipelineStatus
+            projectId={projectId}
             versionId={version.id}
             onShowVersion={(versionId) =>
               requestChange({ kind: "version", value: versionId })

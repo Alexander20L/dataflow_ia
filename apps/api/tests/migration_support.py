@@ -17,6 +17,11 @@ TABLES_AFTER_0012 = {
     # 0015: pipeline automático y registro de pasos (11C)
     "automation_runs",
     "automation_step_attempts",
+    # 0016: mapeos confirmados de moldes (11D)
+    "template_mapping_families",
+    "template_mapping_revisions",
+    "template_mapping_save_requests",
+    "automation_run_interpretations",
 }
 
 

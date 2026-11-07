@@ -132,3 +132,17 @@ export function useCancelRun(versionId: string) {
     onSuccess: (run) => client.setQueryData(["automation-run", versionId], run),
   });
 }
+
+/** Reanuda un pipeline detenido por la interpretación (Fase 11D). */
+export function useResumeRun(versionId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (runId: string) =>
+      requireData(
+        await api.POST("/api/v1/automation-runs/{run_id}/resume", {
+          params: { path: { run_id: runId } },
+        }),
+      ),
+    onSuccess: (run) => client.setQueryData(["automation-run", versionId], run),
+  });
+}

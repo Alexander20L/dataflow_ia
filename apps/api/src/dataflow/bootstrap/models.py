@@ -17,6 +17,7 @@ from dataflow.modules.automation.infrastructure import (
     AutomationPolicySaveRequest,
 )
 from dataflow.modules.automation.pipeline_infrastructure import (
+    AutomationRunInterpretationRecord,
     AutomationRunRecord,
     AutomationStepAttemptRecord,
 )
@@ -71,6 +72,11 @@ from dataflow.modules.reports.infrastructure import (
     ReportRenderRecord,
     ReportRevisionRecord,
     ReportSaveRequest,
+)
+from dataflow.modules.templates.infrastructure import (
+    TemplateMappingFamilyRecord,
+    TemplateMappingRevisionRecord,
+    TemplateMappingSaveRequest,
 )
 from dataflow.modules.understanding.semantic_repository import (
     SemanticFamilyRecord,
@@ -131,5 +137,9 @@ __all__ = [
     "AutomationPolicySaveRequest",
     "AutomationApprovalRecord",
     "AutomationRunRecord",
+    "AutomationRunInterpretationRecord",
     "AutomationStepAttemptRecord",
+    "TemplateMappingFamilyRecord",
+    "TemplateMappingRevisionRecord",
+    "TemplateMappingSaveRequest",
 ]

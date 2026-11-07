@@ -23,6 +23,7 @@ from dataflow.bootstrap.services import (
     make_reports,
     make_rulesets,
     make_semantics,
+    make_templates,
 )
 from dataflow.integrations.ai import AIProvider
 from dataflow.modules.analysis_sessions.application import AnalysisSessionService
@@ -44,6 +45,7 @@ from dataflow.modules.projects.application import ProjectService
 from dataflow.modules.projects.infrastructure import SQLProjectRepository
 from dataflow.modules.quality.application import RulesetService
 from dataflow.modules.reports.application import ReportService
+from dataflow.modules.templates.application import TemplateService
 from dataflow.modules.understanding.public import SemanticService
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import get_db
@@ -217,3 +219,10 @@ def pipeline_service(db: Db, objects: Objects) -> PipelineService:
 
 
 Pipelines = Annotated[PipelineService, Depends(pipeline_service)]
+
+
+def template_service(db: Db, objects: Objects) -> TemplateService:
+    return make_templates(db, objects)
+
+
+Templates = Annotated[TemplateService, Depends(template_service)]

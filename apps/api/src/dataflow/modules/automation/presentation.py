@@ -147,3 +147,13 @@ def version_run(version_id: UUID, identity: CurrentIdentity, service: Pipelines)
 @router.get("/notifications", response_model=Notifications, operation_id="listNotifications")
 def notifications(identity: CurrentIdentity, service: Pipelines) -> Notifications:
     return Notifications(items=service.attention(identity.user.id))
+
+
+@router.post(
+    "/automation-runs/{run_id}/resume",
+    response_model=AutomationRunView,
+    operation_id="resumeAutomationRun",
+)
+def resume_run(run_id: UUID, identity: CurrentIdentity, service: Pipelines) -> AutomationRunView:
+    """Reanuda un pipeline detenido por la interpretación (p. ej. tras confirmar el mapeo)."""
+    return service.resume(identity.user.id, run_id)

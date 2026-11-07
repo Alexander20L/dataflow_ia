@@ -24,6 +24,7 @@ from dataflow.platform.transactions import UnitOfWork
 
 WAITING = {"queued", "running"}
 MAX_TRANSITIONS = 12  # sin bucles: un avance recorre como mucho la secuencia completa
+RESUMABLE = {"MAPPING_REQUIRED", "MAPPING_INCOMPATIBLE"}
 
 MESSAGES = {
     "INPUT_TABLE_MISSING": "La versión no tiene una tabla publicada.",
@@ -35,11 +36,19 @@ MESSAGES = {
     "SELECT_FAILED": "No se pudo activar la versión resultante como fuente.",
     "EXECUTION_CANCELLED": "Una ejecución del pipeline se canceló.",
     "STEP_ERROR": "Un paso del pipeline no se pudo completar.",
+    "MAPPING_REQUIRED": "Falta confirmar la interpretación (molde y columnas) de estos datos.",
+    "MAPPING_INCOMPATIBLE": "La carga no cumple el mapeo confirmado; revisa la interpretación.",
 }
 
 
 def reason(code: str, **detail: Any) -> dict[str, Any]:
     return {"code": code, "message": MESSAGES[code], **detail}
+
+
+def key(run: PipelineRun, step: str) -> UUID:
+    """Clave idempotente del paso. Cada pasada (11D: reanudar tras confirmar el mapeo
+    reprocesa la importación) tiene las suyas; la primera conserva las de la Fase 11C."""
+    return uuid5(run.id, step if run.pass_number == 1 else f"{step}:{run.pass_number}")
 
 
 class PipelineService:
@@ -60,6 +69,56 @@ class PipelineService:
     def attention(self, owner: UUID, limit: int = 20) -> list[AutomationRunView]:
         """Pipelines en `needs_review` o `failed`: la bandeja de avisos."""
         return self.runs.attention(owner, limit)
+
+    def resume(self, owner: UUID, run_id: UUID) -> AutomationRunView:
+        """Reanuda un pipeline detenido por la interpretación (mapeo ausente o incompatible),
+        p. ej. tras guardar el mapeo. Otros motivos exigen una carga o acción nueva."""
+        self.runs.view(owner, run_id)  # 404 si no es del propietario
+        if not self.runs.try_lock(run_id):
+            raise ApplicationError(
+                "AUTOMATION_RUN_BUSY", "El pipeline está avanzando; vuelve a intentarlo.", 409
+            )
+        try:
+            run = self.runs.load(run_id)
+            assert run
+            codes = {item.get("code") for item in run.reasons}
+            if run.state != "needs_review" or not codes <= RESUMABLE:
+                raise ApplicationError(
+                    "AUTOMATION_RUN_NOT_RESUMABLE",
+                    "Sólo se reanuda un pipeline detenido por la interpretación.",
+                    409,
+                )
+            if run.step == "interpret":
+                # Reprocesa la importación con la interpretación confirmada: otra pasada con
+                # sus propias claves (conversiones del mapeo incluidas). La versión limpia
+                # anterior queda en el historial.
+                for name in (
+                    "plan_revision_id",
+                    "preview_execution_id",
+                    "approval_id",
+                    "apply_execution_id",
+                    "derived_version_id",
+                    "rules_execution_id",
+                    "result_version_id",
+                    "mapping_revision_id",
+                    "semantic_revision_id",
+                ):
+                    setattr(run, name, None)
+                run.pass_number += 1
+                run.step = "propose"
+            run.state, run.reasons = "running", []
+            self.runs.save(run)
+            self.runs.log(
+                run.id, run.step, "started", {"resumed_by": str(owner), "pass": run.pass_number}
+            )
+            self.uow.commit()
+        except Exception:
+            self.uow.rollback()
+            raise
+        finally:
+            self.runs.unlock(run_id)
+        self.advance(run_id)
+        return self.runs.view(owner, run_id)
 
     def cancel(self, owner: UUID, run_id: UUID) -> AutomationRunView:
         self.runs.view(owner, run_id)  # 404 si no es del propietario
@@ -169,7 +228,18 @@ class PipelineService:
             if table is None:
                 self.stop(run, "failed", [reason("INPUT_TABLE_MISSING")])
                 return
-            steps, semantic = self.port.proposal(owner, table[0])
+            # 11D: un mapeo confirmado e incompatible detiene antes de limpiar (no se inventa
+            # significado); uno compatible aporta sus conversiones confirmadas a la propuesta.
+            match = self.port.mapping_match(owner, run.project_id, table[0])
+            if match.status == "incompatible":
+                self.stop(
+                    run,
+                    "needs_review",
+                    [reason("MAPPING_INCOMPATIBLE", measured=" ".join(match.problems))],
+                )
+                return
+            run.mapping_revision_id = match.revision_id
+            steps, semantic = self.port.proposal(owner, table[0], match.casts)
             if not steps:
                 run.result_version_id = run.version_id
                 self.move(run, "select", {"proposal": "nothing_to_clean"})
@@ -181,7 +251,7 @@ class PipelineService:
                 table[1],
                 steps,
                 semantic,
-                uuid5(run.id, "plan"),
+                key(run, "plan"),
             )
             run.plan_revision_id = plan.revision_id
             if not plan.valid:
@@ -194,7 +264,7 @@ class PipelineService:
             assert run.plan_revision_id
             if run.preview_execution_id is None:
                 run.preview_execution_id = self.port.start_preview(
-                    owner, run.plan_revision_id, uuid5(run.id, "preview")
+                    owner, run.plan_revision_id, key(run, "preview")
                 )
                 self.runs.log(
                     run.id, "preview", "started", {"execution_id": str(run.preview_execution_id)}
@@ -244,7 +314,7 @@ class PipelineService:
                 return
             if run.rules_execution_id is None:
                 run.rules_execution_id = self.port.start_rules(
-                    owner, run.project_id, table[0], table[1], ruleset, uuid5(run.id, "rules")
+                    owner, run.project_id, table[0], table[1], ruleset, key(run, "rules")
                 )
                 self.runs.log(
                     run.id,
@@ -261,5 +331,37 @@ class PipelineService:
             except ApplicationError as error:
                 self.stop(run, "needs_review", [reason("SELECT_FAILED", measured=error.code)])
                 return
-            self.move(run, "done", {"result_version_id": str(run.result_version_id)})
+            self.move(run, "interpret", {"result_version_id": str(run.result_version_id)})
+        elif run.step == "interpret":
+            # 11D: confirma la semántica con el mapeo compatible; sin mapeo, la primera carga
+            # pide las definiciones (la versión limpia ya es la fuente activa).
+            assert run.result_version_id
+            table = self.port.table_of(owner, run.result_version_id)
+            if table is None:
+                self.stop(run, "failed", [reason("INPUT_TABLE_MISSING")])
+                return
+            match = self.port.mapping_match(owner, run.project_id, table[0])
+            if match.status == "none":
+                self.stop(run, "needs_review", [reason("MAPPING_REQUIRED")])
+                return
+            if match.status == "incompatible" or match.casts or match.revision_id is None:
+                problems = match.problems or [
+                    f"Faltan conversiones de {', '.join(c['column'] for c in match.casts)}."
+                ]
+                self.stop(
+                    run,
+                    "needs_review",
+                    [reason("MAPPING_INCOMPATIBLE", measured=" ".join(problems))],
+                )
+                return
+            run.mapping_revision_id = match.revision_id
+            run.semantic_revision_id = self.port.apply_mapping(owner, match.revision_id, table[0])
+            self.move(
+                run,
+                "done",
+                {
+                    "mapping_revision_id": str(match.revision_id),
+                    "semantic_revision_id": str(run.semantic_revision_id),
+                },
+            )
             run.state = "completed"

@@ -22,6 +22,7 @@ Step = Literal[
     "diagnose",
     "quality_rules",
     "select",
+    "interpret",
     "done",
 ]
 TERMINAL: set[str] = {"needs_review", "completed", "failed", "cancelled"}
@@ -63,6 +64,9 @@ class AutomationRunView(PipelineModel):
     derived_version_id: UUID | None
     rules_execution_id: UUID | None
     result_version_id: UUID | None
+    mapping_revision_id: UUID | None = None
+    semantic_revision_id: UUID | None = None
+    pass_number: int = 1
     created_at: datetime
     updated_at: datetime
     finished_at: datetime | None
@@ -93,6 +97,17 @@ class PipelineRun:
     derived_version_id: UUID | None = None
     rules_execution_id: UUID | None = None
     result_version_id: UUID | None = None
+    mapping_revision_id: UUID | None = None
+    semantic_revision_id: UUID | None = None
+    pass_number: int = 1
+
+
+@dataclass(frozen=True)
+class MatchResult:
+    status: str  # none | compatible | incompatible
+    revision_id: UUID | None
+    problems: list[str]
+    casts: list[dict[str, Any]]  # {column_id, type, scale}
 
 
 @dataclass(frozen=True)
@@ -114,8 +129,10 @@ class PipelinePort(Protocol):
 
     def table_of(self, owner: UUID, version: UUID) -> tuple[UUID, str] | None: ...
     def proposal(
-        self, owner: UUID, artifact: UUID
+        self, owner: UUID, artifact: UUID, casts: list[dict[str, Any]]
     ) -> tuple[list[dict[str, Any]], dict[str, Any] | None]: ...
+    def mapping_match(self, owner: UUID, project: UUID, artifact: UUID) -> MatchResult: ...
+    def apply_mapping(self, owner: UUID, mapping_revision: UUID, artifact: UUID) -> UUID: ...
     def create_plan(
         self,
         owner: UUID,

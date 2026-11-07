@@ -1,5 +1,6 @@
 import json
 from collections.abc import Callable
+from dataclasses import replace
 from datetime import UTC, datetime
 from typing import Any, Protocol
 from uuid import UUID, uuid4
@@ -16,7 +17,12 @@ from dataflow.modules.cleaning.contracts import (
     PreviewFailure,
     PreviewView,
 )
-from dataflow.modules.cleaning.proposal import CleaningProposal, ProposalInputs, propose
+from dataflow.modules.cleaning.proposal import (
+    CastProposal,
+    CleaningProposal,
+    ProposalInputs,
+    propose,
+)
 from dataflow.modules.datasets.public import Datasets, ObjectStore
 from dataflow.modules.executions.public import Execution, Executions
 from dataflow.modules.planning.contracts import InputRef, OperationCatalog, PlanView
@@ -346,5 +352,9 @@ class CleaningProposals:
     def __init__(self, source: ProposalSource) -> None:
         self.source = source
 
-    def get(self, owner: UUID, artifact: UUID) -> CleaningProposal:
-        return propose(self.source.proposal_inputs(owner, artifact))
+    def get(
+        self, owner: UUID, artifact: UUID, casts: list[CastProposal] | None = None
+    ) -> CleaningProposal:
+        """`casts`: conversiones confirmadas en un mapeo (Fase 11D); la UI no las envía."""
+        inputs = self.source.proposal_inputs(owner, artifact)
+        return propose(replace(inputs, casts=list(casts or [])))
