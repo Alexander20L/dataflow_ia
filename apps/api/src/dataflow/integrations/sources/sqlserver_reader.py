@@ -13,6 +13,7 @@ Sólo se ejecuta en el subproceso aislado de ingesta. Reglas:
 - Los mensajes de error nunca incluyen la cadena de conexión ni la contraseña.
 """
 
+import re
 import uuid
 from dataclasses import dataclass, field
 from datetime import date, datetime, time
@@ -106,6 +107,15 @@ def canonical(value: Any, column: str) -> str | None:
     if isinstance(value, (bytes, bytearray)):
         raise fail("SQL_UNSUPPORTED_TYPE", f"La columna «{column}» es binaria y no se admite.")
     return str(value)
+
+
+def server_message(exc: Exception) -> str:
+    """Mensaje de SQL Server sin prefijos del controlador. Nunca contiene la cadena de
+    conexión: pyodbc sólo devuelve el texto del servidor y el número de error."""
+    text = str(exc.args[1]) if len(exc.args) > 1 else ""
+    text = re.sub(r"\[[^\]]*\]", "", text)
+    text = re.sub(r"\(SQL\w+\)\s*$", "", text).strip()
+    return text[:300]
 
 
 def connect(parameters: ConnectionParameters, timeout: int) -> Any:
@@ -281,12 +291,14 @@ def extract(
             state = str(exc.args[0]) if exc.args else ""
             if state == "HYT00":
                 raise fail("SQL_TIMEOUT", "La consulta superó el tiempo permitido.") from None
-            if state == "42000":
+            detail = server_message(exc)
+            if re.search(r"\((229|230|262|297|300)\)", detail):
                 raise fail(
-                    "SQL_PERMISSION_DENIED", "El usuario no tiene permiso para leer ese objeto."
+                    "SQL_PERMISSION_DENIED",
+                    f"El usuario no tiene permiso para leer ese objeto: {detail}",
                 ) from None
             raise fail(
-                "SQL_QUERY_FAILED", f"La consulta falló ({state or 'sin código'})."
+                "SQL_QUERY_FAILED", f"La consulta falló ({state or 'sin código'}): {detail}"
             ) from None
         raise
     finally:

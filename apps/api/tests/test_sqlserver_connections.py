@@ -251,3 +251,16 @@ def test_connections_need_the_server_key(
         headers=headers,
     )
     assert response.status_code == 503 and response.json()["code"] == "SOURCES_KEY_MISSING"
+
+
+def test_server_messages_drop_driver_prefixes() -> None:
+    from dataflow.integrations.sources.sqlserver_reader import server_message
+
+    error = Exception(
+        "42000",
+        "[42000] [Microsoft][ODBC Driver 18 for SQL Server][SQL Server]The SELECT permission "
+        "was denied on the object 'ventas'. (229) (SQLExecDirectW)",
+    )
+    assert server_message(error) == (
+        "The SELECT permission was denied on the object 'ventas'. (229)"
+    )
