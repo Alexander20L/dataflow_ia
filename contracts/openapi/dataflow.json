@@ -385,6 +385,106 @@
         "title": "AnalysisResultV2",
         "type": "object"
       },
+      "AnalysisResultV3": {
+        "additionalProperties": false,
+        "properties": {
+          "avg_scale": {
+            "title": "Avg Scale",
+            "type": "integer"
+          },
+          "change_scale": {
+            "title": "Change Scale",
+            "type": "integer"
+          },
+          "comparisons": {
+            "items": {
+              "enum": [
+                "previous_period",
+                "same_period_last_year"
+              ],
+              "type": "string"
+            },
+            "title": "Comparisons",
+            "type": "array"
+          },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/ResultColumn"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MetricDefinitionV3"
+            },
+            "title": "Metrics",
+            "type": "array"
+          },
+          "operation": {
+            "const": "analytics.query@3",
+            "default": "analytics.query@3",
+            "title": "Operation",
+            "type": "string"
+          },
+          "ranking": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RankingSummary"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "row_count": {
+            "title": "Row Count",
+            "type": "integer"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ResultRowV3"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "schema_version": {
+            "const": 3,
+            "default": 3,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/EvidenceScope"
+          },
+          "share_scale": {
+            "title": "Share Scale",
+            "type": "integer"
+          },
+          "shares": {
+            "items": {
+              "$ref": "#/components/schemas/ShareTotal"
+            },
+            "title": "Shares",
+            "type": "array"
+          }
+        },
+        "required": [
+          "scope",
+          "avg_scale",
+          "comparisons",
+          "change_scale",
+          "share_scale",
+          "shares",
+          "ranking",
+          "dimensions",
+          "metrics",
+          "rows",
+          "row_count"
+        ],
+        "title": "AnalysisResultV3",
+        "type": "object"
+      },
       "ApplicableOperation": {
         "additionalProperties": false,
         "properties": {
@@ -3048,6 +3148,9 @@
           "definition": {
             "anyOf": [
               {
+                "$ref": "#/components/schemas/MetricDefinitionV3"
+              },
+              {
                 "$ref": "#/components/schemas/MetricDefinitionV2"
               },
               {
@@ -3085,7 +3188,8 @@
             "default": "analytics.query@1",
             "enum": [
               "analytics.query@1",
-              "analytics.query@2"
+              "analytics.query@2",
+              "analytics.query@3"
             ],
             "title": "Operation",
             "type": "string"
@@ -3132,6 +3236,17 @@
                 "type": "null"
               }
             ]
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Snapshot"
           },
           "value": {
             "anyOf": [
@@ -4139,7 +4254,8 @@
               "count_distinct",
               "avg",
               "min",
-              "max"
+              "max",
+              "sum_product"
             ],
             "title": "Aggregation",
             "type": "string"
@@ -4189,6 +4305,30 @@
             "default": 1,
             "title": "Schema Version",
             "type": "integer"
+          },
+          "second_measure_column_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Second Measure Column Id"
+          },
+          "semi_additive": {
+            "anyOf": [
+              {
+                "const": "last_snapshot",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semi Additive"
           },
           "time_column_id": {
             "anyOf": [
@@ -4276,7 +4416,8 @@
               "count_distinct",
               "avg",
               "min",
-              "max"
+              "max",
+              "sum_product"
             ],
             "title": "Aggregation",
             "type": "string"
@@ -4403,7 +4544,8 @@
               "count_distinct",
               "avg",
               "min",
-              "max"
+              "max",
+              "sum_product"
             ],
             "title": "Aggregation",
             "type": "string"
@@ -4532,6 +4674,191 @@
         "title": "MetricDefinitionV2",
         "type": "object"
       },
+      "MetricDefinitionV3": {
+        "additionalProperties": false,
+        "properties": {
+          "aggregation": {
+            "enum": [
+              "sum",
+              "count",
+              "count_distinct",
+              "avg",
+              "min",
+              "max",
+              "sum_product"
+            ],
+            "title": "Aggregation",
+            "type": "string"
+          },
+          "base_counts": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/BaseCounts"
+            },
+            "propertyNames": {
+              "enum": [
+                "previous_period",
+                "same_period_last_year"
+              ]
+            },
+            "title": "Base Counts",
+            "type": "object"
+          },
+          "content_sha256": {
+            "title": "Content Sha256",
+            "type": "string"
+          },
+          "counts": {
+            "$ref": "#/components/schemas/MetricCounts"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "filters": {
+            "items": {
+              "$ref": "#/components/schemas/Filter"
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "measure_column": {
+            "title": "Measure Column",
+            "type": "string"
+          },
+          "measure_column_id": {
+            "format": "uuid",
+            "title": "Measure Column Id",
+            "type": "string"
+          },
+          "null_policy": {
+            "const": "exclude",
+            "title": "Null Policy",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "revision_id": {
+            "format": "uuid",
+            "title": "Revision Id",
+            "type": "string"
+          },
+          "scale": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Scale"
+          },
+          "second_measure_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Second Measure Column"
+          },
+          "second_measure_column_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Second Measure Column Id"
+          },
+          "semi_additive": {
+            "anyOf": [
+              {
+                "const": "last_snapshot",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semi Additive"
+          },
+          "snapshot": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SnapshotCounts"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "time_column_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Column Id"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "key",
+          "revision_id",
+          "revision",
+          "content_sha256",
+          "label",
+          "aggregation",
+          "measure_column_id",
+          "measure_column",
+          "time_column_id",
+          "filters",
+          "null_policy",
+          "unit",
+          "currency",
+          "scale",
+          "counts"
+        ],
+        "title": "MetricDefinitionV3",
+        "type": "object"
+      },
       "MetricDraft": {
         "additionalProperties": false,
         "properties": {
@@ -4542,7 +4869,8 @@
               "count_distinct",
               "avg",
               "min",
-              "max"
+              "max",
+              "sum_product"
             ],
             "title": "Aggregation",
             "type": "string"
@@ -4583,6 +4911,30 @@
             "default": "exclude",
             "title": "Null Policy",
             "type": "string"
+          },
+          "second_measure_column_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Second Measure Column Id"
+          },
+          "semi_additive": {
+            "anyOf": [
+              {
+                "const": "last_snapshot",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Semi Additive"
           },
           "time_column_id": {
             "anyOf": [
@@ -5575,7 +5927,8 @@
               "METRIC_REFERENCE_MISMATCH",
               "UNIT_MISMATCH",
               "TIME_COLUMN_MISMATCH",
-              "SHARE_NOT_ADDITIVE"
+              "SHARE_NOT_ADDITIVE",
+              "METRIC_UNSUPPORTED"
             ],
             "title": "Code",
             "type": "string"
@@ -7065,6 +7418,99 @@
         "title": "ResultRowV2",
         "type": "object"
       },
+      "ResultRowV3": {
+        "additionalProperties": false,
+        "properties": {
+          "comparisons": {
+            "additionalProperties": {
+              "additionalProperties": {
+                "$ref": "#/components/schemas/ComparisonCell"
+              },
+              "propertyNames": {
+                "enum": [
+                  "previous_period",
+                  "same_period_last_year"
+                ]
+              },
+              "type": "object"
+            },
+            "title": "Comparisons",
+            "type": "object"
+          },
+          "evidence": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "object"
+          },
+          "key": {
+            "additionalProperties": true,
+            "title": "Key",
+            "type": "object"
+          },
+          "labels": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Labels",
+            "type": "object"
+          },
+          "rank": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RankCell"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "share": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/ShareCell"
+            },
+            "title": "Share",
+            "type": "object"
+          },
+          "snapshots": {
+            "additionalProperties": {
+              "type": "string"
+            },
+            "title": "Snapshots",
+            "type": "object"
+          },
+          "values": {
+            "additionalProperties": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "title": "Values",
+            "type": "object"
+          }
+        },
+        "required": [
+          "key",
+          "labels",
+          "values",
+          "evidence"
+        ],
+        "title": "ResultRowV3",
+        "type": "object"
+      },
       "Review": {
         "additionalProperties": false,
         "properties": {
@@ -8484,6 +8930,34 @@
           "mixed_signs"
         ],
         "title": "ShareTotal",
+        "type": "object"
+      },
+      "SnapshotCounts": {
+        "additionalProperties": false,
+        "description": "Último corte de una métrica semi-aditiva. `superseded_rows`: filas incluidas (pasan\nfiltros y nulos) de fechas anteriores al corte de su periodo; no entran en el valor. Las\nfilas que forman el valor son `included_rows - superseded_rows`.",
+        "properties": {
+          "base_superseded_rows": {
+            "additionalProperties": {
+              "type": "integer"
+            },
+            "propertyNames": {
+              "enum": [
+                "previous_period",
+                "same_period_last_year"
+              ]
+            },
+            "title": "Base Superseded Rows",
+            "type": "object"
+          },
+          "superseded_rows": {
+            "title": "Superseded Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "superseded_rows"
+        ],
+        "title": "SnapshotCounts",
         "type": "object"
       },
       "StepRef": {
@@ -12159,7 +12633,8 @@
                   "discriminator": {
                     "mapping": {
                       "analytics.query@1": "#/components/schemas/AnalysisResult",
-                      "analytics.query@2": "#/components/schemas/AnalysisResultV2"
+                      "analytics.query@2": "#/components/schemas/AnalysisResultV2",
+                      "analytics.query@3": "#/components/schemas/AnalysisResultV3"
                     },
                     "propertyName": "operation"
                   },
@@ -12169,6 +12644,9 @@
                     },
                     {
                       "$ref": "#/components/schemas/AnalysisResultV2"
+                    },
+                    {
+                      "$ref": "#/components/schemas/AnalysisResultV3"
                     }
                   ],
                   "title": "Response Getexecutionanalysis"

@@ -32,11 +32,18 @@ class ProcessingConfig(BaseModel):
     # analysis-v3: conversiones, tokens nulos y deduplicación (Fase 6A);
     # analysis-v4: quality.evaluate@2 con reglas del usuario (Fase 6B);
     # analysis-v5: analytics.query@1 con métricas definidas (Fase 7A);
-    # analysis-v6: analytics.query@2 con comparaciones, ranking y participación (Fase 7B).
+    # analysis-v6: analytics.query@2 con comparaciones, ranking y participación (Fase 7B);
+    # analysis-v7: analytics.query@3 con sum_product y último corte (Fase 11E).
     # Los planes guardados conservan el valor con el que se crearon (y su hash).
     operation_catalog: Literal[
-        "analysis-v1", "analysis-v2", "analysis-v3", "analysis-v4", "analysis-v5", "analysis-v6"
-    ] = "analysis-v6"
+        "analysis-v1",
+        "analysis-v2",
+        "analysis-v3",
+        "analysis-v4",
+        "analysis-v5",
+        "analysis-v6",
+        "analysis-v7",
+    ] = "analysis-v7"
     rule_catalog: Literal["csv-quality-v1"] = "csv-quality-v1"
     max_rows: int = Field(ge=1, le=100000)
     max_columns: int = Field(ge=1, le=128)

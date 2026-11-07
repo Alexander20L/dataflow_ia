@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.data_types import DataType
 
-CATALOG_VERSION = "analysis-v6"
+CATALOG_VERSION = "analysis-v7"
 MAX_STEPS = 16
 # Marca en el esquema de parámetros: el campo contiene IDs de columna de la tabla fijada.
 COLUMN_REF = "x-dataflow-column-ref"
@@ -34,6 +34,7 @@ ProblemCode = Literal[
     "UNIT_MISMATCH",
     "TIME_COLUMN_MISMATCH",
     "SHARE_NOT_ADDITIVE",
+    "METRIC_UNSUPPORTED",
 ]
 ResolveIn = Literal["plan_steps", "plan_input", "understanding"]
 PlanStatus = Literal["incomplete", "valid"]
@@ -97,6 +98,12 @@ class MetricRequirement:
     time_column_id: UUID | None
     filter_column_ids: tuple[UUID, ...]
     additive: bool = False
+    # 11E · analytics.query@3: segunda medida (`sum_product`, también confirmada como
+    # «measure»), columna temporal exigida aunque no se agrupe por tiempo (último corte) y
+    # versión mínima de la consulta que la calcula.
+    second_measure_column_id: UUID | None = None
+    requires_time_role: bool = False
+    min_query_version: int = 1
 
 
 @dataclass(frozen=True)

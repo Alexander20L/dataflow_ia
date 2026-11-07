@@ -22,7 +22,8 @@ from dataflow.modules.analytics.periods import (
 from dataflow.modules.planning.public import COLUMN_REF
 from dataflow.platform.data_types import ALL_TYPES, NUMERIC, DataType
 
-Aggregation = Literal["sum", "count", "count_distinct", "avg", "min", "max"]
+Aggregation = Literal["sum", "count", "count_distinct", "avg", "min", "max", "sum_product"]
+SemiAdditive = Literal["last_snapshot"]
 FilterOperator = Literal[
     "eq", "neq", "in", "not_in", "gt", "gte", "lt", "lte", "between", "is_null", "is_not_null"
 ]
@@ -35,11 +36,32 @@ QUERY_VERSION: Final = 1
 
 # Agregaciones que miden importes/cantidades: columna numérica confirmada como «measure» y con
 # unidad o moneda comparable. Los conteos aceptan cualquier tipo y no tienen unidad (D4, D5).
-MEASURED: frozenset[str] = frozenset({"sum", "avg", "min", "max"})
+MEASURED: frozenset[str] = frozenset({"sum", "avg", "min", "max", "sum_product"})
+# Agregaciones que admiten la medida semi-aditiva «último corte» (11E).
+SNAPSHOT_AGGREGATIONS: frozenset[str] = frozenset({"sum", "sum_product"})
+# Campos de métrica añadidos en 11E: fuera del hash cuando no se usan, para que las métricas
+# guardadas antes conserven su `content_sha256`.
+OPTIONAL_METRIC_FIELDS: tuple[str, ...] = ("second_measure_column_id", "semi_additive")
 
 
 def measure_types(aggregation: str) -> frozenset[DataType]:
     return NUMERIC if aggregation in MEASURED else ALL_TYPES
+
+
+Units = tuple[str | None, str | None]  # (unidad, moneda) confirmadas de una columna
+
+
+def product_unit(first: Units, second: Units) -> Units | None:
+    """Unidad de Σ(medida × segunda medida): una cantidad por un costo unitario da la moneda;
+    dos unidades, su producto («kg×m»); dos monedas no se multiplican (None). Misma regla que
+    `planning.domain.product_unit`, que la valida antes de ejecutar."""
+    currencies = [currency for _, currency in (first, second) if currency]
+    if len(currencies) == 2:
+        return None
+    if currencies:
+        return None, currencies[0]
+    units = [unit for unit, _ in (first, second) if unit]
+    return ("×".join(units) if units else None), None
 
 
 class AnalyticsModel(BaseModel):
@@ -79,6 +101,36 @@ class MetricDraft(AnalyticsModel):
     filters: list[Filter] = Field(default_factory=list, max_length=MAX_FILTERS)
     time_column_id: UUID | None = None
     null_policy: NullPolicy = "exclude"
+    # 11E · analytics.query@3: segunda medida de `sum_product` (Σ medida × segunda medida) y
+    # medida semi-aditiva (`last_snapshot`: último corte de cada periodo, nunca entre fechas).
+    second_measure_column_id: UUID | None = None
+    semi_additive: SemiAdditive | None = None
+
+    @model_validator(mode="after")
+    def query_v3_fields(self) -> "MetricDraft":
+        if (self.aggregation == "sum_product") != (self.second_measure_column_id is not None):
+            raise ValueError(
+                "«sum_product» necesita una segunda medida, y sólo «sum_product» la admite."
+            )
+        if self.semi_additive is not None:
+            if self.aggregation not in SNAPSHOT_AGGREGATIONS:
+                raise ValueError("El último corte sólo se aplica a «sum» y «sum_product».")
+            if self.time_column_id is None:
+                raise ValueError("El último corte necesita la columna temporal (fecha de corte).")
+        return self
+
+    @property
+    def requires_query_v3(self) -> bool:
+        """Sólo analytics.query@3 calcula `sum_product` y el último corte."""
+        return self.aggregation == "sum_product" or self.semi_additive is not None
+
+    def hashed(self) -> dict[str, Any]:
+        """Volcado para hashes: los campos de 11E sólo cuentan si se usan."""
+        data = self.model_dump(mode="json")
+        for name in OPTIONAL_METRIC_FIELDS:
+            if data.get(name) is None:
+                data.pop(name, None)
+        return data
 
 
 class BaseTable(AnalyticsModel):
@@ -421,6 +473,52 @@ class AnalysisResultV2(AnalyticsModel):
     row_count: int
 
 
+class QueryParametersV3(QueryParametersV2):
+    """analytics.query@3 (11E): los parámetros de @2 sin cambios. Lo nuevo está en las
+    métricas que admite: `sum_product` (Σ medida × segunda medida) y la medida semi-aditiva
+    `last_snapshot`. @1 y @2 rechazan esas métricas y no cambian."""
+
+
+class SnapshotCounts(AnalyticsModel):
+    """Último corte de una métrica semi-aditiva. `superseded_rows`: filas incluidas (pasan
+    filtros y nulos) de fechas anteriores al corte de su periodo; no entran en el valor. Las
+    filas que forman el valor son `included_rows - superseded_rows`."""
+
+    superseded_rows: int
+    base_superseded_rows: dict[ComparisonKind, int] = Field(default_factory=dict)
+
+
+class MetricDefinitionV3(MetricDefinitionV2):
+    second_measure_column_id: UUID | None = None
+    second_measure_column: str | None = None
+    semi_additive: SemiAdditive | None = None
+    snapshot: SnapshotCounts | None = None
+
+
+class ResultRowV3(ResultRowV2):
+    # Métrica semi-aditiva → fecha ISO del corte usado en el periodo de la fila.
+    snapshots: dict[str, str] = Field(default_factory=dict)
+
+
+class AnalysisResultV3(AnalyticsModel):
+    schema_version: Literal[3] = 3
+    operation: Literal["analytics.query@3"] = "analytics.query@3"
+    scope: EvidenceScope
+    avg_scale: int
+    comparisons: list[ComparisonKind]
+    change_scale: int
+    share_scale: int
+    shares: list[ShareTotal]
+    ranking: RankingSummary | None
+    dimensions: list[ResultColumn]
+    metrics: list[MetricDefinitionV3]
+    rows: list[ResultRowV3]
+    row_count: int
+
+
+ExtendedResult = AnalysisResultV2 | AnalysisResultV3
+
+
 EvidenceCell = Literal[
     "value",
     "previous_period",
@@ -461,10 +559,13 @@ class EvidenceView(AnalyticsModel):
 
     reference: EvidenceReference
     value: str | None
-    definition: MetricDefinitionV2 | MetricDefinition
+    definition: MetricDefinitionV3 | MetricDefinitionV2 | MetricDefinition
     labels: dict[str, str | None]
-    operation: Literal["analytics.query@1", "analytics.query@2"] = "analytics.query@1"
+    operation: Literal["analytics.query@1", "analytics.query@2", "analytics.query@3"] = (
+        "analytics.query@1"
+    )
     metric_value: str | None = None
+    snapshot: str | None = None  # @3: fecha del corte de una métrica semi-aditiva
     comparison: ComparisonCell | None = None
     share: ShareCell | None = None
     share_total: ShareTotal | None = None
@@ -472,7 +573,10 @@ class EvidenceView(AnalyticsModel):
     ranking: RankingSummary | None = None
 
 
-AnalysisResultView = Annotated[AnalysisResult | AnalysisResultV2, Field(discriminator="operation")]
+AnalysisResultView = Annotated[
+    AnalysisResult | AnalysisResultV2 | AnalysisResultV3, Field(discriminator="operation")
+]
+AnyAnalysisResult = AnalysisResult | AnalysisResultV2 | AnalysisResultV3
 
 
 # --- Persistencia y API ------------------------------------------------------------------
@@ -518,6 +622,9 @@ class MetricFacts(AnalyticsModel):
     measure_types: list[DataType]
     time_column_id: UUID | None
     filter_column_ids: list[UUID]
+    second_measure_column_id: UUID | None = None
+    semi_additive: SemiAdditive | None = None
+    requires_query_v3: bool = False
 
 
 class MetricRepository(Protocol):

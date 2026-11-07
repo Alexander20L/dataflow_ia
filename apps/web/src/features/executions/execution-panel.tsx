@@ -63,12 +63,13 @@ export function ExecutionPanel({
     run,
     runHasStep(run, "quality.evaluate@2"),
   );
-  // Resultados de análisis (analytics.query@1 o @2) también en el historial (Fase 8).
+  // Resultados de análisis (analytics.query@1, @2 o @3) también en el historial (Fase 8).
   const analysis = useAnalysisResult(
     run?.id ?? null,
     run?.state === "succeeded" &&
       (runHasStep(run, "analytics.query@1") ||
-        runHasStep(run, "analytics.query@2")),
+        runHasStep(run, "analytics.query@2") ||
+        runHasStep(run, "analytics.query@3")),
   );
   return (
     <section
@@ -87,7 +88,7 @@ export function ExecutionPanel({
             de la carga.
           </p>
         </div>
-        <span className="badge neutral">Catálogo analysis-v6</span>
+        <span className="badge neutral">Catálogo analysis-v7</span>
       </div>
       <PlanEditor
         projectId={projectId}
