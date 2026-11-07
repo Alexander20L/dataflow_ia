@@ -18,6 +18,7 @@ from dataflow.bootstrap.services import (
     make_executions,
     make_ingestion,
     make_metrics,
+    make_pipeline,
     make_planning,
     make_reports,
     make_rulesets,
@@ -27,6 +28,7 @@ from dataflow.integrations.ai import AIProvider
 from dataflow.modules.analysis_sessions.application import AnalysisSessionService
 from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.automation.application import AutomationService
+from dataflow.modules.automation.pipeline import PipelineService
 from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
 from dataflow.modules.copilot.application import CopilotConfig, CopilotService
 from dataflow.modules.dashboards.application import DashboardService
@@ -208,3 +210,10 @@ def automation_service(db: Db, objects: Objects) -> AutomationService:
 
 
 Automation = Annotated[AutomationService, Depends(automation_service)]
+
+
+def pipeline_service(db: Db, objects: Objects) -> PipelineService:
+    return make_pipeline(db, objects)
+
+
+Pipelines = Annotated[PipelineService, Depends(pipeline_service)]

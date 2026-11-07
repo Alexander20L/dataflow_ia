@@ -18,6 +18,10 @@ import { number } from "@/lib/utils";
 import { steps } from "@/lib/demo";
 import { useApp } from "@/lib/providers";
 import { ActiveSource } from "@/features/analysis-sessions/active-source";
+import {
+  AutomationNotices,
+  PipelineStatus,
+} from "@/features/automation/pipeline-status";
 import { ExecutionPanel } from "@/features/executions/execution-panel";
 import { SemanticUnderstanding } from "@/features/understanding/semantic-editor";
 import { CleaningStage } from "@/features/cleaning/proposal";
@@ -317,6 +321,18 @@ export function CsvWorkspace({
             projectId={projectId}
             viewed={version}
             archived={archived}
+            onShowVersion={(versionId) =>
+              requestChange({ kind: "version", value: versionId })
+            }
+          />
+          <PipelineStatus
+            versionId={version.id}
+            onShowVersion={(versionId) =>
+              requestChange({ kind: "version", value: versionId })
+            }
+          />
+          <AutomationNotices
+            projectId={projectId}
             onShowVersion={(versionId) =>
               requestChange({ kind: "version", value: versionId })
             }

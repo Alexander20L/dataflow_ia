@@ -14,6 +14,9 @@ TABLES_AFTER_0012 = {
     "automation_policy_revisions",
     "automation_policy_save_requests",
     "automation_approvals",
+    # 0015: pipeline automático y registro de pasos (11C)
+    "automation_runs",
+    "automation_step_attempts",
 }
 
 

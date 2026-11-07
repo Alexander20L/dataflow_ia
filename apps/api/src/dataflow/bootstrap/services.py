@@ -9,6 +9,7 @@ from dataflow.bootstrap.cleaning_access import CleaningPlanAccess, CleaningPropo
 from dataflow.bootstrap.copilot_access import CopilotAccess
 from dataflow.bootstrap.dashboards_access import DashboardAccess
 from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry
+from dataflow.bootstrap.pipeline_access import PipelineAccess, start_pipeline
 from dataflow.bootstrap.planning_access import PlanningTableAccess
 from dataflow.bootstrap.provenance import environment_snapshot
 from dataflow.bootstrap.quality_access import QualityTableAccess
@@ -27,6 +28,8 @@ from dataflow.modules.analytics.steps import AnalyticsQueryStep, MetricSource
 from dataflow.modules.audit.public import record_event
 from dataflow.modules.automation.application import AutomationService
 from dataflow.modules.automation.infrastructure import SQLPolicyRepository
+from dataflow.modules.automation.pipeline import PipelineService
+from dataflow.modules.automation.pipeline_infrastructure import SQLRunRepository
 from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
 from dataflow.modules.cleaning.engine import IsolatedCleaner
 from dataflow.modules.cleaning.public import (
@@ -196,6 +199,10 @@ class DatasetPublication:
                 lease.execution_id,
                 {artifact.kind: artifact.id for artifact in artifacts},
             )
+            # Fase 11C: con una política activa, la importación inicia el pipeline en la
+            # misma transacción que la publica.
+            version = self.datasets.get(lease.owner_id, lease.version_id)
+            start_pipeline(self.db, lease.owner_id, version.project_id, version.id)
         elif kind == "table_analysis":
             self.datasets.materialize_derived(
                 lease.version_id,
@@ -417,6 +424,24 @@ def make_automation(db: Session, objects: LocalObjects) -> AutomationService:
             make_planning(db, objects),
             make_executions(db),
             ProjectPermissions(db),
+        ),
+        SQLUnitOfWork(db),
+    )
+
+
+def make_pipeline(db: Session, objects: LocalObjects) -> PipelineService:
+    require_ready(db)
+    return PipelineService(
+        SQLRunRepository(db),
+        PipelineAccess(
+            make_datasets(db),
+            make_executions(db),
+            make_cleaning_proposals(db, objects),
+            make_planning(db, objects),
+            make_cleaning(db, objects),
+            make_automation(db, objects),
+            make_rulesets(db, objects),
+            make_analysis_sessions(db),
         ),
         SQLUnitOfWork(db),
     )

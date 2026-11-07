@@ -30,6 +30,7 @@ MESSAGES = {
     "NULLS_CREATED_ABOVE_LIMIT": "La limpieza crearía más nulos de los permitidos.",
     "ROUNDED_CELLS_ABOVE_LIMIT": "La conversión redondearía más celdas de las permitidas.",
     "OUTPUT_ROWS_BELOW_MINIMUM": "La versión derivada tendría menos filas de las exigidas.",
+    "POLICY_CHANGED": "La política cambió desde que empezó el pipeline; revisa con la vigente.",
 }
 
 

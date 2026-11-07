@@ -1,9 +1,9 @@
 from typing import Annotated
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Request
+from fastapi import APIRouter, Header, Query, Request
 
-from dataflow.bootstrap.dependencies import Automation, CurrentIdentity
+from dataflow.bootstrap.dependencies import Automation, CurrentIdentity, Pipelines
 from dataflow.modules.automation.contracts import (
     ApprovalOrigin,
     AutomationModel,
@@ -11,6 +11,7 @@ from dataflow.modules.automation.contracts import (
     PolicyRevision,
     SavePolicyRequest,
 )
+from dataflow.modules.automation.pipeline_contracts import AutomationRunPage, AutomationRunView
 
 router = APIRouter(prefix="/api/v1", tags=["Automation"])
 
@@ -88,3 +89,61 @@ def approval_origin(
 ) -> ApprovalOrigin:
     """Si una aprobación de limpieza la concedió una política (revisión y evaluación)."""
     return service.approval_origin(identity.user.id, approval_id)
+
+
+# --- Fase 11C: pipelines automáticos ---
+
+
+class RunHead(AutomationModel):
+    run: AutomationRunView | None
+
+
+class Notifications(AutomationModel):
+    """Pipelines en `needs_review` o `failed`: lo que necesita a una persona."""
+
+    items: list[AutomationRunView]
+
+
+@router.get(
+    "/projects/{project_id}/automation-runs",
+    response_model=AutomationRunPage,
+    operation_id="listAutomationRuns",
+)
+def list_runs(
+    project_id: UUID,
+    identity: CurrentIdentity,
+    service: Pipelines,
+    limit: Annotated[int, Query(ge=1, le=100)] = 20,
+    offset: Annotated[int, Query(ge=0)] = 0,
+) -> AutomationRunPage:
+    return service.page(identity.user.id, project_id, limit, offset)
+
+
+@router.get(
+    "/automation-runs/{run_id}", response_model=AutomationRunView, operation_id="getAutomationRun"
+)
+def get_run(run_id: UUID, identity: CurrentIdentity, service: Pipelines) -> AutomationRunView:
+    return service.get(identity.user.id, run_id)
+
+
+@router.post(
+    "/automation-runs/{run_id}/cancel",
+    response_model=AutomationRunView,
+    operation_id="cancelAutomationRun",
+)
+def cancel_run(run_id: UUID, identity: CurrentIdentity, service: Pipelines) -> AutomationRunView:
+    return service.cancel(identity.user.id, run_id)
+
+
+@router.get(
+    "/versions/{version_id}/automation-run",
+    response_model=RunHead,
+    operation_id="getVersionAutomationRun",
+)
+def version_run(version_id: UUID, identity: CurrentIdentity, service: Pipelines) -> RunHead:
+    return RunHead(run=service.for_version(identity.user.id, version_id))
+
+
+@router.get("/notifications", response_model=Notifications, operation_id="listNotifications")
+def notifications(identity: CurrentIdentity, service: Pipelines) -> Notifications:
+    return Notifications(items=service.attention(identity.user.id))

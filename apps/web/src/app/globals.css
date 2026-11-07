@@ -4629,3 +4629,32 @@ tbody tr:hover {
   margin: 0;
   padding-left: 18px;
 }
+/* Fase 11C: pipeline automático */
+.automation-status {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px 12px;
+  margin: 8px 23px 0;
+  padding: 8px 14px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+}
+.automation-status.needs_review,
+.automation-status.failed {
+  border-color: #f59e0b66;
+}
+.automation-review ul,
+.automation-notices ul {
+  margin: 4px 0 0;
+  padding-left: 18px;
+}
+.automation-notices {
+  margin: 8px 23px 0;
+  font-size: 13px;
+}
+.automation-notices > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
