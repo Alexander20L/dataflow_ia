@@ -1,6 +1,6 @@
 # ADR-023 — Automatización determinista gobernada por políticas
 
-Estado: **propuesto**, pendiente de aprobación. Documentación: [Fase 11](../architecture/phase-11.md) y [Fase 12](../architecture/phase-12.md). Modifica quién puede autorizar una limpieza del [ADR-015](015-supervised-cleaning.md) sin cambiar sus garantías, y limita el papel de la IA del [ADR-022](022-ai-copilot.md) dentro del modo automático. Se apoya en [ADR-002, ADR-005 y ADR-007](decisions.md).
+Estado: **sustituido** por [ADR-026](026-fully-automatic-single-path.md) (Fase 13): fue implementado en 11B–11E y retirado; la migración 0019 elimina sus tablas. Documentación: [Fase 11](../architecture/phase-11.md) y [Fase 12](../architecture/phase-12.md). Modifica quién puede autorizar una limpieza del [ADR-015](015-supervised-cleaning.md) sin cambiar sus garantías, y limita el papel de la IA del [ADR-022](022-ai-copilot.md) dentro del modo automático. Se apoya en [ADR-002, ADR-005 y ADR-007](decisions.md).
 
 ## Contexto
 

@@ -1,8 +1,8 @@
 # DataFlow AI
 
-**API 0.17 — dashboard, interpretación y explicación automáticos:** las nuevas cargas CSV y Excel generan indicadores, gráficos y detalle sin políticas ni confirmaciones. Si la IA está configurada, un trabajo independiente explica los resultados guardados con cifras verificadas y evidencia enlazada. Sin IA o ante errores, el dashboard sigue disponible. No se envían filas de detalle ni muestras del perfil al modelo; sólo cifras agregadas acotadas, sus etiquetas y limitaciones. Las herramientas avanzadas siguen siendo opcionales. [Plan y avance](docs/architecture/automatic-analyst.md).
+**API 0.18 — análisis completamente automático (Fase 13):** subes un CSV o un libro de Excel y el sistema lo lee, lo perfila, evalúa su calidad, lo interpreta y publica un dashboard con indicadores, gráficos y detalle, sin formularios, aprobaciones ni configuración. Si la IA está configurada, un trabajo independiente explica los resultados guardados con cifras verificadas por su evidencia; sin IA o ante errores, el dashboard sigue disponible. Al modelo sólo se envían cifras agregadas acotadas, sus etiquetas y limitaciones; nunca filas. El original y cada versión son inmutables. [Decisión (ADR-026)](docs/adr/026-fully-automatic-single-path.md) · [Fase 13](docs/architecture/phase-13.md) · [analista automático](docs/architecture/automatic-analyst.md).
 
-Plataforma de análisis de datos supervisado. **API 0.14 / Fase 10:** copiloto de IA que traduce peticiones en lenguaje natural a consultas, métricas y limpiezas del catálogo, pregunta cuando falta una definición de negocio y explica los resultados con cifras verificadas por su evidencia; nada se ejecuta sin tu confirmación y la IA está desactivada por defecto. **Fase 9:** informes con procedencia por bloque, exportación a PDF generada en el servidor y CSV con perfil estándar o Excel regional. **Fase 8:** dashboards persistidos con tus propios análisis: tarjetas KPI, tabla, barras o líneas que muestran ejecuciones exactas, filtros globales y «Actualizar» explícito sobre la versión elegida. **Fase 7:** análisis de negocio determinista sobre CSV propios con métricas que define el usuario (columna, agregación, filtros y fecha de negocio), comparaciones con el periodo anterior o el mismo periodo del año anterior, top N y % del total, y evidencia rastreable por cifra. **Fase 6:** limpieza supervisada de CSV propios con conversiones de tipo (entero, decimal, fecha, booleano), marcadores de nulo, deduplicación, recorte de espacios y exclusión de registros: vista previa sobre todo el dataset, aprobación del efecto exacto y versión derivada con columnas tipadas y diagnóstico nuevo; el original no cambia. Si un valor no convierte, no se publica nada y se listan los valores y el motivo. Además, reglas de calidad configurables (obligatoriedad, clave única, rango, catálogo de valores, formato convertible) que se evalúan aparte de la completitud técnica. Incluye los planes versionados de Fase 4, el contexto semántico de Fase 3 y CSV, originales, perfilado y calidad reales. Exploración y etapas posteriores continúan como demostración independiente.
+Las Fases 4 a 10 construyeron un recorrido supervisado (semántica, planes, limpieza con aprobación, reglas, métricas, dashboards editables, informes y copiloto con botones). Desde la Fase 13 ya no forma parte del producto: se conservan sus motores (limpieza, calidad, análisis con evidencia), que el recorrido automático incorporará en la Fase 14, y sus tablas históricas.
 
 ## Ejecutar
 
@@ -37,7 +37,7 @@ npm run dev --workspace @dataflow/web -- --port 3002
 
 Abrir http://localhost:3002 y crear una cuenta (contraseña de 12 caracteres como mínimo). No existen usuarios ni contraseñas predeterminados.
 
-### Copiloto de IA (opcional)
+### Explicación con IA (opcional)
 
 Está desactivado por defecto y el producto funciona igual sin él. Para activarlo en local, en `apps/api/.env` (ignorado por git; nunca en el repositorio ni en el frontend):
 
@@ -84,15 +84,11 @@ No editar `contracts/openapi/dataflow.json` ni `packages/api-client/src/schema.t
 
 ## Recorrido
 
-Crear cuenta → Nuevo análisis → seleccionar CSV → conservar original → procesamiento en cola → vista previa → entendimiento → calidad → registros afectados. También se pueden crear proyectos vacíos y subir el CSV después.
+Crear cuenta → Nuevo análisis → seleccionar un CSV (o crear el proyecto y subir un `.xlsx` desde su espacio de trabajo) → el original se conserva → procesamiento en cola → **Tu análisis automático** (indicadores, gráficos, lectura de las columnas y detalle) → **Explicación automática IA** si está activada. No hay pasos intermedios ni decisiones que tomar.
 
-Prueba con `examples/ventas_calidad.csv`: 6 registros, 5 columnas, una celda vacía, una fila duplicada adicional y una celda de espacios. Completitud: 96,67 %. Usa un CSV propio para obtener sus cifras reales.
+Prueba con `examples/ventas_calidad.csv`: 6 registros, 5 columnas, una celda vacía, una fila duplicada adicional y una celda de espacios. Completitud: 96,67 %. `examples/ventas.xlsx` produce las mismas cifras.
 
 Los proyectos se guardan en PostgreSQL con propietario, revisión y eventos de auditoría. La búsqueda y paginación se realizan en el backend. Un usuario no puede listar, leer, editar ni archivar proyectos ajenos. Ediciones obsoletas devuelven 409.
-
-El enlace **Explorar ventas 2026** abre el fixture: workspace → calidad → aprobar limpieza → ejecutar → explorar → informe.
-
-El fixture contiene 240 ventas y 8 importes nulos. Su limpieza demostrativa crea una vista v2 de 232 registros y mantiene v1 intacta. No se atribuyen esos resultados a archivos propios. Los CSV reales tienen sus propias versiones y diagnósticos, y no se limpian automáticamente. Las conexiones externas están pendientes; el copiloto con IA real sólo trabaja sobre datos propios.
 
 ### CSV admitidos
 
@@ -100,29 +96,13 @@ El fixture contiene 240 ventas y 8 importes nulos. Su limpieza demostrativa crea
 - Hasta 5 MiB, 100.000 registros, 128 columnas y 10.000 caracteres por campo. Cabecera única y no vacía; errores estructurales se muestran sin publicar resultados parciales.
 - Original byte a byte y SHA-256. Copia Parquet con texto nullable: conserva ceros iniciales y espacios; campos vacíos se representan como nulos. Los tipos sugeridos son heurísticos y no convierten los valores.
 - Reglas: vacíos por columna, duplicados posteriores a su primera aparición y campos sólo con espacios/tabuladores/saltos. Completitud mide celdas no vacías; no una calidad universal.
-- Cuota inicial de 100 MiB de originales por cuenta; una carga activa por proyecto y tres por cuenta. XLSX/Parquet y conectores se integrarán después.
+- Cuota inicial de 100 MiB de originales por cuenta; una carga activa por proyecto y tres por cuenta. Parquet y conectores se integrarán después.
 
 Las cargas se confirman con metadatos y trabajo en una transacción PostgreSQL. El worker usa leases, fencing, máximo tres intentos y subproceso con timeout. Un intento antiguo o cancelado no publica artefactos. Puedes cerrar el navegador durante el procesamiento.
 
-En cada CSV procesado, **Planes y ejecuciones** permite armar un plan con operaciones del catálogo (perfil, calidad), guardarlo como revisión inmutable sobre una tabla identificada por su hash y ejecutarlo. Un plan incompleto muestra qué le falta y no se ejecuta. Cambiar la versión predeterminada no altera la entrada de un plan. Cada ejecución conserva su plan, resultados e historial. El diagnóstico baseline permanece fijo; ejecutar análisis no crea otra versión del archivo. [Documentación Fase 4](docs/architecture/phase-4.md).
+Las versiones anteriores al análisis automático (sin dashboard guardado) muestran su diagnóstico técnico: perfil por columna, incidencias de calidad y vista previa. Las versiones derivadas por limpieza conservan su linaje y su original de origen.
 
-En la etapa **Limpieza** de un CSV propio, la propuesta se arma desde el diagnóstico (Q-003 → recortar espacios; Q-001 → excluir nulos). La vista previa calcula el efecto exacto sobre todo el dataset y destaca los nulos creados, porque limpiar puede bajar la completitud. Tras aprobar ese efecto, aplicarlo publica una versión derivada (v2) con su propio diagnóstico y linaje; v1 y su original se conservan y siguen seleccionables. La derivada no pasa a ser la predeterminada. [Documentación Fase 5](docs/architecture/phase-5.md).
-
-Desde la Fase 6A la propuesta también convierte tipos con formatos exactos (sin recortar ni aceptar formatos regionales), convierte marcadores como «NA» en nulos y elimina duplicados conservando la primera aparición. Una columna confirmada como identificador en la revisión semántica exige confirmar su conversión a número, y un código con ceros a la izquierda («007») nunca se convierte. [Documentación Fase 6](docs/architecture/phase-6.md).
-
-En **Análisis** se definen métricas (por ejemplo, «Ingresos» = suma de importe por fecha de negocio) y se consultan por dimensiones, granularidad temporal y periodo. Una suma o una media exigen que la columna esté confirmada como medida en Entendimiento, y la fecha como fecha de negocio; si falta, el análisis lo indica y enlaza con Entendimiento. Cada cifra abre «De dónde sale este número»: definición, filtros, versión de datos, revisión semántica y filas excluidas por filtros o por nulos. Los nulos nunca cuentan como cero. «Comparar y ordenar» añade la comparación con el periodo anterior o con el mismo periodo del año anterior (variación absoluta y porcentual; un periodo sin datos se muestra como tal, nunca como 0), un top N por una métrica (dos valores iguales se ordenan por las dimensiones y se marcan con «=») y el % del total de sumas y conteos, calculado sobre todos los grupos aunque el top N oculte algunos. Esas cifras también abren su procedencia. [Documentación Fase 7](docs/architecture/phase-7.md).
-
-En **Visualización** se guardan dashboards: desde Análisis, «Añadir a un dashboard» crea una tarjeta (KPI, tabla, barras o líneas) que apunta a ese análisis y a su ejecución exacta. Las tarjetas se ordenan con botones y tienen tamaño pequeño, mediano o grande; los filtros globales sólo ocultan filas en las tarjetas que agrupan por esa dimensión (en las demás dicen «Filtro no aplicable»). Cada tarjeta muestra la versión y la fecha de su ejecución, y sus cifras abren «De dónde sale este número». El dashboard no cambia solo al subir datos: «Actualizar» vuelve a calcular las tarjetas sobre la versión elegida y guarda una revisión nueva; si una no se puede calcular (por ejemplo, falta confirmar la semántica), lo indica sin afectar a las demás. [Documentación Fase 8](docs/architecture/phase-8.md).
-
-En **Explicación** se escriben informes: bloques de texto, resultados de análisis, tarjetas de dashboard, conclusión y limitaciones. Cada bloque de datos muestra de dónde sale (dataset, versión, ejecución, filtros y fecha) y sus cifras abren su evidencia; el informe no se recalcula solo («Actualizar bloques» guarda una revisión nueva). «Exportar PDF» lo genera en el servidor a partir de la revisión exacta, con la procedencia al pie de cada bloque. «Exportar vN» descarga la tabla de cualquier versión (también derivada) en CSV estándar (coma, punto decimal; se vuelve a importar sin cambios) o Excel regional (punto y coma y coma decimal), y «Exportar resultado» hace lo mismo con un análisis, con el `evidence_id` de cada cifra. [Documentación Fase 9](docs/architecture/phase-9.md).
-
-El panel **Copiloto de análisis** (debajo de cada etapa de un CSV propio) recibe peticiones como «Compara las ventas mensuales por región». Si falta una definición de negocio (métrica, medida o fecha de negocio confirmada, moneda) pregunta y enlaza a donde se resuelve; si no, propone una consulta, una métrica o un plan de limpieza como tarjeta con su validación y botones explícitos («Ejecutar consulta», «Crear métrica», «Abrir plan de limpieza»). Las limpiezas siguen la vista previa y la aprobación de siempre. «Explicar resultado» redacta una explicación cuyas cifras salen de la evidencia del resultado y abren «De dónde sale este número»; un número que el modelo escriba por su cuenta se retira y se marca. Al proveedor sólo se envían nombres, tipos y roles de columnas, métricas, conteos agregados y, al explicar, el resultado calculado; nunca filas ni valores de ejemplo. [Documentación Fase 10](docs/architecture/phase-10.md).
-
-En **Calidad → Reglas de calidad del proyecto** se definen reglas de negocio por columna (csv-quality-v2), se guardan como revisiones inmutables y se evalúan como un plan: el informe separa la calidad técnica (Q-001 a Q-003, completitud) de las reglas del usuario. Las reglas sirven para la tabla y sus versiones derivadas.
-
-En **Entendimiento → Revisión semántica** declara filas, roles, interpretación, claves, unidades/moneda y nulos. Guarda revisiones parciales y consulta su historial. No convierte ni limpia valores. Un plan puede fijar una revisión exacta o continuar sin contrato para análisis técnicos. [Documentación Fase 3](docs/architecture/phase-3.md).
-
-Sólo el tema y la limpieza del ejemplo se conservan en localStorage (`dataflow-ui-v2`). Restablecer la demo no elimina proyectos de la cuenta. El almacenamiento legado `dataflow-demo-v1` se conserva sin importar sus proyectos automáticamente: no se atribuyen datos locales a una cuenta sin una migración explícita.
+Sólo el tema se conserva en localStorage (`dataflow-ui-v2`).
 
 ## Estructura
 
@@ -140,17 +120,19 @@ El worker reutiliza el monolito modular, sin duplicar reglas. El frontend y la A
 
 Identidad: registro, login, consulta de sesión, logout, hash Argon2id, token opaco almacenado como hash, expiración, validación de Origin, CSRF por sesión y límites persistidos de intentos. Cuenta individual con rol propietario; invitaciones, organizaciones, recuperación de contraseña, verificación de correo y OIDC se incorporarán cuando se defina su alcance. No hay autoasignación de roles desde el navegador.
 
-Ingesta, perfilado y calidad procesan CSV reales. Las 11 pantallas del ejemplo siguen disponibles como demostración; en datos propios, el análisis, los dashboards, los informes y el copiloto trabajan con resultados calculados. Los archivos reales permiten descargar su original íntegro; las exportaciones del ejemplo permanecen etiquetadas.
+Ingesta (CSV y Excel), perfilado, calidad, interpretación por reglas, dashboard automático y explicación con IA opcional sobre archivos propios. Cada versión permite descargar su original íntegro y exportar su tabla en CSV estándar o Excel regional.
 
 Consultar `docs/architecture/implementation-plan.md` para fases y verificación manual.
 
 ### Diseño del siguiente incremento — Fase 1
 
-Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación de datasets/ejecuciones: [Fase 2](docs/architecture/phase-2.md). Revisión semántica persistida: [Fase 3](docs/architecture/phase-3.md). Planes y catálogo de operaciones: [Fase 4](docs/architecture/phase-4.md). Limpieza supervisada y versiones derivadas: [Fase 5](docs/architecture/phase-5.md). Tablas tipadas y conversiones: [Fase 6](docs/architecture/phase-6.md). Análisis de negocio: [Fase 7](docs/architecture/phase-7.md). Dashboards: [Fase 8](docs/architecture/phase-8.md). Informes y exportaciones: [Fase 9](docs/architecture/phase-9.md). Copiloto de IA: [Fase 10](docs/architecture/phase-10.md). Automatización determinista (11.0 implementada; resto en plan): [Fase 11](docs/architecture/phase-11.md). Nuevas fuentes (plan): [Fase 12](docs/architecture/phase-12.md).
+Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación de datasets/ejecuciones: [Fase 2](docs/architecture/phase-2.md). Revisión semántica persistida: [Fase 3](docs/architecture/phase-3.md). Planes y catálogo de operaciones: [Fase 4](docs/architecture/phase-4.md). Limpieza supervisada y versiones derivadas: [Fase 5](docs/architecture/phase-5.md). Tablas tipadas y conversiones: [Fase 6](docs/architecture/phase-6.md). Análisis de negocio: [Fase 7](docs/architecture/phase-7.md). Dashboards: [Fase 8](docs/architecture/phase-8.md). Informes y exportaciones: [Fase 9](docs/architecture/phase-9.md). Copiloto de IA: [Fase 10](docs/architecture/phase-10.md). Automatización determinista (pipeline por política retirado en la Fase 13): [Fase 11](docs/architecture/phase-11.md). Nuevas fuentes (Excel implementado; SQL Server y PDF en plan): [Fase 12](docs/architecture/phase-12.md). Un solo recorrido automático: [Fase 13](docs/architecture/phase-13.md).
 
 `npm run contracts:check` verifica sus esquemas, ejemplos y casos negativos sin API ni PostgreSQL. Para regenerar exclusivamente los artefactos de diseño: `npm run contracts:examples`. El contrato HTTP vigente continúa en `contracts/openapi/dataflow.json`.
 
 ## Contenedor y CI
+
+**Actualizar desde 0.17 / esquema 0018:** 0019 **no es aditiva**: elimina las tablas del pipeline por política (0013–0017) y sus datos (políticas, mapeos, ejecuciones del pipeline, sesión de análisis). Haz una copia de seguridad antes si los necesitas. Las tablas de las Fases 3–10 y 11F se conservan. Desplegar API y worker juntos: el worker ya no avanza pipelines ni atiende `report_render`. Detalles en [Fase 13](docs/architecture/phase-13.md).
 
 **Actualizar desde 0.13 / esquema 0011:** 0012 es aditiva (conversaciones y registro de llamadas del copiloto, sin backfill). Instalar la dependencia nueva `anthropic`; el worker no cambia. La IA queda desactivada hasta configurarla. Detalles en [Fase 10](docs/architecture/phase-10.md).
 

@@ -138,47 +138,34 @@ def test_dashboards_depend_only_on_their_ports() -> None:
             assert not module.startswith(("polars", "duckdb")), (file, module)
 
 
-def test_analysis_sessions_depend_only_on_their_ports() -> None:
-    # La sesión no lee datos ni ejecuta: bootstrap le dice si una versión está lista.
-    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules"
-    files = list((root / "analysis_sessions").rglob("*.py"))
-    assert files
-    for file in files:
+def test_retired_policy_pipeline_does_not_come_back() -> None:
+    # Fase 13 (ADR-026): un solo recorrido automático, sin políticas, mapeos ni sesión de análisis.
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow"
+    for name in ["automation", "templates", "analysis_sessions"]:
+        assert not (root / "modules" / name).exists(), name
+    for file in root.rglob("*.py"):
         for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
-            if module.startswith("dataflow.modules.") and not module.startswith(
-                "dataflow.modules.analysis_sessions"
-            ):
-                assert module == "dataflow.modules.audit.public", (file, module)
-            assert not module.startswith(("polars", "duckdb")), (file, module)
+            assert not module.startswith(
+                (
+                    "dataflow.modules.automation",
+                    "dataflow.modules.templates",
+                    "dataflow.modules.analysis_sessions",
+                )
+            ), (file, module)
 
 
-def test_automation_depends_only_on_its_ports() -> None:
-    # La política no limpia, no planifica ni aprueba por su cuenta: bootstrap le da los hechos
-    # de la vista previa y los casos de uso de aprobación de cleaning.
-    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules"
-    files = list((root / "automation").rglob("*.py"))
-    assert files
-    for file in files:
-        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
-            if module.startswith("dataflow.modules.") and not module.startswith(
-                "dataflow.modules.automation"
-            ):
-                assert module == "dataflow.modules.audit.public", (file, module)
-            assert not module.startswith(("polars", "duckdb")), (file, module)
-
-
-def test_templates_depend_only_on_their_ports() -> None:
-    # Los moldes proponen y validan interpretaciones; no leen datos ni guardan semántica.
-    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules"
-    files = list((root / "templates").rglob("*.py"))
-    assert files
-    for file in files:
-        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
-            if module.startswith("dataflow.modules.") and not module.startswith(
-                "dataflow.modules.templates"
-            ):
-                assert module == "dataflow.modules.audit.public", (file, module)
-            assert not module.startswith(("polars", "duckdb")), (file, module)
+def test_context_detection_is_pure() -> None:
+    # La detección de contextos corre en el subproceso de ingesta: sin BD, Polars ni otros módulos.
+    file = (
+        Path(__file__).resolve().parents[1]
+        / "src"
+        / "dataflow"
+        / "modules"
+        / "understanding"
+        / "templates.py"
+    )
+    for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+        assert not module.startswith(("dataflow", "polars", "duckdb", "sqlalchemy")), module
 
 
 def test_copilot_depends_only_on_its_ports_and_the_ai_port() -> None:
@@ -213,32 +200,15 @@ def test_ai_provider_sdk_lives_only_in_its_adapter() -> None:
             )
 
 
-def test_reports_depend_only_on_their_ports_and_render_without_database() -> None:
-    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "reports"
-    allowed = {
-        "dataflow.modules.audit.public",
-        "dataflow.modules.dashboards.contracts",
-        "dataflow.modules.executions.public",
-        "dataflow.modules.datasets.public",
-    }
-    files = list(root.rglob("*.py"))
-    assert files
-    for file in files:
-        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
-            if module.startswith("dataflow.modules.") and not module.startswith(
-                "dataflow.modules.reports"
-            ):
-                assert module in allowed, (file, module)
-    forbidden = (
-        "sqlalchemy",
-        "fastapi",
-        "dataflow.bootstrap",
-        "dataflow.platform.database",
-        "dataflow.modules.reports.infrastructure",
-    )
-    for name in ["pdf.py", "processor.py", "contracts.py", "domain.py"]:
-        for module in imports(ast.parse((root / name).read_text(encoding="utf-8"))):
-            assert not module.startswith(forbidden), (name, module)
+def test_dashboards_and_reports_only_keep_their_tables() -> None:
+    # Fase 13 (ADR-026): sin servicio ni HTTP; sus tablas y datos se conservan como historia.
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules"
+    for name in ["dashboards", "reports"]:
+        files = {file.name for file in (root / name).glob("*.py")}
+        assert files <= {"__init__.py", "infrastructure.py"}, (name, files)
+        source = (root / name / "infrastructure.py").read_text(encoding="utf-8")
+        for module in imports(ast.parse(source)):
+            assert not module.startswith("dataflow.modules."), (name, module)
 
 
 def test_source_readers_run_only_in_the_isolated_ingestion_process() -> None:

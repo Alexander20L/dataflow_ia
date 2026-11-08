@@ -129,14 +129,3 @@ def execution_artifacts(
         artifact_response(artifact)
         for artifact in executions.artifacts(identity.user.id, execution_id)
     ]
-
-
-@router.post(
-    "/executions/{execution_id}/cancel-analysis",
-    response_model=ExecutionResponse,
-    operation_id="cancelAnalysisExecution",
-)
-def cancel_analysis(
-    execution_id: UUID, identity: CurrentIdentity, executions: ExecutionAccess
-) -> ExecutionResponse:
-    return execution_response(executions.cancel(identity.user.id, execution_id))

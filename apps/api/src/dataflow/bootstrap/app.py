@@ -11,22 +11,14 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from dataflow.bootstrap.schemas import ErrorResponse
-from dataflow.modules.analysis_sessions.presentation import router as analysis_sessions_router
 from dataflow.modules.analytics.presentation import router as analytics_router
-from dataflow.modules.automation.presentation import router as automation_router
 from dataflow.modules.cleaning.presentation import router as cleaning_router
 from dataflow.modules.copilot.presentation import router as copilot_router
-from dataflow.modules.dashboards.presentation import router as dashboards_router
 from dataflow.modules.executions.presentation import router as executions_router
 from dataflow.modules.identity.presentation import router as identity_router
 from dataflow.modules.ingestion.presentation import analysis_router
 from dataflow.modules.ingestion.presentation import router as ingestion_router
-from dataflow.modules.planning.presentation import router as planning_router
 from dataflow.modules.projects.presentation import router as projects_router
-from dataflow.modules.quality.presentation import router as quality_router
-from dataflow.modules.reports.presentation import router as reports_router
-from dataflow.modules.templates.presentation import router as templates_router
-from dataflow.modules.understanding.presentation import router as understanding_router
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import engine, session_factory
 from dataflow.platform.errors import ApplicationError
@@ -36,8 +28,8 @@ logger = logging.getLogger("dataflow.http")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 app = FastAPI(
     title="DataFlow AI API",
-    version="0.17.0",
-    description="Identidad y proyectos del monolito modular.",
+    version="0.18.0",
+    description="DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     responses={
         status: {"model": ErrorResponse}
         for status in [400, 401, 403, 404, 409, 413, 415, 422, 429, 500, 503]
@@ -151,14 +143,6 @@ app.include_router(projects_router)
 app.include_router(ingestion_router)
 app.include_router(executions_router)
 app.include_router(analysis_router)
-app.include_router(understanding_router)
-app.include_router(planning_router)
 app.include_router(cleaning_router)
-app.include_router(quality_router)
 app.include_router(analytics_router)
-app.include_router(dashboards_router)
-app.include_router(reports_router)
 app.include_router(copilot_router)
-app.include_router(analysis_sessions_router)
-app.include_router(automation_router)
-app.include_router(templates_router)

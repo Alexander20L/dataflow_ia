@@ -1,6 +1,6 @@
 # Fase 12 — Nuevas fuentes: Excel, SQL Server y PDF
 
-Estado: **plan objetivo**, sin implementación. Se separa de la [Fase 11](phase-11.md) para no mezclar dos cambios grandes: la automatización funciona primero con CSV y después se amplían las fuentes.
+Estado: **12A implementada** (Excel); 12B (SQL Server) y 12C (PDF) siguen como plan. Se separa de la [Fase 11](phase-11.md) para no mezclar dos cambios grandes: la automatización funciona primero con CSV y después se amplían las fuentes.
 
 ## Objetivo
 

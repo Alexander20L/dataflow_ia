@@ -16,8 +16,14 @@ from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.cutover import cutover
 from dataflow.bootstrap.services import make_executions, make_ingestion, make_runner
-from dataflow.modules.copilot.contracts import ActionLink, CallRecord
-from dataflow.modules.copilot.infrastructure import MessageRecord, SQLCopilotRepository
+from dataflow.modules.copilot.contracts import CallRecord
+from dataflow.modules.copilot.infrastructure import (
+    ActionLinkRecord,
+    ConversationRecord,
+    CopilotRequest,
+    MessageRecord,
+    SQLCopilotRepository,
+)
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.identity.infrastructure import UserRecord
 from dataflow.modules.projects.application import ProjectService
@@ -90,12 +96,22 @@ def test_0012_is_additive_and_copilot_records_are_immutable(
             assert db.scalar(select(func.count()).select_from(MessageRecord)) == 0
 
             repository = SQLCopilotRepository(db)
-            conversation = repository.create_conversation(owner, project.id, "Ventas")
+            conversation, message, now = uuid4(), uuid4(), datetime.now(UTC)
+            db.add(
+                ConversationRecord(
+                    id=conversation,
+                    project_id=project.id,
+                    owner_id=owner,
+                    title="Ventas",
+                    created_at=now,
+                )
+            )
+            db.flush()
             call = repository.log_call(
                 CallRecord(
                     owner_id=owner,
                     project_id=project.id,
-                    conversation_id=conversation.id,
+                    conversation_id=conversation,
                     task="copilot_turn",
                     provider="fake",
                     model="fake",
@@ -112,22 +128,40 @@ def test_0012_is_additive_and_copilot_records_are_immutable(
                     outcome="accepted",
                 )
             )
-            message = repository.append(
-                conversation.id, "user", version.id, {"text": "hola"}, None, "c"
+            db.add(
+                MessageRecord(
+                    id=message,
+                    conversation_id=conversation,
+                    seq=1,
+                    role="user",
+                    version_id=version.id,
+                    content={"text": "hola"},
+                    call_id=None,
+                    created_at=now,
+                )
             )
-            repository.add_link(
-                message.id,
-                ActionLink(
+            db.flush()
+            db.add(
+                ActionLinkRecord(
+                    message_id=message,
                     kind="metric",
                     plan_revision_id=None,
                     execution_id=None,
                     metric_revision_id=uuid4(),
-                    created_at=datetime.now(UTC),
-                ),
+                    created_at=now,
+                )
             )
-            repository.remember(owner, conversation.id, uuid4(), "f" * 64, message.id)
+            db.add(
+                CopilotRequest(
+                    owner_id=owner,
+                    scope_id=conversation,
+                    request_key=uuid4(),
+                    fingerprint="f" * 64,
+                    result_id=message,
+                )
+            )
             db.commit()
-            assert call and repository.messages(conversation.id)[0].text == "hola"
+            assert call and repository.user_tokens_since(owner, now.replace(year=2000)) == 15
             for statement in [
                 "UPDATE copilot_messages SET seq = 9",
                 "DELETE FROM copilot_messages",

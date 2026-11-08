@@ -1,5 +1,7 @@
 # Fase 11 — Automatización determinista
 
+> **Fase 13 ([ADR-026](../adr/026-fully-automatic-single-path.md))**: la sesión de análisis (11A), el pipeline gobernado por política (11B–11E) y la auditoría textual con botón (11F) se retiraron; la migración 0019 elimina las tablas de 0013–0017. Siguen vigentes 11.0, la propuesta de limpieza calculada en el backend (11A) y `analytics.query@3` (11E). Este documento se conserva como historia.
+
 Estado: **11.0 a 11E implementadas** (propuesta de limpieza en el backend, sesión de análisis con fuente única, aprobación por política, pipeline automático durable, moldes con interpretación reutilizable y dashboard automático). 11F se entrega en su propio PR y no describen funcionalidades implementadas salvo donde una sección lo indique. [ADR-023](../adr/023-policy-governed-automation.md). Las fuentes nuevas (Excel, SQL Server, PDF) son la [Fase 12](phase-12.md).
 
 ## Objetivo

@@ -5,14 +5,13 @@ import unicodedata
 from typing import Literal
 from uuid import NAMESPACE_URL, uuid5
 
-from dataflow.modules.templates.contracts import TableColumn
-from dataflow.modules.templates.public import candidates
 from dataflow.modules.understanding.contracts import (
     AutomaticColumnHint,
     AutomaticInterpretation,
     AutomaticTemplateHint,
     DatasetProfile,
 )
+from dataflow.modules.understanding.templates import TableColumn, candidates
 
 IDENTIFIERS = {"id", "codigo", "code", "sku", "postal", "telefono", "phone", "dni", "ruc"}
 LABELS = {

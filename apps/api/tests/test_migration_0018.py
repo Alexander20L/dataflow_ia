@@ -10,14 +10,15 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from migration_support import modelled_before_0019
 from sqlalchemy import create_engine, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.cutover import cutover
-from dataflow.modules.copilot.contracts import AuditCard, AuditContent, CallRecord, TextAudit
-from dataflow.modules.copilot.infrastructure import SQLCopilotRepository
+from dataflow.modules.copilot.contracts import CallRecord
+from dataflow.modules.copilot.infrastructure import SQLCopilotRepository, TextAuditRecord
 from dataflow.modules.dashboards.infrastructure import (
     DashboardFamilyRecord,
     DashboardRevisionRecord,
@@ -97,7 +98,9 @@ def test_0018_is_additive_and_text_audits_are_immutable(
 
         with Session(engine, expire_on_commit=False) as db:
             with engine.connect() as connection:
-                context = MigrationContext.configure(connection, opts={})
+                context = MigrationContext.configure(
+                    connection, opts={"include_object": modelled_before_0019}
+                )
                 diff = compare_metadata(context, Base.metadata)
             assert diff == [], diff
             assert db.get(DashboardRevisionRecord, revision) is not None  # nada cambia
@@ -124,10 +127,10 @@ def test_0018_is_additive_and_text_audits_are_immutable(
                     outcome="accepted",
                 )
             )
-            audit = TextAudit(
-                id=uuid4(),
-                dashboard_revision_id=revision,
+            audit = dict(
+                owner_id=owner,
                 project_id=project.id,
+                dashboard_revision_id=revision,
                 audit_key="k" * 64,
                 result_sha256="r" * 64,
                 provider="fake",
@@ -135,23 +138,18 @@ def test_0018_is_additive_and_text_audits_are_immutable(
                 prompt_id="copilot-audit",
                 prompt_version="v1",
                 config={"max_output_tokens": 4000},
-                cards=[AuditCard(card_id=uuid4(), title="T", execution_id=None, included=False)],
-                content=AuditContent(
-                    resumen_ejecutivo=[],
-                    alertas_criticas=[],
-                    recomendaciones=[[], []],
-                    unverified_numbers=0,
-                ),
-                created_by=owner,
+                cards=[],
+                content={},
+                call_id=call,
                 created_at=now,
             )
-            saved = repository.save_audit(audit, call, "c")
-            # Misma revisión y clave: se devuelve la guardada, no se duplica.
-            assert (
-                repository.save_audit(audit.model_copy(update={"id": uuid4()}), call, "c") == saved
-            )
+            db.add(TextAuditRecord(id=uuid4(), **audit))
             db.commit()
-            assert repository.audits(owner, revision) == [saved]
+            # Misma revisión y clave: la restricción única impide duplicarla.
+            db.add(TextAuditRecord(id=uuid4(), **audit))
+            with pytest.raises(IntegrityError):
+                db.commit()
+            db.rollback()
             for statement in [
                 "UPDATE copilot_text_audits SET model = 'x'",
                 "DELETE FROM copilot_text_audits",

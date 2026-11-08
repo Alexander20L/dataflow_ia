@@ -2,10 +2,9 @@
 inmutables, acciones registradas sobre una propuesta, solicitudes idempotentes y el registro de
 cada llamada al proveedor (sólo metadatos: nunca contenido tabular ni texto del prompt)."""
 
-from copy import deepcopy
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID, uuid4
 
 from sqlalchemy import (
@@ -20,22 +19,12 @@ from sqlalchemy import (
     func,
     select,
 )
-from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from dataflow.modules.audit.public import record_event
 from dataflow.modules.copilot.contracts import (
-    ActionLink,
-    AssistantContent,
-    AuditCard,
-    AuditContent,
     CallRecord,
-    Conversation,
-    Message,
-    TextAudit,
 )
 from dataflow.platform.database import Base
-from dataflow.platform.errors import ApplicationError
 
 
 class ConversationRecord(Base):
@@ -135,194 +124,12 @@ class TextAuditRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
-NOT_FOUND = ("CONVERSATION_NOT_FOUND", "Conversación no encontrada.", 404)
-AUDIT_NOT_FOUND = ("TEXT_AUDIT_NOT_FOUND", "Auditoría no encontrada.", 404)
-
-
-def audit_view(record: TextAuditRecord) -> TextAudit:
-    return TextAudit(
-        id=record.id,
-        dashboard_revision_id=record.dashboard_revision_id,
-        project_id=record.project_id,
-        audit_key=record.audit_key,
-        result_sha256=record.result_sha256,
-        provider=record.provider,
-        model=record.model,
-        prompt_id=record.prompt_id,
-        prompt_version=record.prompt_version,
-        config=deepcopy(record.config),
-        cards=[AuditCard.model_validate(card) for card in record.cards],
-        content=AuditContent.model_validate(record.content),
-        created_by=record.owner_id,
-        created_at=record.created_at,
-    )
-
-
-def conversation_view(record: ConversationRecord) -> Conversation:
-    return Conversation(
-        id=record.id, project_id=record.project_id, title=record.title, created_at=record.created_at
-    )
-
-
 class SQLCopilotRepository:
+    """Registro de llamadas a la IA y consumo (presupuestos). Las demás tablas del copiloto
+    (conversaciones, mensajes, auditorías textuales) se conservan sin uso desde la Fase 13."""
+
     def __init__(self, db: Session) -> None:
         self.db = db
-
-    def create_conversation(self, owner: UUID, project: UUID, title: str) -> Conversation:
-        record = ConversationRecord(
-            id=uuid4(),
-            project_id=project,
-            owner_id=owner,
-            title=title,
-            created_at=datetime.now(UTC),
-        )
-        self.db.add(record)
-        self.db.flush()
-        return conversation_view(record)
-
-    def conversations(self, owner: UUID, project: UUID) -> list[Conversation]:
-        records = self.db.scalars(
-            select(ConversationRecord)
-            .where(ConversationRecord.owner_id == owner, ConversationRecord.project_id == project)
-            .order_by(ConversationRecord.created_at.desc(), ConversationRecord.id)
-        )
-        return [conversation_view(r) for r in records]
-
-    def conversation(self, owner: UUID, conversation: UUID) -> Conversation:
-        record = self.db.get(ConversationRecord, conversation)
-        if record is None or record.owner_id != owner:
-            raise ApplicationError(*NOT_FOUND)
-        return conversation_view(record)
-
-    def lock_conversation(self, owner: UUID, conversation: UUID) -> Conversation:
-        record = self.db.scalar(
-            select(ConversationRecord)
-            .where(ConversationRecord.id == conversation, ConversationRecord.owner_id == owner)
-            .with_for_update()
-        )
-        if record is None:
-            raise ApplicationError(*NOT_FOUND)
-        return conversation_view(record)
-
-    def links(self, messages: list[UUID]) -> dict[UUID, list[ActionLink]]:
-        result: dict[UUID, list[ActionLink]] = {m: [] for m in messages}
-        if not messages:
-            return result
-        for record in self.db.scalars(
-            select(ActionLinkRecord)
-            .where(ActionLinkRecord.message_id.in_(messages))
-            .order_by(ActionLinkRecord.created_at, ActionLinkRecord.kind)
-        ):
-            result[record.message_id].append(
-                ActionLink(
-                    kind=record.kind,
-                    plan_revision_id=record.plan_revision_id,
-                    execution_id=record.execution_id,
-                    metric_revision_id=record.metric_revision_id,
-                    created_at=record.created_at,
-                )
-            )
-        return result
-
-    def view(self, record: MessageRecord, links: list[ActionLink]) -> Message:
-        content = deepcopy(record.content)
-        role: Literal["user", "assistant"] = "user" if record.role == "user" else "assistant"
-        return Message(
-            id=record.id,
-            conversation_id=record.conversation_id,
-            seq=record.seq,
-            role=role,
-            version_id=record.version_id,
-            text=content.get("text") if role == "user" else None,
-            assistant=AssistantContent.model_validate(content) if role == "assistant" else None,
-            links=links,
-            created_at=record.created_at,
-        )
-
-    def messages(self, conversation: UUID) -> list[Message]:
-        records = list(
-            self.db.scalars(
-                select(MessageRecord)
-                .where(MessageRecord.conversation_id == conversation)
-                .order_by(MessageRecord.seq)
-            )
-        )
-        links = self.links([r.id for r in records])
-        return [self.view(r, links[r.id]) for r in records]
-
-    def message(self, owner: UUID, message: UUID) -> Message:
-        record = self.db.get(MessageRecord, message)
-        if record is None:
-            raise ApplicationError("MESSAGE_NOT_FOUND", "Mensaje no encontrado.", 404)
-        conversation = self.db.get(ConversationRecord, record.conversation_id)
-        if conversation is None or conversation.owner_id != owner:
-            raise ApplicationError("MESSAGE_NOT_FOUND", "Mensaje no encontrado.", 404)
-        return self.view(record, self.links([record.id])[record.id])
-
-    def append(
-        self,
-        conversation: UUID,
-        role: Literal["user", "assistant"],
-        version: UUID | None,
-        content: dict[str, Any],
-        call: UUID | None,
-        correlation: str,
-    ) -> Message:
-        last = self.db.scalar(
-            select(func.max(MessageRecord.seq)).where(MessageRecord.conversation_id == conversation)
-        )
-        record = MessageRecord(
-            id=uuid4(),
-            conversation_id=conversation,
-            seq=(last or 0) + 1,
-            role=role,
-            version_id=version,
-            content=content,
-            call_id=call,
-            created_at=datetime.now(UTC),
-        )
-        self.db.add(record)
-        self.db.flush()
-        owner = self.db.get(ConversationRecord, conversation)
-        assert owner
-        if role == "assistant":
-            record_event(self.db, owner.owner_id, record.id, "copilot.message.created", correlation)
-        return self.view(record, [])
-
-    def replay(self, owner: UUID, scope: UUID, key: UUID, fingerprint: str) -> UUID | None:
-        request = self.db.get(CopilotRequest, (owner, scope, key))
-        if request is None:
-            return None
-        if request.fingerprint != fingerprint:
-            raise ApplicationError(
-                "IDEMPOTENCY_CONFLICT", "La clave ya corresponde a otra solicitud.", 409
-            )
-        return request.result_id
-
-    def remember(self, owner: UUID, scope: UUID, key: UUID, fingerprint: str, result: UUID) -> None:
-        self.db.add(
-            CopilotRequest(
-                owner_id=owner,
-                scope_id=scope,
-                request_key=key,
-                fingerprint=fingerprint,
-                result_id=result,
-            )
-        )
-        self.db.flush()
-
-    def add_link(self, message: UUID, link: ActionLink) -> None:
-        self.db.add(
-            ActionLinkRecord(
-                message_id=message,
-                kind=link.kind,
-                plan_revision_id=link.plan_revision_id,
-                execution_id=link.execution_id,
-                metric_revision_id=link.metric_revision_id,
-                created_at=link.created_at,
-            )
-        )
-        self.db.flush()
 
     def log_call(self, record: CallRecord) -> UUID:
         identifier = uuid4()
@@ -369,63 +176,6 @@ class SQLCopilotRepository:
             ).where(AICallRecord.owner_id == owner, AICallRecord.created_at >= since)
         )
         return int(total or 0)
-
-    def audit_by_key(self, revision: UUID, key: str) -> TextAudit | None:
-        record = self.db.scalar(
-            select(TextAuditRecord).where(
-                TextAuditRecord.dashboard_revision_id == revision,
-                TextAuditRecord.audit_key == key,
-            )
-        )
-        return audit_view(record) if record else None
-
-    def audit(self, owner: UUID, audit: UUID) -> TextAudit:
-        record = self.db.get(TextAuditRecord, audit)
-        if record is None or record.owner_id != owner:
-            raise ApplicationError(*AUDIT_NOT_FOUND)
-        return audit_view(record)
-
-    def audits(self, owner: UUID, revision: UUID) -> list[TextAudit]:
-        records = self.db.scalars(
-            select(TextAuditRecord)
-            .where(
-                TextAuditRecord.owner_id == owner,
-                TextAuditRecord.dashboard_revision_id == revision,
-            )
-            .order_by(TextAuditRecord.created_at.desc(), TextAuditRecord.id)
-        )
-        return [audit_view(r) for r in records]
-
-    def save_audit(self, audit: TextAudit, call: UUID, correlation: str) -> TextAudit:
-        """Inserta o, si otra petición guardó la misma clave a la vez, devuelve aquélla."""
-        self.db.execute(
-            insert(TextAuditRecord)
-            .values(
-                id=audit.id,
-                owner_id=audit.created_by,
-                project_id=audit.project_id,
-                dashboard_revision_id=audit.dashboard_revision_id,
-                audit_key=audit.audit_key,
-                result_sha256=audit.result_sha256,
-                provider=audit.provider,
-                model=audit.model,
-                prompt_id=audit.prompt_id,
-                prompt_version=audit.prompt_version,
-                config=audit.config,
-                cards=[card.model_dump(mode="json") for card in audit.cards],
-                content=audit.content.model_dump(mode="json"),
-                call_id=call,
-                created_at=audit.created_at,
-            )
-            .on_conflict_do_nothing(index_elements=["dashboard_revision_id", "audit_key"])
-        )
-        saved = self.audit_by_key(audit.dashboard_revision_id, audit.audit_key)
-        assert saved is not None
-        if saved.id == audit.id:
-            record_event(
-                self.db, audit.created_by, audit.id, "copilot.text_audit.created", correlation
-            )
-        return saved
 
     def project_cost_since(self, project: UUID, since: datetime) -> Decimal:
         total = self.db.scalar(

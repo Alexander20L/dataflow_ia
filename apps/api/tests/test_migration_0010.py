@@ -1,4 +1,3 @@
-from datetime import UTC, datetime
 from pathlib import Path
 from uuid import uuid4
 
@@ -7,7 +6,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from migration_support import TABLES_AFTER_0012
+from migration_support import TABLES_AFTER_0012, insert_dashboard
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
@@ -15,11 +14,8 @@ from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.cutover import cutover
 from dataflow.bootstrap.services import make_executions, make_ingestion, make_runner
-from dataflow.modules.dashboards.application import content_sha256
-from dataflow.modules.dashboards.contracts import DashboardContent, DashboardRevision
 from dataflow.modules.dashboards.infrastructure import (
     DashboardRevisionRecord,
-    SQLDashboardRepository,
 )
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.identity.infrastructure import UserRecord
@@ -92,26 +88,8 @@ def test_0010_is_additive_and_dashboard_revisions_are_immutable(
             assert make_ingestion(db, objects).diagnostic(owner, version.id) == diagnostic
             assert db.scalar(select(func.count()).select_from(DashboardRevisionRecord)) == 0
 
-            repository = SQLDashboardRepository(db)
-            family = repository.create_family(owner, project.id)
-            content = DashboardContent(title="Ventas", project_id=project.id)
-            revision = DashboardRevision(
-                id=uuid4(),
-                family_id=family,
-                project_id=project.id,
-                revision=1,
-                previous_revision_id=None,
-                cause="create",
-                refreshed_version_id=None,
-                content=content,
-                content_sha256=content_sha256(content),
-                created_by=owner,
-                created_at=datetime.now(UTC),
-            )
-            repository.append(family, 0, revision, "c")
-            repository.remember(owner, project.id, uuid4(), "f" * 64, revision.id)
+            insert_dashboard(db, owner, project.id)
             db.commit()
-            assert repository.head(owner, family) == (revision, 1)
             for statement in [
                 "UPDATE dashboard_revisions SET content_sha256 = 'x'",
                 "DELETE FROM dashboard_revisions",

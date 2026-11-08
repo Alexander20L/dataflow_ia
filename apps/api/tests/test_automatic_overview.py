@@ -110,7 +110,6 @@ def test_import_publishes_dashboard_without_policy_and_restores_it_after_reload(
     )
     original = client.get(f"/api/v1/versions/{version['id']}/original")
     assert original.content == content
-    assert client.get(f"/api/v1/projects/{pid}/automation-policy").json()["revision"] is None
     table = client.get(f"/api/v1/versions/{version['id']}/representations").json()[0]
     context = client.get(f"/api/v1/representations/{table['id']}/understanding").json()
     assert context["head"] is None

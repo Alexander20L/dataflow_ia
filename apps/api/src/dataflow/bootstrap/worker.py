@@ -3,7 +3,7 @@ import logging
 import time
 
 from dataflow.bootstrap import models  # noqa: F401
-from dataflow.bootstrap.services import make_pipeline, make_runner
+from dataflow.bootstrap.services import make_runner
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import session_factory
@@ -20,10 +20,6 @@ def main() -> None:
         try:
             with session_factory() as db:
                 handled = make_runner(db, objects).run_once()
-            # Fase 11C: avanza los pipelines automáticos (y recupera los detenidos por una
-            # caída). Cada paso es idempotente; un lock por pipeline evita dobles avances.
-            with session_factory() as db:
-                handled = make_pipeline(db, objects).reconcile() > 0 or handled
             if not handled:
                 time.sleep(1)
         except KeyboardInterrupt:
