@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 
-test("subir CSV muestra dashboard guardado sin políticas ni confirmaciones", async ({
+test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
   page,
 }) => {
   const registration = await page.request.post("/api/v1/auth/register", {
@@ -12,14 +12,10 @@ test("subir CSV muestra dashboard guardado sin políticas ni confirmaciones", as
     },
   });
   expect(registration.status()).toBe(201);
-  const advancedRequests: string[] = [];
-  page.on("request", (request) => {
-    if (
-      /\/api\/v1\/.*(?:automation-policy|semantic-contracts|\/plans|\/copilot\/|\/understanding)/.test(
-        request.url(),
-      )
-    )
-      advancedRequests.push(request.url());
+  const failedRequests: string[] = [];
+  page.on("response", (response) => {
+    if (response.url().includes("/api/v1/") && response.status() >= 400)
+      failedRequests.push(`${response.status()} ${response.url()}`);
   });
   await page.goto("/new");
   await page.locator('input[type="file"]').setInputFiles({
@@ -61,13 +57,13 @@ test("subir CSV muestra dashboard guardado sin políticas ni confirmaciones", as
   await expect(
     dashboard.getByText("3 valores utilizados · 1 vacíos excluidos").first(),
   ).toBeVisible();
+  // Fase 13: no quedan herramientas manuales ni etapas que abrir.
+  await expect(
+    page.getByRole("button", { name: /Herramientas avanzadas/ }),
+  ).toHaveCount(0);
   await expect(
     page.getByRole("navigation", { name: "Etapas del CSV real" }),
   ).toHaveCount(0);
-  await expect(
-    page.getByRole("region", { name: "Revisión semántica", exact: true }),
-  ).toHaveCount(0);
-  expect(advancedRequests).toEqual([]);
   const explanation = page.getByRole("region", {
     name: "Explicación automática IA",
   });
@@ -85,10 +81,13 @@ test("subir CSV muestra dashboard guardado sin políticas ni confirmaciones", as
   ).toBeVisible();
   const projectId = page.url().split("/workspace/")[1]?.split("/")[0];
   expect(projectId).toBeTruthy();
-  const policy = await page.request.get(
+  // Las rutas del recorrido manual y del pipeline por política ya no existen.
+  for (const retired of [
     `/api/v1/projects/${projectId}/automation-policy`,
-  );
-  expect((await policy.json()).revision).toBeNull();
+    `/api/v1/projects/${projectId}/plans`,
+    `/api/v1/projects/${projectId}/dashboards`,
+  ])
+    expect((await page.request.get(retired)).status()).toBe(404);
   await page.reload();
   await expect(explanation).toHaveText(savedExplanation.replace(/\s+/g, " "), {
     useInnerText: true,
@@ -105,43 +104,5 @@ test("subir CSV muestra dashboard guardado sin políticas ni confirmaciones", as
       (element) => element.scrollWidth <= element.clientWidth + 1,
     ),
   ).toBeTruthy();
-  await expect(
-    page.getByRole("navigation", { name: "Etapas del CSV real" }),
-  ).toHaveCount(0);
-  await page
-    .getByRole("button", {
-      name: "Herramientas avanzadas (opcionales)",
-      exact: true,
-    })
-    .click();
-  await page
-    .getByRole("navigation", { name: "Etapas del CSV real" })
-    .getByRole("button", { name: /Entendimiento/ })
-    .click();
-  const editor = page.getByRole("region", {
-    name: "Revisión semántica",
-    exact: true,
-  });
-  await editor
-    .getByLabel("Descripción del dataset")
-    .fill("Borrador avanzado opcional");
-  await page
-    .getByRole("button", { name: "Ocultar herramientas avanzadas" })
-    .click();
-  const warning = page.getByRole("dialog", {
-    name: "Hay cambios semánticos sin guardar",
-  });
-  await expect(warning).toBeVisible();
-  await warning.getByRole("button", { name: "Seguir editando" }).click();
-  await expect(editor.getByLabel("Descripción del dataset")).toHaveValue(
-    "Borrador avanzado opcional",
-  );
-  await page
-    .getByRole("button", { name: "Ocultar herramientas avanzadas" })
-    .click();
-  await warning.getByRole("button", { name: "Descartar y continuar" }).click();
-  await expect(editor).toHaveCount(0);
-  await expect(
-    dashboard.getByRole("heading", { name: "Tu análisis automático" }),
-  ).toBeVisible();
+  expect(failedRequests).toEqual([]);
 });

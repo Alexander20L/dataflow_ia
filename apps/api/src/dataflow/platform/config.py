@@ -30,8 +30,6 @@ class Settings(BaseSettings):
     max_csv_rows: int = Field(default=100_000, ge=1, le=100_000)
     max_csv_columns: int = Field(default=128, ge=1, le=128)
     processing_timeout_seconds: int = Field(default=45, ge=5, le=60)
-    # Fase 11C: pipelines automáticos simultáneos por propietario; los demás quedan para revisión.
-    automation_max_running_per_owner: int = Field(default=5, ge=1, le=100)
 
     # Copiloto IA (Fase 10, ADR-022). Desactivado por defecto: sin IA todo lo demás funciona.
     # La clave nunca se registra ni llega al frontend: DATAFLOW_AI_API_KEY (local, en un .env

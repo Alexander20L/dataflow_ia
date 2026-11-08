@@ -20,7 +20,7 @@ from dataflow.modules.cleaning.public import (
     tokens_column_types,
     trim_column_types,
 )
-from dataflow.modules.executions.public import StepExecutor
+from dataflow.modules.executions.public import StepExecutor, StepRegistry
 from dataflow.modules.ingestion.contracts import ReadCsvParameters, ReadXlsxParameters
 from dataflow.modules.planning.public import (
     CATALOG_VERSION,
@@ -197,3 +197,15 @@ class OperationRegistry(OperationCatalog):
 
     def executor(self, operation: str, version: int) -> StepExecutor | None:
         return self.executors.get(f"{operation}@{version}")
+
+
+class WorkerRegistry:
+    """Catálogo planificable más operaciones internas del worker (no planificables)."""
+
+    def __init__(self, catalog: StepRegistry, internal: dict[str, StepExecutor]) -> None:
+        self.catalog, self.internal = catalog, internal
+
+    def executor(self, operation: str, version: int) -> StepExecutor | None:
+        return self.catalog.executor(operation, version) or self.internal.get(
+            f"{operation}@{version}"
+        )

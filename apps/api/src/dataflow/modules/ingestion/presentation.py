@@ -4,11 +4,10 @@ from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Query, Request, Response
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict
 from starlette.concurrency import run_in_threadpool
 
 from dataflow.bootstrap.dependencies import Analysis, CurrentIdentity, Ingestion
-from dataflow.modules.executions.contracts import ExecutionResponse, execution_response
 from dataflow.modules.ingestion.contracts import (
     Diagnostic,
     IngestionSummary,
@@ -19,7 +18,6 @@ from dataflow.modules.ingestion.contracts import (
 from dataflow.modules.ingestion.domain import ImportState
 from dataflow.modules.quality.contracts import QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
-from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.config import get_settings
 from dataflow.platform.csv_export import CsvProfile
 from dataflow.platform.errors import ApplicationError
@@ -296,42 +294,6 @@ def cancel(execution_id: UUID, identity: CurrentIdentity, service: Ingestion) ->
 # Rutas de análisis de sistema: viven aquí para que executions no importe quality/understanding.
 # Conservan prefijo, etiqueta y operation_id del contrato 0.5.
 analysis_router = APIRouter(prefix="/api/v1", tags=["Executions"])
-
-
-class AnalysisRequest(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-    table_artifact_id: UUID
-    table_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    analysis_kind: Literal["profile_quality", "quality_only"] = "profile_quality"
-    semantic_ref: SemanticReference | None = None
-
-
-@analysis_router.post(
-    "/versions/{version_id}/analyses",
-    response_model=ExecutionResponse,
-    status_code=202,
-    operation_id="createVersionAnalysis",
-)
-def create_analysis(
-    version_id: UUID,
-    body: AnalysisRequest,
-    request: Request,
-    identity: CurrentIdentity,
-    service: Analysis,
-    key: Annotated[UUID, Header(alias="Idempotency-Key")],
-) -> ExecutionResponse:
-    return execution_response(
-        service.submit(
-            identity.user.id,
-            version_id,
-            body.table_artifact_id,
-            body.table_sha256,
-            body.analysis_kind,
-            key,
-            request.state.correlation_id,
-            body.semantic_ref,
-        )
-    )
 
 
 @analysis_router.get(

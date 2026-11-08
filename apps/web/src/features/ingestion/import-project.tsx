@@ -13,7 +13,6 @@ import {
   FileSpreadsheet,
   LockKeyhole,
   ShieldCheck,
-  Sparkles,
   UploadCloud,
   X,
 } from "lucide-react";
@@ -39,7 +38,6 @@ export function ImportProject() {
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [example, setExample] = useState(false);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
   const {
@@ -85,15 +83,9 @@ export function ImportProject() {
         },
       );
     }
-    setExample(false);
   }
   async function submit(data: FormData) {
     setError("");
-    if (example) {
-      notify("Ejemplo de ventas listo. No se ha subido ningún archivo.");
-      router.push("/workspace/ventas-2026");
-      return;
-    }
     try {
       const project =
         createProject.data ??
@@ -174,10 +166,7 @@ export function ImportProject() {
             <span className="section-number">02</span>
             <div>
               <h2>Añade tus datos</h2>
-              <p>
-                Opcional: selecciona un archivo, crea el proyecto vacío o abre
-                el ejemplo.
-              </p>
+              <p>Opcional: selecciona un archivo o crea el proyecto vacío.</p>
             </div>
           </div>
           <input
@@ -238,63 +227,6 @@ export function ImportProject() {
               </button>
             </div>
           )}
-          <button
-            type="button"
-            className={`example-picker ${example ? "selected" : ""}`}
-            onClick={() => {
-              setExample((v) => !v);
-              setFile(null);
-              setError("");
-            }}
-          >
-            <span className="example-icon">
-              <Sparkles size={20} />
-            </span>
-            <span>
-              <strong>Prefiero explorar un ejemplo</strong>
-              <small>Ventas 2026 · 240 registros · 6 columnas</small>
-            </span>
-            {example ? <CheckCircle2 size={20} /> : <ArrowRight size={19} />}
-          </button>
-          {example && (
-            <div className="preview-mini">
-              <strong>Vista previa · datos sintéticos</strong>
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Región</th>
-                      <th>Categoría</th>
-                      <th>Importe</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>V-0001</td>
-                      <td>Norte</td>
-                      <td>Tecnología</td>
-                      <td>
-                        <span className="null-value">nulo</span>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>V-0002</td>
-                      <td>Sur</td>
-                      <td>Hogar</td>
-                      <td>277 €</td>
-                    </tr>
-                    <tr>
-                      <td>V-0003</td>
-                      <td>Este</td>
-                      <td>Oficina</td>
-                      <td>414 €</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
           {error && (
             <p className="field-error" role="alert">
               {error}
@@ -323,8 +255,7 @@ export function ImportProject() {
             <ShieldCheck size={18} />
             <span>
               El CSV original se conserva sin cambios. Un worker genera su copia
-              analítica, el perfil y las incidencias de calidad. El ejemplo de
-              ventas sigue siendo independiente de tus archivos.
+              analítica, el perfil, la calidad y el dashboard automáticamente.
             </span>
           </div>
           <div className="form-footer">

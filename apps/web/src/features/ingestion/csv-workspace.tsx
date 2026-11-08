@@ -1,7 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
 import {
-  Check,
   Database,
   Download,
   FileSpreadsheet,
@@ -15,25 +14,11 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
 import { number } from "@/lib/utils";
-import { steps } from "@/lib/demo";
 import { useApp } from "@/lib/providers";
-import { ActiveSource } from "@/features/analysis-sessions/active-source";
 import { XlsxSource } from "./xlsx-source";
 import { AutomaticOverview } from "./automatic-overview";
 import { OverviewAudit } from "./overview-audit";
-import {
-  AutomationNotices,
-  PipelineStatus,
-} from "@/features/automation/pipeline-status";
-import { ExecutionPanel } from "@/features/executions/execution-panel";
-import { SemanticUnderstanding } from "@/features/understanding/semantic-editor";
-import { CleaningStage } from "@/features/cleaning/proposal";
-import { CopilotPanel } from "@/features/copilot/copilot-panel";
-import { QualityRules } from "@/features/quality/rules-editor";
-import { AnalysisStage } from "@/features/analytics/analysis-stage";
-import { DashboardStage } from "@/features/dashboards/dashboard-stage";
 import { CsvExport } from "@/features/reports/csv-export";
-import { ReportStage } from "@/features/reports/report-stage";
 import {
   useCancelImport,
   useDiagnostic,
@@ -46,14 +31,6 @@ import {
   type Separator,
 } from "./api";
 
-// Etapa «Análisis» (índice en `steps`): disponible para datos propios desde la Fase 7A.
-const ANALYSIS_STAGE = 5;
-// Etapa «Visualización»: dashboards persistidos para datos propios desde la Fase 8.
-const DASHBOARD_STAGE = 6;
-// Etapa «Explicación»: informes con procedencia y exportación a PDF desde la Fase 9.
-const REPORT_STAGE = 7;
-const REAL_STAGES = new Set([ANALYSIS_STAGE, DASHBOARD_STAGE, REPORT_STAGE]);
-const CLEANING_STAGE = 3;
 const states = {
   queued: "En cola",
   processing: "Procesando",
@@ -61,6 +38,7 @@ const states = {
   failed: "Error",
   cancelled: "Cancelado",
 };
+
 export function CsvWorkspace({
   projectId,
   archived,
@@ -71,48 +49,8 @@ export function CsvWorkspace({
   const [offset, setOffset] = useState(0);
   const versions = useVersions(projectId, offset);
   const [selected, setSelected] = useState<string | null>(null);
-  const [stage, setStage] = useState(0);
-  const [advanced, setAdvanced] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [semanticDirty, setSemanticDirty] = useState(false);
-  const [semanticEpoch, setSemanticEpoch] = useState(0);
-  const [planDirty, setPlanDirty] = useState(false);
-  const [planEpoch, setPlanEpoch] = useState(0);
-  const [cleaningDirty, setCleaningDirty] = useState(false);
-  const [cleaningEpoch, setCleaningEpoch] = useState(0);
-  const [rulesDirty, setRulesDirty] = useState(false);
-  const [rulesEpoch, setRulesEpoch] = useState(0);
-  // Plan de limpieza guardado desde el copiloto: Limpieza lo abre para la vista previa.
-  const [copilotPlan, setCopilotPlan] = useState<string | null>(null);
-  const [pendingChange, setPendingChange] = useState<{
-    kind: "stage" | "version" | "offset" | "upload" | "advanced";
-    value?: string | number;
-  } | null>(null);
-  function applyChange(change: NonNullable<typeof pendingChange>) {
-    if (change.kind !== "stage") setCopilotPlan(null); // el plan está fijado a su tabla
-    if (change.kind === "stage") setStage(Number(change.value));
-    else if (change.kind === "advanced") {
-      setAdvanced(Boolean(change.value));
-      if (!change.value) setStage(0);
-    } else if (change.kind === "version") setSelected(String(change.value));
-    else if (change.kind === "offset") {
-      setOffset(Number(change.value));
-      setSelected(null);
-    } else setUploading(true);
-  }
-  function requestChange(change: NonNullable<typeof pendingChange>) {
-    // El editor de planes no depende de la etapa: sólo versión/página/carga lo descartan.
-    // Los borradores semántico y de limpieza viven en su etapa: cualquier cambio los descarta.
-    if (
-      semanticDirty ||
-      cleaningDirty ||
-      rulesDirty ||
-      (planDirty && change.kind !== "stage")
-    )
-      setPendingChange(change);
-    else applyChange(change);
-  }
   const cancel = useCancelImport(projectId);
   const items = versions.data?.items ?? [];
   // La versión elegida puede no estar en la página cargada (p. ej. «Ver v1» con más de 20
@@ -148,14 +86,6 @@ export function CsvWorkspace({
       ? `v${v.number} · derivada de ${origin ? `v${origin.number}` : "otra versión"}`
       : `v${v.number} · ${v.file_name}`;
   };
-  async function showDerived(parentVersionId: string) {
-    // La derivada aparece al terminar la aplicación: se recarga el listado antes de elegirla.
-    const latest = (await versions.refetch()).data?.items ?? items;
-    const derived = latest
-      .filter((v) => v.parent_version_id === parentVersionId)
-      .sort((a, b) => b.number - a.number)[0];
-    if (derived) requestChange({ kind: "version", value: derived.id });
-  }
   const diagnostic = useDiagnostic(version);
   if (versions.isPending || loadingOutside)
     return (
@@ -177,18 +107,16 @@ export function CsvWorkspace({
           <h2>
             <Database size={18} /> Datos del proyecto
           </h2>
-          <p>
-            Archivos propios · originales inmutables · resultados calculados
-          </p>
+          <p>Archivos propios · originales inmutables · análisis automático</p>
         </div>
         {!archived && (
           <Button
             variant="outline"
             size="sm"
-            onClick={() => requestChange({ kind: "upload" })}
+            onClick={() => setUploading(true)}
           >
             <UploadCloud size={16} />
-            {items.length ? "Subir nueva versión" : "Subir CSV"}
+            {items.length ? "Subir nueva versión" : "Subir archivo"}
           </Button>
         )}
       </div>
@@ -197,8 +125,9 @@ export function CsvWorkspace({
           <FileSpreadsheet size={40} />
           <h3>Tu primer dataset empieza aquí</h3>
           <p>
-            Sube un CSV en UTF-8 de hasta 5 MB. El sistema comprobará su
-            estructura y preparará tu dashboard automáticamente.
+            Sube un CSV en UTF-8 o un libro de Excel (.xlsx) de hasta 5 MB. El
+            sistema comprobará su estructura y preparará tu dashboard
+            automáticamente.
           </p>
           {!archived && (
             <CsvUpload
@@ -220,9 +149,7 @@ export function CsvWorkspace({
             <select
               id="real-version"
               value={version.id}
-              onChange={(e) =>
-                requestChange({ kind: "version", value: e.target.value })
-              }
+              onChange={(e) => setSelected(e.target.value)}
             >
               {options.map((v) => (
                 <option key={v.id} value={v.id}>
@@ -268,7 +195,8 @@ export function CsvWorkspace({
                   variant="ghost"
                   disabled={offset === 0}
                   onClick={() => {
-                    requestChange({ kind: "offset", value: offset - 20 });
+                    setOffset(offset - 20);
+                    setSelected(null);
                   }}
                 >
                   Más recientes
@@ -278,7 +206,8 @@ export function CsvWorkspace({
                   variant="ghost"
                   disabled={offset + 20 >= (versions.data?.total ?? 0)}
                   onClick={() => {
-                    requestChange({ kind: "offset", value: offset + 20 });
+                    setOffset(offset + 20);
+                    setSelected(null);
                   }}
                 >
                   Anteriores
@@ -300,18 +229,13 @@ export function CsvWorkspace({
                   <strong>
                     {parent ? `v${parent.number}` : "una versión anterior"}
                   </strong>
-                  . No es la versión predeterminada.
+                  .
                 </span>
                 {version.parent_version_id && (
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() =>
-                      requestChange({
-                        kind: "version",
-                        value: version.parent_version_id!,
-                      })
-                    }
+                    onClick={() => setSelected(version.parent_version_id!)}
                   >
                     Ver {parent ? `v${parent.number}` : "versión de origen"}
                   </Button>
@@ -324,265 +248,80 @@ export function CsvWorkspace({
               </span>
             )}
           </div>
-          {diagnostic.data?.profile.overview && (
+          {["queued", "processing"].includes(version.state) ? (
+            <div className="processing-state" role="status">
+              <LoaderCircle className="spin" size={30} />
+              <h3>
+                {version.state === "queued"
+                  ? "Esperando al worker"
+                  : "Analizando tus datos"}
+              </h3>
+              <p>
+                El original ya está guardado. Puedes salir y volver; la
+                ejecución permanece en PostgreSQL.
+              </p>
+              <small>
+                Intento {version.attempts} de 3 · no se publican resultados
+                parciales
+              </small>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCancelling(true)}
+              >
+                Cancelar procesamiento
+              </Button>
+            </div>
+          ) : version.state === "failed" ? (
+            <div className="empty-state">
+              <h3>No se pudo procesar este archivo</h3>
+              <p role="alert">{version.error_message}</p>
+              <code>{version.error_code}</code>
+              <p>
+                El original sigue disponible. Corrige el archivo y súbelo como
+                una nueva versión.
+              </p>
+            </div>
+          ) : version.state === "cancelled" ? (
+            <div className="empty-state">
+              <h3>Procesamiento cancelado</h3>
+              <p>No se publicaron resultados. El original se conserva.</p>
+            </div>
+          ) : diagnostic.isPending ? (
+            <p className="empty-copy" role="status">
+              Cargando resultados…
+            </p>
+          ) : diagnostic.isError ? (
+            <div className="empty-state">
+              <p role="alert">{errorMessage(diagnostic.error)}</p>
+              <Button onClick={() => void diagnostic.refetch()}>
+                Reintentar
+              </Button>
+            </div>
+          ) : diagnostic.data?.profile.overview ? (
             <>
               <AutomaticOverview
+                key={`overview-${version.id}`}
                 overview={diagnostic.data.profile.overview}
                 versionNumber={version.number}
               />
-              <OverviewAudit key={version.id} versionId={version.id} />
+              <OverviewAudit
+                key={`audit-${version.id}`}
+                versionId={version.id}
+              />
             </>
-          )}
-          <Button
-            variant="outline"
-            size="sm"
-            aria-expanded={advanced}
-            aria-controls={`advanced-tools-${projectId}`}
-            onClick={() =>
-              requestChange({ kind: "advanced", value: advanced ? 0 : 1 })
-            }
-          >
-            {advanced
-              ? "Ocultar herramientas avanzadas"
-              : "Herramientas avanzadas (opcionales)"}
-          </Button>
-          <div
-            id={`advanced-tools-${projectId}`}
-            className={advanced ? "advanced-workspace" : undefined}
-          >
-            {advanced && (
-              <>
-                <ActiveSource
-                  projectId={projectId}
-                  viewed={version}
-                  archived={archived}
-                  onShowVersion={(versionId) =>
-                    requestChange({ kind: "version", value: versionId })
-                  }
-                />
-                <PipelineStatus
-                  projectId={projectId}
-                  versionId={version.id}
-                  onShowVersion={(versionId) =>
-                    requestChange({ kind: "version", value: versionId })
-                  }
-                  onShowDashboard={() =>
-                    requestChange({ kind: "stage", value: DASHBOARD_STAGE })
-                  }
-                />
-                <AutomationNotices
-                  projectId={projectId}
-                  onShowVersion={(versionId) =>
-                    requestChange({ kind: "version", value: versionId })
-                  }
-                />
-                <div className="original-meta">
-                  <span>
-                    {number(version.byte_size)} bytes
-                    {version.kind === "derived" ? " · Parquet" : ""}
-                  </span>
-                  <span className="mono" title={version.sha256}>
-                    SHA-256 {version.sha256}
-                  </span>
-                </div>
-                <nav className="stepper" aria-label="Etapas del CSV real">
-                  {steps.map((step, i) => (
-                    <button
-                      key={step}
-                      className={`step ${stage === i ? "current" : ""}`}
-                      disabled={i > 3 && !REAL_STAGES.has(i)}
-                      title={
-                        i > 3 && !REAL_STAGES.has(i)
-                          ? "Se integrará en el siguiente incremento"
-                          : undefined
-                      }
-                      onClick={() => {
-                        if (i !== stage)
-                          requestChange({ kind: "stage", value: i });
-                      }}
-                    >
-                      <span
-                        className={`step-number ${version.state === "succeeded" && i <= 2 ? "done" : ""}`}
-                      >
-                        {version.state === "succeeded" && i <= 2 ? (
-                          <Check size={13} />
-                        ) : (
-                          i + 1
-                        )}
-                      </span>
-                      <span>{step}</span>
-                    </button>
-                  ))}
-                </nav>
-              </>
-            )}
-            <div className="stage-content">
-              {advanced && (
-                <div className="stage-title">
-                  <div>
-                    <p className="eyebrow">ETAPA {stage + 1} · DATOS REALES</p>
-                    <h2>{steps[stage]}</h2>
-                  </div>
-                  <span className="badge calculated">v{version.number}</span>
-                </div>
-              )}
-              {["queued", "processing"].includes(version.state) ? (
-                <div className="processing-state" role="status">
-                  <LoaderCircle className="spin" size={30} />
-                  <h3>
-                    {version.state === "queued"
-                      ? "Esperando al worker"
-                      : "Analizando tus datos"}
-                  </h3>
-                  <p>
-                    El original ya está guardado. Puedes salir y volver; la
-                    ejecución permanece en PostgreSQL.
-                  </p>
-                  <small>
-                    Intento {version.attempts} de 3 · no se publican resultados
-                    parciales
-                  </small>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setCancelling(true)}
-                  >
-                    Cancelar procesamiento
-                  </Button>
-                </div>
-              ) : version.state === "failed" ? (
-                <div className="empty-state">
-                  <h3>No se pudo procesar este CSV</h3>
-                  <p role="alert">{version.error_message}</p>
-                  <code>{version.error_code}</code>
-                  <p>
-                    El original sigue disponible. Corrige el archivo y súbelo
-                    como una nueva versión.
-                  </p>
-                </div>
-              ) : version.state === "cancelled" ? (
-                <div className="empty-state">
-                  <h3>Procesamiento cancelado</h3>
-                  <p>No se publicaron resultados. El original se conserva.</p>
-                </div>
-              ) : diagnostic.isPending ? (
-                <p className="empty-copy" role="status">
-                  Cargando diagnóstico…
-                </p>
-              ) : diagnostic.isError ? (
-                <div className="empty-state">
-                  <p role="alert">{errorMessage(diagnostic.error)}</p>
-                  <Button onClick={() => void diagnostic.refetch()}>
-                    Reintentar
-                  </Button>
-                </div>
-              ) : diagnostic.data &&
-                (advanced || !diagnostic.data.profile.overview) ? (
-                <>
-                  {!REAL_STAGES.has(stage) && (
-                    <RealResults
-                      key={`${version.id}-${stage}`}
-                      version={version}
-                      diagnostic={diagnostic.data}
-                      stage={stage}
-                    />
-                  )}
-                  {stage === ANALYSIS_STAGE && (
-                    <AnalysisStage
-                      projectId={projectId}
-                      versionId={version.id}
-                      archived={archived}
-                      onOpenUnderstanding={() =>
-                        requestChange({ kind: "stage", value: 1 })
-                      }
-                    />
-                  )}
-                  {stage === REPORT_STAGE && (
-                    <ReportStage
-                      projectId={projectId}
-                      versionId={version.id}
-                      versionNumber={version.number}
-                      archived={archived}
-                    />
-                  )}
-                  {stage === DASHBOARD_STAGE && (
-                    <DashboardStage
-                      projectId={projectId}
-                      versionId={version.id}
-                      versionNumber={version.number}
-                      archived={archived}
-                    />
-                  )}
-                  {stage === 2 && (
-                    <QualityRules
-                      key={`${version.id}-${rulesEpoch}`}
-                      projectId={projectId}
-                      versionId={version.id}
-                      archived={archived}
-                      onDirtyChange={setRulesDirty}
-                    />
-                  )}
-                  {stage === CLEANING_STAGE && (
-                    <CleaningStage
-                      key={`${version.id}-${cleaningEpoch}-${copilotPlan ?? ""}`}
-                      projectId={projectId}
-                      version={version}
-                      diagnostic={diagnostic.data}
-                      archived={archived}
-                      copilotPlanId={copilotPlan}
-                      onDismissCopilotPlan={() => setCopilotPlan(null)}
-                      onShowDerived={(id) => void showDerived(id)}
-                      onDirtyChange={setCleaningDirty}
-                    />
-                  )}
-                  {stage === 1 && (
-                    <SemanticUnderstanding
-                      key={`${version.id}-${semanticEpoch}`}
-                      versionId={version.id}
-                      baselineExecutionId={version.execution_id}
-                      archived={archived}
-                      onDirtyChange={setSemanticDirty}
-                    />
-                  )}
-                </>
-              ) : null}
-            </div>
-            {advanced && version.state === "succeeded" && (
-              <CopilotPanel
-                projectId={projectId}
-                versionId={version.id}
-                versionNumber={version.number}
-                archived={archived}
-                onOpenStage={(target) =>
-                  requestChange({
-                    kind: "stage",
-                    value: target === "understanding" ? 1 : ANALYSIS_STAGE,
-                  })
-                }
-                onOpenCleaningPlan={(plan) => {
-                  setCopilotPlan(plan);
-                  requestChange({ kind: "stage", value: CLEANING_STAGE });
-                }}
-              />
-            )}
-            {advanced && version.state === "succeeded" && (
-              <ExecutionPanel
-                key={`${version.id}-${planEpoch}`}
-                projectId={projectId}
-                versionId={version.id}
-                archived={archived}
-                onDirtyChange={setPlanDirty}
-                onOpenUnderstanding={() =>
-                  requestChange({ kind: "stage", value: 1 })
-                }
-              />
-            )}
-          </div>
+          ) : diagnostic.data ? (
+            <RealResults
+              key={version.id}
+              version={version}
+              diagnostic={diagnostic.data}
+            />
+          ) : null}
         </>
       )}
       {uploading && (
         <Dialog
-          title={items.length ? "Añadir una versión del CSV" : "Subir CSV"}
+          title={items.length ? "Añadir una versión" : "Subir archivo"}
           onClose={() => setUploading(false)}
         >
           <CsvUpload
@@ -593,55 +332,6 @@ export function CsvWorkspace({
               setSelected(null);
             }}
           />
-        </Dialog>
-      )}
-      {pendingChange && (
-        <Dialog
-          title={
-            semanticDirty
-              ? "Hay cambios semánticos sin guardar"
-              : cleaningDirty
-                ? "Hay cambios sin guardar en la propuesta de limpieza"
-                : rulesDirty
-                  ? "Hay cambios sin guardar en las reglas de calidad"
-                  : "Hay cambios sin guardar en el plan"
-          }
-          onClose={() => setPendingChange(null)}
-        >
-          <p className="dialog-copy">
-            Puedes seguir editando o descartar el borrador antes de cambiar de
-            etapa, versión, carga o cerrar las herramientas avanzadas. Las
-            revisiones guardadas no se alteran.
-          </p>
-          <div className="form-footer">
-            <Button variant="ghost" onClick={() => setPendingChange(null)}>
-              Seguir editando
-            </Button>
-            <Button
-              onClick={() => {
-                if (semanticDirty) {
-                  setSemanticDirty(false);
-                  setSemanticEpoch((epoch) => epoch + 1);
-                }
-                if (rulesDirty) {
-                  setRulesDirty(false);
-                  setRulesEpoch((epoch) => epoch + 1);
-                }
-                if (cleaningDirty) {
-                  setCleaningDirty(false);
-                  setCleaningEpoch((epoch) => epoch + 1);
-                }
-                if (planDirty && pendingChange.kind !== "stage") {
-                  setPlanDirty(false);
-                  setPlanEpoch((epoch) => epoch + 1);
-                }
-                applyChange(pendingChange);
-                setPendingChange(null);
-              }}
-            >
-              Descartar y continuar
-            </Button>
-          </div>
         </Dialog>
       )}
       {cancelling && version && (
@@ -815,11 +505,9 @@ export function CsvUpload({
 function RealResults({
   version,
   diagnostic,
-  stage,
 }: {
   version: DatasetVersion;
   diagnostic: Diagnostic;
-  stage: number;
 }) {
   const [page, setPage] = useState(0);
   const [issue, setIssue] = useState<string | undefined>();
@@ -843,241 +531,226 @@ function RealResults({
           </strong>
         </div>
       </div>
-      {stage === 1 ? (
-        <>
-          <div className="info-banner">
-            <ShieldCheck size={18} />
-            <span>
-              {profile.columns.some((c) => c.technical_type !== "string")
-                ? "Esta versión tiene columnas convertidas por una limpieza aprobada (tipo técnico distinto de texto); el resto se conserva como texto. "
-                : "Los valores se conservan como texto en Parquet. "}
-              Los tipos sugeridos son heurísticas deterministas, no decisiones
-              aprobadas ni sugerencias de IA.
-            </span>
-          </div>
-          <div className="table-scroll bordered">
-            <table>
-              <thead>
-                <tr>
-                  <th>Columna</th>
-                  <th>Tipo técnico</th>
-                  <th>Tipo sugerido</th>
-                  <th>Nulos</th>
-                  <th>Únicos</th>
-                  <th>Ejemplos</th>
+      <>
+        <div className="info-banner">
+          <ShieldCheck size={18} />
+          <span>
+            {profile.columns.some((c) => c.technical_type !== "string")
+              ? "Esta versión tiene columnas convertidas por una limpieza (tipo técnico distinto de texto); el resto se conserva como texto. "
+              : "Los valores se conservan como texto en Parquet. "}
+            Los tipos sugeridos son heurísticas deterministas, no sugerencias de
+            IA.
+          </span>
+        </div>
+        <div className="table-scroll bordered">
+          <table>
+            <thead>
+              <tr>
+                <th>Columna</th>
+                <th>Tipo técnico</th>
+                <th>Tipo sugerido</th>
+                <th>Nulos</th>
+                <th>Únicos</th>
+                <th>Ejemplos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profile.columns.map((column) => (
+                <tr key={column.name}>
+                  <td>
+                    <strong>{column.name}</strong>
+                  </td>
+                  <td className="mono">{column.technical_type}</td>
+                  <td>
+                    <span className="badge neutral">
+                      {column.suggested_type}
+                    </span>
+                  </td>
+                  <td>
+                    {column.null_count} (
+                    {((column.null_count / profile.row_count) * 100).toFixed(2)}{" "}
+                    %)
+                  </td>
+                  <td>{number(column.unique_count)}</td>
+                  <td className="sample-cell">
+                    {column.examples.join(" · ") || "Sin valores"}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {profile.columns.map((column) => (
-                  <tr key={column.name}>
-                    <td>
-                      <strong>{column.name}</strong>
-                    </td>
-                    <td className="mono">{column.technical_type}</td>
-                    <td>
-                      <span className="badge neutral">
-                        {column.suggested_type}
-                      </span>
-                    </td>
-                    <td>
-                      {column.null_count} (
-                      {((column.null_count / profile.row_count) * 100).toFixed(
-                        2,
-                      )}{" "}
-                      %)
-                    </td>
-                    <td>{number(column.unique_count)}</td>
-                    <td className="sample-cell">
-                      {column.examples.join(" · ") || "Sin valores"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="section-heading">
+          <h3>Estadísticas numéricas sugeridas</h3>
+          <span className="badge calculated">
+            Decimal · sin convertir el dataset
+          </span>
+        </div>
+        {profile.columns
+          .filter((c) => c.numeric)
+          .map((c) => (
+            <div className="finding-card" key={c.name}>
+              <strong>{c.name}</strong>
+              <p>
+                Suma: <code>{c.numeric!.total}</code> · media:{" "}
+                <code>{c.numeric!.mean}</code>
+              </p>
+              <small>
+                {c.numeric!.count} valores válidos · nulos excluidos · precisión
+                de cálculo de 50 dígitos.
+              </small>
+            </div>
+          ))}
+        <div className="info-banner">
+          <ShieldCheck size={18} />
+          <span>
+            Completitud = celdas no vacías / total de celdas × 100. Se evalúan
+            vacíos, filas duplicadas y valores compuestos sólo de espacios. No
+            es una puntuación universal de calidad.
+          </span>
+        </div>
+        <div className="mini-metrics">
+          <div>
+            <small>Celdas vacías</small>
+            <strong>{number(quality.missing_cells)}</strong>
           </div>
-          <div className="section-heading">
-            <h3>Estadísticas numéricas sugeridas</h3>
-            <span className="badge calculated">
-              Decimal · sin convertir el dataset
-            </span>
+          <div>
+            <small>Filas duplicadas adicionales</small>
+            <strong>{number(quality.duplicate_rows)}</strong>
           </div>
-          {profile.columns
-            .filter((c) => c.numeric)
-            .map((c) => (
-              <div className="finding-card" key={c.name}>
-                <strong>{c.name}</strong>
-                <p>
-                  Suma: <code>{c.numeric!.total}</code> · media:{" "}
-                  <code>{c.numeric!.mean}</code>
-                </p>
-                <small>
-                  {c.numeric!.count} valores válidos · nulos excluidos ·
-                  precisión de cálculo de 50 dígitos.
-                </small>
+          <div>
+            <small>Celdas sólo con espacios</small>
+            <strong>{number(quality.whitespace_cells)}</strong>
+          </div>
+        </div>
+        <div className="section-heading">
+          <h3>Incidencias · {quality.issues.length}</h3>
+          {issue && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setIssue(undefined);
+                setPage(0);
+              }}
+            >
+              <X size={14} />
+              Quitar filtro
+            </Button>
+          )}
+        </div>
+        {quality.issues.map((item) => (
+          <div
+            className={`issue-card ${issue === item.id ? "issue-selected" : ""}`}
+            key={item.id}
+          >
+            <div>
+              <strong>
+                {item.rule} · {item.column ?? "Todas las columnas"}
+              </strong>
+              <p>{item.description}</p>
+              <small>
+                {item.affected_rows} registros · gravedad{" "}
+                {item.severity === "medium" ? "media" : "baja"}
+              </small>
+              <small>{item.proposed_action}</small>
+              <button
+                className="text-link"
+                onClick={() => {
+                  setIssue(item.id);
+                  setPage(0);
+                }}
+              >
+                Ver registros afectados
+              </button>
+            </div>
+            <span className="badge review">{number(item.affected_rows)}</span>
+          </div>
+        ))}
+        {!quality.issues.length && (
+          <div className="success-banner">
+            <ShieldCheck size={20} />
+            No se detectaron incidencias en las tres reglas evaluadas.
+          </div>
+        )}
+        <div className="section-heading">
+          <h3>
+            {issue ? `Registros afectados · ${issue}` : "Vista previa del CSV"}
+          </h3>
+          <span className="badge calculated">Datos reales</span>
+        </div>
+        {preview.isPending ? (
+          <p className="empty-copy" role="status">
+            Cargando registros…
+          </p>
+        ) : preview.isError ? (
+          <div className="empty-state">
+            <p role="alert">{errorMessage(preview.error)}</p>
+            <Button onClick={() => void preview.refetch()}>Reintentar</Button>
+          </div>
+        ) : (
+          preview.data && (
+            <div className="data-table">
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Registro</th>
+                      {preview.data.columns.map((name) => (
+                        <th key={name}>{name}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.data.rows.map((row) => (
+                      <tr key={row.row_number}>
+                        <td>{row.row_number}</td>
+                        {preview.data!.columns.map((name) => (
+                          <td
+                            key={name}
+                            className="csv-value"
+                            title={row.values[name] ?? "nulo"}
+                          >
+                            {row.values[name] === null ? (
+                              <span className="null-value">nulo</span>
+                            ) : (
+                              row.values[name]
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
-        </>
-      ) : (
-        <>
-          {stage === 2 && (
-            <>
-              <div className="info-banner">
-                <ShieldCheck size={18} />
+              <div className="table-footer">
                 <span>
-                  Completitud = celdas no vacías / total de celdas × 100. Se
-                  evalúan vacíos, filas duplicadas y valores compuestos sólo de
-                  espacios. No es una puntuación universal de calidad.
+                  {preview.data.rows.length} de {number(preview.data.total)}{" "}
+                  registros · página {page + 1}
                 </span>
-              </div>
-              <div className="mini-metrics">
-                <div>
-                  <small>Celdas vacías</small>
-                  <strong>{number(quality.missing_cells)}</strong>
-                </div>
-                <div>
-                  <small>Filas duplicadas adicionales</small>
-                  <strong>{number(quality.duplicate_rows)}</strong>
-                </div>
-                <div>
-                  <small>Celdas sólo con espacios</small>
-                  <strong>{number(quality.whitespace_cells)}</strong>
-                </div>
-              </div>
-              <div className="section-heading">
-                <h3>Incidencias · {quality.issues.length}</h3>
-                {issue && (
+                <div className="pagination">
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      setIssue(undefined);
-                      setPage(0);
-                    }}
+                    disabled={page === 0}
+                    onClick={() => setPage((p) => p - 1)}
                   >
-                    <X size={14} />
-                    Quitar filtro
+                    Anterior
                   </Button>
-                )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={(page + 1) * 10 >= preview.data.total}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
               </div>
-              {quality.issues.map((item) => (
-                <div
-                  className={`issue-card ${issue === item.id ? "issue-selected" : ""}`}
-                  key={item.id}
-                >
-                  <div>
-                    <strong>
-                      {item.rule} · {item.column ?? "Todas las columnas"}
-                    </strong>
-                    <p>{item.description}</p>
-                    <small>
-                      {item.affected_rows} registros · gravedad{" "}
-                      {item.severity === "medium" ? "media" : "baja"}
-                    </small>
-                    <small>{item.proposed_action}</small>
-                    <button
-                      className="text-link"
-                      onClick={() => {
-                        setIssue(item.id);
-                        setPage(0);
-                      }}
-                    >
-                      Ver registros afectados
-                    </button>
-                  </div>
-                  <span className="badge review">
-                    {number(item.affected_rows)}
-                  </span>
-                </div>
-              ))}
-              {!quality.issues.length && (
-                <div className="success-banner">
-                  <ShieldCheck size={20} />
-                  No se detectaron incidencias en las tres reglas evaluadas.
-                </div>
-              )}
-            </>
-          )}
-          <div className="section-heading">
-            <h3>
-              {issue
-                ? `Registros afectados · ${issue}`
-                : "Vista previa del CSV"}
-            </h3>
-            <span className="badge calculated">Datos reales</span>
-          </div>
-          {preview.isPending ? (
-            <p className="empty-copy" role="status">
-              Cargando registros…
-            </p>
-          ) : preview.isError ? (
-            <div className="empty-state">
-              <p role="alert">{errorMessage(preview.error)}</p>
-              <Button onClick={() => void preview.refetch()}>Reintentar</Button>
             </div>
-          ) : (
-            preview.data && (
-              <div className="data-table">
-                <div className="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Registro</th>
-                        {preview.data.columns.map((name) => (
-                          <th key={name}>{name}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview.data.rows.map((row) => (
-                        <tr key={row.row_number}>
-                          <td>{row.row_number}</td>
-                          {preview.data!.columns.map((name) => (
-                            <td
-                              key={name}
-                              className="csv-value"
-                              title={row.values[name] ?? "nulo"}
-                            >
-                              {row.values[name] === null ? (
-                                <span className="null-value">nulo</span>
-                              ) : (
-                                row.values[name]
-                              )}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="table-footer">
-                  <span>
-                    {preview.data.rows.length} de {number(preview.data.total)}{" "}
-                    registros · página {page + 1}
-                  </span>
-                  <div className="pagination">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={page === 0}
-                      onClick={() => setPage((p) => p - 1)}
-                    >
-                      Anterior
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={(page + 1) * 10 >= preview.data.total}
-                      onClick={() => setPage((p) => p + 1)}
-                    >
-                      Siguiente
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )
-          )}
-        </>
-      )}
+          )
+        )}
+      </>
       <div className="dataset-provenance">
         <span>
           {profile.engine_version} · Polars {profile.polars_version}
@@ -1091,7 +764,8 @@ function RealResults({
       <p className="muted fine-print">
         El original se conserva íntegro. Las celdas vacías se representan como
         nulos en la copia analítica; los espacios y los ceros iniciales
-        permanecen. Las etapas posteriores todavía no procesan este dataset.
+        permanecen. Esta versión es anterior al análisis automático: se muestra
+        su diagnóstico técnico.
       </p>
     </>
   );

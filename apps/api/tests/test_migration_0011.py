@@ -7,7 +7,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from migration_support import TABLES_AFTER_0012
+from migration_support import TABLES_AFTER_0012, insert_report
 from sqlalchemy import create_engine, func, select, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
@@ -19,9 +19,7 @@ from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.identity.infrastructure import UserRecord
 from dataflow.modules.projects.application import ProjectService
 from dataflow.modules.projects.infrastructure import SQLProjectRepository
-from dataflow.modules.reports.application import content_sha256
-from dataflow.modules.reports.contracts import ReportContent, ReportRevision
-from dataflow.modules.reports.infrastructure import ReportRevisionRecord, SQLReportRepository
+from dataflow.modules.reports.infrastructure import ReportRenderRecord, ReportRevisionRecord
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import Base
 
@@ -89,29 +87,19 @@ def test_0011_is_additive_and_report_revisions_are_immutable(
             assert make_ingestion(db, objects).diagnostic(owner, version.id) == diagnostic
             assert db.scalar(select(func.count()).select_from(ReportRevisionRecord)) == 0
 
-            repository = SQLReportRepository(db)
-            family = repository.create_family(owner, project.id)
-            content = ReportContent(title="Ventas", project_id=project.id, version_id=version.id)
-            revision = ReportRevision(
-                id=uuid4(),
-                family_id=family,
-                project_id=project.id,
-                revision=1,
-                previous_revision_id=None,
-                cause="create",
-                refreshed_version_id=None,
-                content=content,
-                content_sha256=content_sha256(content),
-                created_by=owner,
-                created_at=datetime.now(UTC),
+            revision = insert_report(db, owner, project.id)
+            family = db.get(ReportRevisionRecord, revision)
+            assert family is not None
+            db.add(
+                ReportRenderRecord(
+                    execution_id=next(iter(after)),
+                    owner_id=owner,
+                    family_id=family.family_id,
+                    revision_id=revision,
+                    created_at=datetime.now(UTC),
+                )
             )
-            repository.append(family, 0, revision, "c")
-            repository.remember(owner, project.id, uuid4(), "f" * 64, revision.id)
-            run = next(iter(after))
-            repository.add_render(owner, family, revision.id, run)
             db.commit()
-            assert repository.head(owner, family) == (revision, 1)
-            assert repository.renders(owner, family) == [(run, revision.id)]
             for statement in [
                 "UPDATE report_revisions SET content_sha256 = 'x'",
                 "DELETE FROM report_revisions",

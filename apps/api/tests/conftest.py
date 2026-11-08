@@ -5,6 +5,7 @@ from uuid import uuid4
 
 import pytest
 from fastapi.testclient import TestClient
+from service_routes import router as service_routes
 from sqlalchemy import Engine, create_engine, text
 from sqlalchemy.orm import Session
 
@@ -15,6 +16,9 @@ from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import Base, get_db
 from dataflow.platform.runtime import RuntimeTransition
+
+# Rutas sólo de pruebas sobre los servicios conservados (Fase 13): nunca en la API real.
+app.include_router(service_routes)
 
 
 @pytest.fixture(scope="session")

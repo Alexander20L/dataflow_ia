@@ -3,41 +3,24 @@ from uuid import uuid5
 from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.ai import configured
-from dataflow.bootstrap.analysis_sessions_access import AnalysisSessionInputs
 from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
-from dataflow.bootstrap.automation_access import PolicyCleaningAccess
 from dataflow.bootstrap.cleaning_access import CleaningPlanAccess, CleaningProposalAccess
-from dataflow.bootstrap.copilot_access import CopilotAccess
-from dataflow.bootstrap.dashboards_access import DashboardAccess
-from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry
+from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry, WorkerRegistry
 from dataflow.bootstrap.overview_audit import (
     OverviewAuditStep,
     OverviewInput,
     enqueue_audit,
     record_audit_call,
 )
-from dataflow.bootstrap.pipeline_access import PipelineAccess, start_pipeline
 from dataflow.bootstrap.planning_access import PlanningTableAccess
 from dataflow.bootstrap.provenance import environment_snapshot
 from dataflow.bootstrap.quality_access import QualityTableAccess
-from dataflow.bootstrap.reports_access import (
-    ReportAccess,
-    ReportInputResolver,
-    WorkerRegistry,
-)
 from dataflow.bootstrap.semantic_access import SemanticRepresentationAccess
-from dataflow.bootstrap.templates_access import TemplateTablesAccess
 from dataflow.integrations.ai import AIProvider
-from dataflow.modules.analysis_sessions.application import AnalysisSessionService
-from dataflow.modules.analysis_sessions.infrastructure import SQLAnalysisSessionRepository
 from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.analytics.infrastructure import SQLMetricRepository
 from dataflow.modules.analytics.steps import AnalyticsQueryStep, MetricSource
 from dataflow.modules.audit.public import record_event
-from dataflow.modules.automation.application import AutomationService
-from dataflow.modules.automation.infrastructure import SQLPolicyRepository
-from dataflow.modules.automation.pipeline import PipelineService
-from dataflow.modules.automation.pipeline_infrastructure import SQLRunRepository
 from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
 from dataflow.modules.cleaning.engine import IsolatedCleaner
 from dataflow.modules.cleaning.public import (
@@ -57,8 +40,6 @@ from dataflow.modules.cleaning.steps import (
 )
 from dataflow.modules.copilot.application import CopilotConfig, CopilotService
 from dataflow.modules.copilot.infrastructure import SQLCopilotRepository
-from dataflow.modules.dashboards.application import DashboardService
-from dataflow.modules.dashboards.infrastructure import SQLDashboardRepository
 from dataflow.modules.datasets.application import Datasets
 from dataflow.modules.datasets.infrastructure import SQLDatasetRepository
 from dataflow.modules.datasets.objects import LocalObjects
@@ -89,11 +70,6 @@ from dataflow.modules.planning.infrastructure import SQLPlanningRepository
 from dataflow.modules.projects.public import ProjectPermissions
 from dataflow.modules.quality.application import RulesetService
 from dataflow.modules.quality.infrastructure import SQLRulesetRepository
-from dataflow.modules.reports.application import ReportService
-from dataflow.modules.reports.infrastructure import SQLReportRepository
-from dataflow.modules.reports.steps import RenderReportStep
-from dataflow.modules.templates.application import TemplateService
-from dataflow.modules.templates.infrastructure import SQLMappingRepository
 from dataflow.modules.understanding.application import SemanticService
 from dataflow.modules.understanding.semantic_repository import SQLSemanticRepository
 from dataflow.platform.config import get_settings
@@ -223,10 +199,6 @@ class DatasetPublication:
                 lease.execution_id,
                 {artifact.kind: artifact.id for artifact in artifacts},
             )
-            # Fase 11C: con una política activa, la importación inicia el pipeline en la
-            # misma transacción que la publica.
-            version = self.datasets.get(lease.owner_id, lease.version_id)
-            start_pipeline(self.db, lease.owner_id, version.project_id, version.id)
             profile = next((a for a in artifacts if a.kind == "profile"), None)
             if (
                 profile is not None
@@ -278,7 +250,6 @@ WORKER_KINDS: set[RunKind] = {
     "plan",
     "cleaning_preview",
     "cleaning_apply",
-    "report_render",
 }
 
 
@@ -345,7 +316,6 @@ def make_runner(
             "table": TableInputResolver(
                 datasets, executions, projects, make_semantics(db, objects)
             ),
-            "report": ReportInputResolver(lambda: make_reports(db, objects), objects),
             "overview": OverviewInput(datasets, executions, projects),
         },
         WorkerRegistry(
@@ -357,9 +327,8 @@ def make_runner(
                 AnalyticsMetricSource(make_metrics(db, objects), make_semantics(db, objects)),
             ),
             {
-                "reports.render_pdf@1": RenderReportStep(objects, objects.root),
                 "copilot.audit_overview@1": OverviewAuditStep(
-                    objects, make_copilot(db, objects, provider, ai_config)
+                    objects, make_copilot(db, provider, ai_config)
                 ),
             },
         ),
@@ -372,55 +341,9 @@ def make_runner(
     )
 
 
-def make_reports(db: Session, objects: LocalObjects) -> ReportService:
+def make_copilot(db: Session, provider: AIProvider | None, config: CopilotConfig) -> CopilotService:
     require_ready(db)
-    access = ReportAccess(
-        DashboardAccess(
-            make_planning(db, objects),
-            make_executions(db),
-            make_datasets(db),
-            make_semantics(db, objects),
-            ProjectPermissions(db),
-        ),
-        make_dashboards(db, objects),
-        make_metrics(db, objects),
-        make_executions(db),
-        make_datasets(db),
-        objects,
-        processing_config(),
-    )
-    return ReportService(SQLReportRepository(db), access, SQLUnitOfWork(db))
-
-
-def make_dashboards(db: Session, objects: LocalObjects) -> DashboardService:
-    require_ready(db)
-    access = DashboardAccess(
-        make_planning(db, objects),
-        make_executions(db),
-        make_datasets(db),
-        make_semantics(db, objects),
-        ProjectPermissions(db),
-    )
-    return DashboardService(SQLDashboardRepository(db), access, SQLUnitOfWork(db))
-
-
-def make_copilot(
-    db: Session,
-    objects: LocalObjects,
-    provider: AIProvider | None,
-    config: CopilotConfig,
-) -> CopilotService:
-    require_ready(db)
-    access = CopilotAccess(
-        make_planning(db, objects),
-        make_executions(db),
-        make_datasets(db),
-        make_semantics(db, objects),
-        make_metrics(db, objects),
-        ProjectPermissions(db),
-        make_dashboards(db, objects),
-    )
-    return CopilotService(SQLCopilotRepository(db), access, provider, config, SQLUnitOfWork(db))
+    return CopilotService(SQLCopilotRepository(db), provider, config)
 
 
 def make_planning(db: Session, objects: LocalObjects) -> PlanningService:
@@ -460,61 +383,4 @@ def make_cleaning(db: Session, objects: LocalObjects) -> CleaningService:
 def make_cleaning_proposals(db: Session, objects: LocalObjects) -> CleaningProposals:
     return CleaningProposals(
         CleaningProposalAccess(make_semantics(db, objects), make_ingestion(db, objects))
-    )
-
-
-def make_analysis_sessions(db: Session) -> AnalysisSessionService:
-    require_ready(db)
-    return AnalysisSessionService(
-        SQLAnalysisSessionRepository(db),
-        AnalysisSessionInputs(ProjectPermissions(db), make_datasets(db), make_executions(db)),
-        SQLUnitOfWork(db),
-    )
-
-
-def make_automation(db: Session, objects: LocalObjects) -> AutomationService:
-    require_ready(db)
-    return AutomationService(
-        SQLPolicyRepository(db),
-        PolicyCleaningAccess(
-            make_cleaning(db, objects),
-            make_planning(db, objects),
-            make_executions(db),
-            ProjectPermissions(db),
-        ),
-        SQLUnitOfWork(db),
-    )
-
-
-def make_pipeline(db: Session, objects: LocalObjects) -> PipelineService:
-    require_ready(db)
-    return PipelineService(
-        SQLRunRepository(db),
-        PipelineAccess(
-            make_datasets(db),
-            make_executions(db),
-            make_cleaning_proposals(db, objects),
-            make_planning(db, objects),
-            make_cleaning(db, objects),
-            make_automation(db, objects),
-            make_rulesets(db, objects),
-            make_analysis_sessions(db),
-            make_templates(db, objects),
-            make_template_tables(db, objects),
-            make_semantics(db, objects),
-            make_metrics(db, objects),
-            make_dashboards(db, objects),
-        ),
-        SQLUnitOfWork(db),
-    )
-
-
-def make_template_tables(db: Session, objects: LocalObjects) -> TemplateTablesAccess:
-    return TemplateTablesAccess(make_semantics(db, objects), ProjectPermissions(db))
-
-
-def make_templates(db: Session, objects: LocalObjects) -> TemplateService:
-    require_ready(db)
-    return TemplateService(
-        SQLMappingRepository(db), make_template_tables(db, objects), SQLUnitOfWork(db)
     )
