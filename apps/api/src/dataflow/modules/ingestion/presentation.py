@@ -14,6 +14,7 @@ from dataflow.modules.ingestion.contracts import (
     PreviewPage,
     ReadXlsxParameters,
     XlsxInspection,
+    XlsxSelection,
 )
 from dataflow.modules.ingestion.domain import ImportState
 from dataflow.modules.quality.contracts import QualityReport
@@ -44,6 +45,7 @@ class VersionResponse(BaseModel):
     attempts: int
     kind: Literal["imported", "derived"]
     parent_version_id: UUID | None
+    source_selection: XlsxSelection | None = None
 
 
 class VersionPage(BaseModel):
@@ -147,7 +149,8 @@ async def inspect_xlsx(
     table: Annotated[str | None, Query(min_length=1, max_length=255)] = None,
     header_row: Annotated[int, Query(ge=1, le=1_048_576)] = 1,
 ) -> XlsxInspection:
-    """Fase 12A: hojas, tablas con nombre y vista previa de la selección; no guarda nada."""
+    """Hojas, tablas con nombre y vista previa; no guarda nada. Sin `sheet` ni `table`
+    muestra la elección automática del sistema (`selection`, Fase 13B)."""
     content = await xlsx_body(request)
     return await run_in_threadpool(
         service.inspect_xlsx,
@@ -174,12 +177,18 @@ async def upload_xlsx(
     identity: CurrentIdentity,
     service: Ingestion,
     file_name: Annotated[str, Query(min_length=1, max_length=255)],
-    sheet: Annotated[str, Query(min_length=1, max_length=31)],
     request_key: Annotated[UUID, Header(alias="Idempotency-Key")],
+    sheet: Annotated[str | None, Query(min_length=1, max_length=31)] = None,
     table: Annotated[str | None, Query(min_length=1, max_length=255)] = None,
     header_row: Annotated[int, Query(ge=1, le=1_048_576)] = 1,
 ) -> VersionResponse:
-    """Fase 12A: importa la hoja o tabla elegida con ingestion.read_xlsx@1."""
+    """Importa un libro con ingestion.read_xlsx@1. Sin `sheet` ni `table` (Fase 13B), el
+    sistema elige la hoja o tabla y la cabecera (`xlsx-selection-v1`) y lo informa en
+    `source_selection`; con `table` hay que indicar también su `sheet`."""
+    if sheet is None and table is not None:
+        raise ApplicationError(
+            "XLSX_SHEET_REQUIRED", "Indica la hoja de la tabla o deja que el sistema elija.", 422
+        )
     content = await xlsx_body(request)
     version = await run_in_threadpool(
         service.submit_xlsx,
@@ -187,7 +196,7 @@ async def upload_xlsx(
         project_id,
         file_name,
         content,
-        ReadXlsxParameters(sheet=sheet, table=table, header_row=header_row),
+        ReadXlsxParameters(sheet=sheet, table=table, header_row=header_row) if sheet else None,
         request_key,
         request.state.correlation_id,
     )

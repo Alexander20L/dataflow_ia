@@ -4280,6 +4280,16 @@
             "title": "Sha256",
             "type": "string"
           },
+          "source_selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/XlsxSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "state": {
             "enum": [
               "queued",
@@ -4312,6 +4322,31 @@
           "parent_version_id"
         ],
         "title": "VersionResponse",
+        "type": "object"
+      },
+      "XlsxCandidate": {
+        "properties": {
+          "sheet": {
+            "title": "Sheet",
+            "type": "string"
+          },
+          "table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table"
+          }
+        },
+        "required": [
+          "sheet",
+          "table"
+        ],
+        "title": "XlsxCandidate",
         "type": "object"
       },
       "XlsxInspection": {
@@ -4358,6 +4393,16 @@
             },
             "title": "Rows",
             "type": "array"
+          },
+          "selection": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/XlsxSelection"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "sheet": {
             "title": "Sheet",
@@ -4425,6 +4470,51 @@
         "title": "XlsxProblem",
         "type": "object"
       },
+      "XlsxSelection": {
+        "description": "Decisión automática del sistema (Fase 13B, regla `xlsx-selection-v1`): hoja o tabla\nimportada, fila de cabecera y lo que quedó fuera.",
+        "properties": {
+          "header_row": {
+            "title": "Header Row",
+            "type": "integer"
+          },
+          "omitted": {
+            "items": {
+              "$ref": "#/components/schemas/XlsxCandidate"
+            },
+            "title": "Omitted",
+            "type": "array"
+          },
+          "rule": {
+            "const": "xlsx-selection-v1",
+            "title": "Rule",
+            "type": "string"
+          },
+          "sheet": {
+            "title": "Sheet",
+            "type": "string"
+          },
+          "table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table"
+          }
+        },
+        "required": [
+          "rule",
+          "sheet",
+          "table",
+          "header_row",
+          "omitted"
+        ],
+        "title": "XlsxSelection",
+        "type": "object"
+      },
       "XlsxSheet": {
         "properties": {
           "hidden": {
@@ -4486,7 +4576,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.18.0"
+    "version": "0.19.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -7681,7 +7771,7 @@
     },
     "/api/v1/projects/{project_id}/imports/xlsx": {
       "post": {
-        "description": "Fase 12A: importa la hoja o tabla elegida con ingestion.read_xlsx@1.",
+        "description": "Importa un libro con ingestion.read_xlsx@1. Sin `sheet` ni `table` (Fase 13B), el\nsistema elige la hoja o tabla y la cabecera (`xlsx-selection-v1`) y lo informa en\n`source_selection`; con `table` hay que indicar también su `sheet`.",
         "operationId": "uploadXlsx",
         "parameters": [
           {
@@ -7708,12 +7798,19 @@
           {
             "in": "query",
             "name": "sheet",
-            "required": true,
+            "required": false,
             "schema": {
-              "maxLength": 31,
-              "minLength": 1,
-              "title": "Sheet",
-              "type": "string"
+              "anyOf": [
+                {
+                  "maxLength": 31,
+                  "minLength": 1,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Sheet"
             }
           },
           {
@@ -7919,7 +8016,7 @@
     },
     "/api/v1/projects/{project_id}/imports/xlsx/inspect": {
       "post": {
-        "description": "Fase 12A: hojas, tablas con nombre y vista previa de la selección; no guarda nada.",
+        "description": "Hojas, tablas con nombre y vista previa; no guarda nada. Sin `sheet` ni `table`\nmuestra la elección automática del sistema (`selection`, Fase 13B).",
         "operationId": "inspectXlsx",
         "parameters": [
           {

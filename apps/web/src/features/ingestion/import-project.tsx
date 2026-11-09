@@ -20,7 +20,8 @@ import { Button } from "@/components/ui/button";
 import { useApp } from "@/lib/providers";
 import { useCreateProject } from "@/features/projects/api";
 import { errorMessage } from "@/lib/api";
-import { useUploadCsv } from "./api";
+import { useUploadFile } from "./api";
+import { FILE_ACCEPT, fileProblem } from "./csv-workspace";
 
 const schema = z.object({
   name: z
@@ -34,7 +35,7 @@ type FormData = z.infer<typeof schema>;
 export function ImportProject() {
   const { notify } = useApp();
   const createProject = useCreateProject();
-  const uploadCsv = useUploadCsv();
+  const uploadFile = useUploadFile();
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
@@ -54,27 +55,14 @@ export function ImportProject() {
     if (!selected) return;
     setError("");
     setFile(null);
-    if (/\.xlsx$/i.test(selected.name)) {
-      setError(
-        "Para un libro de Excel, crea el proyecto y súbelo desde su espacio de trabajo: allí eliges la hoja y revisas la vista previa.",
-      );
-      return;
-    }
-    if (!/\.csv$/i.test(selected.name)) {
-      setError("Selecciona un archivo CSV.");
-      return;
-    }
-    if (selected.size > 5 * 1024 * 1024) {
-      setError("El CSV debe tener como máximo 5 MB.");
-      return;
-    }
-    if (selected.size === 0) {
-      setError("El archivo está vacío.");
+    const problem = fileProblem(selected);
+    if (problem) {
+      setError(problem);
       return;
     }
     setFile(selected);
     if (!getValues("name").trim()) {
-      const base = selected.name.replace(/\.csv$/i, "").trim();
+      const base = selected.name.replace(/\.(csv|xlsx)$/i, "").trim();
       setValue(
         "name",
         (base.length >= 3 ? base : `Análisis de ${base}`).slice(0, 80),
@@ -94,11 +82,11 @@ export function ImportProject() {
           description: data.description,
           file_name: file?.name ?? null,
         }));
-      if (file) await uploadCsv.mutateAsync({ file, projectId: project.id });
+      if (file) await uploadFile.mutateAsync({ file, projectId: project.id });
       notify(
         file
-          ? "CSV original conservado. Procesamiento encolado."
-          : "Proyecto guardado. Puedes subir su primer CSV desde el workspace.",
+          ? "Original conservado. Procesamiento encolado."
+          : "Proyecto guardado. Puedes subir su primer archivo desde el espacio de trabajo.",
       );
       router.push(`/workspace/${project.id}`);
     } catch (error) {
@@ -116,7 +104,7 @@ export function ImportProject() {
           <p className="eyebrow">UN NUEVO PUNTO DE PARTIDA</p>
           <h1>Crea tu próximo análisis</h1>
           <p>
-            Sube tu CSV y obtén indicadores y gráficos sin configurar el
+            Sube tu CSV o Excel y obtén indicadores y gráficos sin configurar el
             análisis.
           </p>
         </div>
@@ -129,8 +117,8 @@ export function ImportProject() {
             <div>
               <h2>Identifica tu análisis</h2>
               <p>
-                Al elegir un CSV, el nombre se completa automáticamente. Puedes
-                cambiarlo.
+                Al elegir un archivo, el nombre se completa automáticamente.
+                Puedes cambiarlo.
               </p>
             </div>
           </div>
@@ -173,7 +161,7 @@ export function ImportProject() {
             ref={input}
             hidden
             type="file"
-            accept=".csv,text/csv"
+            accept={FILE_ACCEPT}
             onChange={(e) => selectFile(e.target.files?.[0])}
           />
           <div
@@ -201,9 +189,7 @@ export function ImportProject() {
             >
               Seleccionar archivo
             </Button>
-            <small>
-              CSV UTF-8 · hasta 5 MB · Excel (.xlsx) desde el espacio de trabajo
-            </small>
+            <small>CSV UTF-8 o Excel (.xlsx) · hasta 5 MB</small>
           </div>
           {file && (
             <div className="selected-file">
@@ -247,15 +233,16 @@ export function ImportProject() {
           {isSubmitting && (
             <p className="fine-print" role="status">
               {file
-                ? "Guardando el proyecto y enviando el CSV…"
+                ? "Guardando el proyecto y enviando el archivo…"
                 : "Guardando el proyecto…"}
             </p>
           )}
           <div className="info-banner">
             <ShieldCheck size={18} />
             <span>
-              El CSV original se conserva sin cambios. Un worker genera su copia
-              analítica, el perfil, la calidad y el dashboard automáticamente.
+              El original se conserva sin cambios. El sistema elige la hoja de
+              un Excel, genera la copia analítica, el perfil, la calidad y el
+              dashboard automáticamente.
             </span>
           </div>
           <div className="form-footer">

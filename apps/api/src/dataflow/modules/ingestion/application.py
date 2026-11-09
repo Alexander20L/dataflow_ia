@@ -18,6 +18,7 @@ from dataflow.modules.ingestion.contracts import (
     PreviewPage,
     ReadXlsxParameters,
     XlsxInspection,
+    XlsxSelection,
 )
 from dataflow.modules.ingestion.domain import ImportState, Version
 from dataflow.modules.ingestion.plans import (
@@ -145,6 +146,7 @@ def legacy_view(
         run.attempts,
         version.kind,
         parent_version_id,
+        run.plan.content.get("source_selection") if run.plan else None,
     )
 
 
@@ -214,16 +216,27 @@ class IngestionService:
         project: UUID,
         name: str,
         content: bytes,
-        parameters: ReadXlsxParameters,
+        parameters: ReadXlsxParameters | None,
         key: UUID,
         correlation: str,
     ) -> Version:
-        """Fase 12A: un libro .xlsx con la hoja o tabla elegida tras la vista previa."""
+        """Un libro .xlsx. Sin hoja ni tabla (Fase 13B), el sistema elige con la regla
+        `xlsx-selection-v1` y la decisión queda en el plan; con ellas, se respeta (Fase 12A).
+        Un libro que no se puede abrir se rechaza aquí; un problema de la hoja elegida se
+        registra y falla en el worker conservando el original."""
+        selection: XlsxSelection | None = None
+        if parameters is None:
+            selection = self.inspect_xlsx(owner, project, name, content, None, None, 1).selection
+            assert selection is not None
+            parameters = ReadXlsxParameters(
+                sheet=selection.sheet, table=selection.table, header_row=selection.header_row
+            )
         try:
             self._check_xlsx(name, content)
         except Exception:
             self.uow.rollback()
             raise
+        chosen = parameters
         return self._register(
             owner,
             project,
@@ -232,8 +245,10 @@ class IngestionService:
             key,
             correlation,
             "xlsx",
-            xlsx_import_fingerprint(name, hashlib.sha256(content).hexdigest(), parameters),
-            lambda version: build_plan(owner, version, self.config, xlsx=parameters),
+            xlsx_import_fingerprint(name, hashlib.sha256(content).hexdigest(), chosen),
+            lambda version: build_plan(
+                owner, version, self.config, xlsx=chosen, source_selection=selection
+            ),
         )
 
     def inspect_xlsx(

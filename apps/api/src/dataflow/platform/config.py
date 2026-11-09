@@ -31,10 +31,11 @@ class Settings(BaseSettings):
     max_csv_columns: int = Field(default=128, ge=1, le=128)
     processing_timeout_seconds: int = Field(default=45, ge=5, le=60)
 
-    # Copiloto IA (Fase 10, ADR-022). Desactivado por defecto: sin IA todo lo demás funciona.
-    # La clave nunca se registra ni llega al frontend: DATAFLOW_AI_API_KEY (local, en un .env
-    # ignorado por git) o DATAFLOW_AI_API_KEY_FILE (secreto de Docker en /run/secrets).
-    ai_provider: Literal["disabled", "fake", "anthropic"] = "disabled"
+    # Explicación IA (Fase 10, ADR-022; Fase 13B). `auto` (por defecto): Anthropic si hay clave
+    # configurada; si no, desactivada (sin IA todo lo demás funciona). La clave nunca se registra
+    # ni llega al frontend: DATAFLOW_AI_API_KEY (local, en un .env ignorado por git) o
+    # DATAFLOW_AI_API_KEY_FILE (secreto de Docker en /run/secrets).
+    ai_provider: Literal["auto", "disabled", "fake", "anthropic"] = "auto"
     ai_model: str = Field(default="claude-opus-5-5", min_length=1, max_length=80)
     ai_effort: Literal["low", "medium", "high"] = "low"
     ai_api_key: SecretStr | None = None
@@ -43,6 +44,12 @@ class Settings(BaseSettings):
     ai_max_output_tokens: int = Field(default=4000, ge=500, le=16000)
     ai_user_daily_tokens: int = Field(default=200_000, ge=1)
     ai_project_monthly_cost_usd: Decimal = Field(default=Decimal("5"), ge=0)
+
+    def effective_ai_provider(self) -> Literal["disabled", "fake", "anthropic"]:
+        """Proveedor efectivo: `auto` se resuelve según haya clave o no."""
+        if self.ai_provider == "auto":
+            return "anthropic" if self.ai_key() else "disabled"
+        return self.ai_provider
 
     def ai_key(self) -> str | None:
         """Clave del proveedor: el archivo (secreto de Docker) tiene prioridad sobre la

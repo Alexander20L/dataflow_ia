@@ -20,6 +20,11 @@ from dataflow.platform.runtime import RuntimeTransition
 # Rutas sólo de pruebas sobre los servicios conservados (Fase 13): nunca en la API real.
 app.include_router(service_routes)
 
+# Fase 13B: `auto` usaría la IA real si el entorno tiene una clave; las pruebas nunca la llaman
+# (los casos reales opcionales viven en tests/ai/test_ai_live.py).
+if get_settings().ai_provider == "auto":
+    get_settings().ai_provider = "disabled"
+
 
 @pytest.fixture(scope="session")
 def test_engine() -> Iterator[Engine]:

@@ -15,7 +15,9 @@ Documentación y UI en español.
   exactos sobre todo el dataset). Sólo transformaciones seguras y sin pérdida; ante la duda, no se
   transforma y se explica la limitación.
 - **La IA sólo explica** resultados publicados; ninguna cifra sale del modelo (sólo `{{evidence:id}}`).
-  Desactivada por defecto (`DATAFLOW_AI_PROVIDER=disabled`).
+  `DATAFLOW_AI_PROVIDER=auto` por defecto: activa sólo si hay clave (Fase 13B, ADR-027).
+- **Excel sin elegir hoja**: la regla `xlsx-selection-v1` decide hoja/tabla y cabecera al subir y
+  la decisión queda en el plan (`source_selection`); la interfaz no ofrece opciones de lectura.
 - El original y las versiones publicadas son inmutables: limpiar crea una versión derivada con linaje y el
   efecto exacto (`effect_sha256`) queda registrado como decisión del sistema.
 
@@ -118,20 +120,22 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 12A  | 0.14 | `feat/fase-12a-excel` (PR)     | importación .xlsx (`read_xlsx@1`, lector OOXML propio), `analysis-v8`        |
 | A–C  | 0.17 | `develop`                      | dashboard descriptivo (`profile@2/@3`), interpretación, explicación IA (C2)  |
 | 13   | 0.18 | `feat/fase-13-solo-automatico` | un solo recorrido automático; manual y política retirados; migración 0019    |
+| 13B  | 0.19 | `feat/fase-13b-excel-ia-auto`  | Excel sin elegir hoja (`xlsx-selection-v1`), `/new` con .xlsx, IA `auto`     |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
 no regenerar sus referencias para hacer pasar una prueba.
-Integración: `develop` contiene las Fases 4 a 12A y A–C (merge `--no-ff` o PR). Fase 13: ADR-026 sustituye
+Integración: `develop` contiene las Fases 4 a 13 y A–C (merge `--no-ff` o PR). Fase 13: ADR-026 sustituye
 al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
-`apps/api/tests/service_routes.py` (router sólo de pruebas). Lo siguiente es la Fase 14 (limpieza, calidad y
-análisis automáticos sobre los motores conservados). Fase 7 completa (7A y 7B): ADR-018 y
+`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Antes de la Fase 14
+(limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
+contradiga el enfoque automático. Fase 7 completa (7A y 7B): ADR-018 y
 ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa
 planning, executions ni analytics (puerto en `bootstrap/dashboards_access.py`, prueba AST). Fase 9:
 ADR-021; el PDF es una ejecución `report_render` (entrada `report` y operación interna fuera del
 catálogo, `bootstrap/reports_access.py`). El perfil CSV `standard` (`platform/csv_export.py`) no cambia
 nunca: garantiza la ida y vuelta con la ingesta.
-IA: `DATAFLOW_AI_PROVIDER=fake` en E2E; `tests/ai/test_ai_live.py` sólo corre con `DATAFLOW_AI_LIVE_TESTS=1` y
+IA: `DATAFLOW_AI_PROVIDER=fake` en E2E y pytest fuerza `disabled` si queda en `auto` (conftest); `tests/ai/test_ai_live.py` sólo corre con `DATAFLOW_AI_LIVE_TESTS=1` y
 clave. Cambiar el prompt de `copilot/overview.py` exige subir su versión. Al escribir archivos desde scripts en Windows, forzar LF.
 Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015); tablas sin uso de las Fases 4–10
 y dependencia `reportlab` sin uso (decidir en la Fase 14). Al añadir una migración, las pruebas de migraciones

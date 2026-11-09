@@ -12,6 +12,7 @@ from test_csv_ingestion import account, process, project, upload
 from xlsx_support import ExcelError, Formula, Sheet, make_xlsx
 
 from dataflow.integrations.sources.xlsx_reader import (
+    Workbook,
     canonical_number,
     excel_date,
     is_date_format,
@@ -190,7 +191,7 @@ def test_xlsx_import_inspects_imports_and_matches_the_csv_figures(
     assert body["problem"] is None and body["rows"][0][:2] == ["001", "2026-01-01"]
     missing = client.post(
         base + "/inspect",
-        params={"file_name": "ventas.xlsx", "header_row": 3},
+        params={"file_name": "ventas.xlsx", "sheet": "Ventas", "header_row": 3},
         content=book,
         headers=xlsx_headers(headers),
     ).json()
@@ -273,3 +274,147 @@ def test_failed_workbook_never_publishes_a_table(
     assert process(db, objects)
     version = client.get(f"/api/v1/versions/{created.json()['id']}").json()
     assert version["state"] == "failed" and version["error_code"] == "XLSX_MERGED_CELLS"
+
+
+# --- Fase 13B: elección automática (xlsx-selection-v1) ------------------------------------
+
+
+def automatic(sheets: list[Sheet]) -> tuple[str, str | None, int, list[tuple[str, str | None]]]:
+    chosen = Workbook(make_xlsx(sheets)).automatic(100_000)
+    return chosen.sheet, chosen.table, chosen.header_row, chosen.omitted
+
+
+def test_automatic_selection_skips_titles_and_prefers_the_fullest_visible_sheet() -> None:
+    notes = Sheet("Notas", [["Revisar en marzo"]])
+    sales = Sheet(
+        "Ventas",
+        [["Informe de ventas 2026"], [], ["id", "region", "importe"], ["1", "Norte", 10]],
+    )
+    secret = Sheet("Oculta", [["a", "b", "c", "d"]] * 20, hidden=True)
+    assert automatic([notes, sales, secret]) == ("Ventas", None, 3, [("Notas", None)])
+    # Empate: el orden del libro.
+    first, second = Sheet("A", [["x"], [1]]), Sheet("B", [["y"], [2]])
+    assert automatic([first, second]) == ("A", None, 1, [("B", None)])
+    # Todas ocultas: se consideran todas; sin datos: la primera hoja, cabecera 1.
+    assert automatic([Sheet("H", [["x"], [1]], hidden=True)])[:3] == ("H", None, 1)
+    assert automatic([Sheet("Vacía", [])]) == ("Vacía", None, 1, [])
+
+
+def test_automatic_selection_prefers_the_largest_named_table() -> None:
+    big = Sheet(
+        "Datos",
+        [["Titulo"], [], ["id", "importe"], *[[str(i), i] for i in range(10)]],
+        tables=[("Grande", "A3:B13")],
+    )
+    small = Sheet("Resumen", [["k", "v"], ["a", 1]], tables=[("Pequeña", "A1:B2")])
+    loose = Sheet("Suelta", [["c1", "c2", "c3"]] + [["1", "2", "3"]] * 30)
+    assert automatic([small, loose, big]) == (
+        "Datos",
+        "Grande",
+        3,
+        [("Resumen", "Pequeña"), ("Suelta", None)],
+    )
+
+
+def test_unreadable_or_protected_sheets_go_last_so_their_error_is_explained() -> None:
+    broken = Sheet("Rota", [["a", "b"], [ExcelError("#DIV/0!"), 1]] + [["x", "y"]] * 10)
+    locked = Sheet("Bloqueada", [["a", "b"]] * 10, protected=True)
+    good = Sheet("Buena", [["a"], [1]])
+    assert automatic([broken, locked, good])[:2] == ("Buena", None)
+    assert automatic([broken, locked])[:2] == ("Bloqueada", None)
+    assert automatic([broken])[:2] == ("Rota", None)
+
+
+def test_xlsx_upload_without_sheet_lets_the_system_choose_and_records_it(
+    client: TestClient, db: Session, objects: LocalObjects
+) -> None:
+    headers = account(client)
+    project_id = project(client, headers)
+    book = make_xlsx(
+        [
+            Sheet("Portada", [["Ventas del trimestre"]]),
+            Sheet("Ventas", [["Informe"], ["id", "importe"], ["1", 10], ["2", 20]]),
+        ]
+    )
+    base = f"/api/v1/projects/{project_id}/imports/xlsx"
+    preview = client.post(
+        base + "/inspect",
+        params={"file_name": "libro.xlsx"},
+        content=book,
+        headers=xlsx_headers(headers),
+    ).json()
+    expected = {
+        "rule": "xlsx-selection-v1",
+        "sheet": "Ventas",
+        "table": None,
+        "header_row": 2,
+        "omitted": [{"sheet": "Portada", "table": None}],
+    }
+    assert preview["selection"] == expected and preview["columns"] == ["id", "importe"]
+    key = str(uuid4())
+    created = client.post(
+        base,
+        params={"file_name": "libro.xlsx"},
+        content=book,
+        headers={**xlsx_headers(headers), "Idempotency-Key": key},
+    )
+    assert created.status_code == 202, created.text
+    assert created.json()["source_selection"] == expected
+    again = client.post(
+        base,
+        params={"file_name": "libro.xlsx"},
+        content=book,
+        headers={**xlsx_headers(headers), "Idempotency-Key": key},
+    )
+    assert again.json()["id"] == created.json()["id"]
+    assert process(db, objects)
+    version = client.get(f"/api/v1/versions/{created.json()['id']}").json()
+    assert version["state"] == "succeeded" and version["source_selection"] == expected
+    run = client.get(f"/api/v1/executions/{version['execution_id']}").json()
+    assert run["plan"]["content"]["source_selection"] == expected
+    assert run["plan"]["content"]["steps"][0]["parameters"]["sheet"] == "Ventas"
+    rows = client.get(f"/api/v1/versions/{version['id']}/preview").json()["rows"]
+    assert [row["values"] for row in rows] == [
+        {"id": "1", "importe": "10"},
+        {"id": "2", "importe": "20"},
+    ]
+    # Con hoja explícita (API 12A) no hay decisión del sistema.
+    manual = client.post(
+        base,
+        params={"file_name": "libro.xlsx", "sheet": "Ventas", "header_row": 2},
+        content=book,
+        headers=xlsx_headers(headers),
+    ).json()
+    assert manual["source_selection"] is None
+    table_only = client.post(
+        base,
+        params={"file_name": "libro.xlsx", "table": "T"},
+        content=book,
+        headers=xlsx_headers(headers),
+    )
+    assert table_only.status_code == 422
+    assert table_only.json()["code"] == "XLSX_SHEET_REQUIRED"
+
+
+def test_automatic_xlsx_problems_are_registered_or_rejected_with_a_code(
+    client: TestClient, db: Session, objects: LocalObjects
+) -> None:
+    headers = account(client)
+    project_id = project(client, headers)
+    base = f"/api/v1/projects/{project_id}/imports/xlsx"
+    merged = make_xlsx([Sheet("H", [["a", "b"], [1, 2]], merges=["A2:B2"])])
+    created = client.post(
+        base, params={"file_name": "malo.xlsx"}, content=merged, headers=xlsx_headers(headers)
+    )
+    assert created.status_code == 202, created.text
+    assert process(db, objects)
+    version = client.get(f"/api/v1/versions/{created.json()['id']}").json()
+    assert version["state"] == "failed" and version["error_code"] == "XLSX_MERGED_CELLS"
+    assert client.get(f"/api/v1/versions/{version['id']}/original").content == merged
+    broken = client.post(
+        base,
+        params={"file_name": "roto.xlsx"},
+        content=b"PKno-es-un-zip",
+        headers=xlsx_headers(headers),
+    )
+    assert broken.status_code == 422 and broken.json()["code"] == "UNSUPPORTED_FORMAT"

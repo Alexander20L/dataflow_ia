@@ -5,7 +5,7 @@ from uuid import UUID, uuid4
 
 from dataflow.modules.datasets.contracts import DatasetVersion
 from dataflow.modules.executions.public import Artifact, PlanRevision, ProcessingConfig
-from dataflow.modules.ingestion.contracts import ReadXlsxParameters
+from dataflow.modules.ingestion.contracts import ReadXlsxParameters, XlsxSelection
 from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.canonical import digest
 
@@ -66,6 +66,7 @@ def build_plan(
     analysis_kind: Literal["profile_quality", "quality_only"] = "profile_quality",
     semantic_ref: SemanticReference | None = None,
     xlsx: ReadXlsxParameters | None = None,
+    source_selection: XlsxSelection | None = None,
 ) -> PlanRevision:
     if table:
         input_ref: dict[str, Any] = {
@@ -154,6 +155,8 @@ def build_plan(
         "steps": steps,
         "config": config.model_dump(),
     }
+    if source_selection is not None:
+        content["source_selection"] = source_selection.model_dump(mode="json")
     return PlanRevision(
         uuid4(), uuid4(), 1, content, digest("plan", content), owner, datetime.now(UTC)
     )

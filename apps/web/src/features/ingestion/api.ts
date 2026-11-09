@@ -5,7 +5,6 @@ import { api, requireData } from "@/lib/api";
 
 export type DatasetVersion = components["schemas"]["VersionResponse"];
 export type Diagnostic = components["schemas"]["Diagnostic"];
-export type Separator = "auto" | "," | ";" | "tab";
 export function useIngestionSummary() {
   return useQuery({
     queryKey: ["ingestion-summary"],
@@ -53,41 +52,51 @@ export function useVersion(versionId?: string) {
         : false,
   });
 }
-export function useUploadCsv(projectId = "") {
+export const XLSX_MIME =
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+export const isXlsx = (file: File) => /\.xlsx$/i.test(file.name);
+
+/** Sube un CSV o un .xlsx sin opciones: el sistema detecta el separador o elige la hoja,
+ * la tabla y la cabecera (Fase 13B) y lo informa en la versión. */
+export function useUploadFile(projectId = "") {
   const client = useQueryClient();
-  const keys = useRef(new WeakMap<File, Map<Separator, string>>());
+  const keys = useRef(new WeakMap<File, string>());
   return useMutation({
     mutationFn: async ({
       file,
-      separator = "auto",
       projectId: targetProject,
     }: {
       file: File;
-      separator?: Separator;
       projectId?: string;
     }) => {
       const target = targetProject ?? projectId;
-      let map = keys.current.get(file);
-      if (!map) {
-        map = new Map();
-        keys.current.set(file, map);
-      }
-      let key = map.get(separator);
+      let key = keys.current.get(file);
       if (!key) {
         key = crypto.randomUUID();
-        map.set(separator, key);
+        keys.current.set(file, key);
       }
       const version = requireData(
-        await api.POST("/api/v1/projects/{project_id}/imports", {
-          params: {
-            path: { project_id: target },
-            query: { file_name: file.name, separator },
-            header: { "Idempotency-Key": key },
-          },
-          headers: { "Content-Type": "text/csv" },
-          body: file,
-          bodySerializer: (body) => body,
-        }),
+        isXlsx(file)
+          ? await api.POST("/api/v1/projects/{project_id}/imports/xlsx", {
+              params: {
+                path: { project_id: target },
+                query: { file_name: file.name },
+                header: { "Idempotency-Key": key },
+              },
+              headers: { "Content-Type": XLSX_MIME },
+              body: file,
+              bodySerializer: (body) => body,
+            })
+          : await api.POST("/api/v1/projects/{project_id}/imports", {
+              params: {
+                path: { project_id: target },
+                query: { file_name: file.name, separator: "auto" },
+                header: { "Idempotency-Key": key },
+              },
+              headers: { "Content-Type": "text/csv" },
+              body: file,
+              bodySerializer: (body) => body,
+            }),
       );
       keys.current.delete(file);
       return version;
@@ -145,94 +154,6 @@ export function useCancelImport(projectId: string) {
       ),
     onSuccess: async () => {
       await client.invalidateQueries({ queryKey: ["versions", projectId] });
-    },
-  });
-}
-
-export const XLSX_MIME =
-  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
-export type XlsxInspection = components["schemas"]["XlsxInspection"];
-export type XlsxSelection = {
-  sheet?: string;
-  table?: string | null;
-  header_row: number;
-};
-
-/** Fase 12A: hojas, tablas y vista previa de la selección; no guarda nada. */
-export function useInspectXlsx(projectId: string) {
-  return useMutation({
-    mutationFn: async ({
-      file,
-      selection,
-    }: {
-      file: File;
-      selection: XlsxSelection;
-    }) =>
-      requireData(
-        await api.POST("/api/v1/projects/{project_id}/imports/xlsx/inspect", {
-          params: {
-            path: { project_id: projectId },
-            query: {
-              file_name: file.name,
-              sheet: selection.sheet,
-              table: selection.table ?? undefined,
-              header_row: selection.header_row,
-            },
-          },
-          headers: { "Content-Type": XLSX_MIME },
-          body: file,
-          bodySerializer: (body) => body,
-        }),
-      ),
-  });
-}
-
-export function useUploadXlsx(projectId: string) {
-  const client = useQueryClient();
-  const keys = useRef(new WeakMap<File, Map<string, string>>());
-  return useMutation({
-    mutationFn: async ({
-      file,
-      selection,
-    }: {
-      file: File;
-      selection: Required<XlsxSelection>;
-    }) => {
-      const signature = JSON.stringify(selection);
-      let map = keys.current.get(file);
-      if (!map) {
-        map = new Map();
-        keys.current.set(file, map);
-      }
-      let key = map.get(signature);
-      if (!key) {
-        key = crypto.randomUUID();
-        map.set(signature, key);
-      }
-      const version = requireData(
-        await api.POST("/api/v1/projects/{project_id}/imports/xlsx", {
-          params: {
-            path: { project_id: projectId },
-            query: {
-              file_name: file.name,
-              sheet: selection.sheet,
-              table: selection.table ?? undefined,
-              header_row: selection.header_row,
-            },
-            header: { "Idempotency-Key": key },
-          },
-          headers: { "Content-Type": XLSX_MIME },
-          body: file,
-          bodySerializer: (body) => body,
-        }),
-      );
-      keys.current.delete(file);
-      return version;
-    },
-    onSuccess: async (version) => {
-      await client.invalidateQueries({
-        queryKey: ["versions", version.project_id],
-      });
     },
   });
 }

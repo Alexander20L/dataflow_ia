@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from datetime import datetime
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from dataflow.modules.datasets.contracts import StoredObject
@@ -32,3 +32,5 @@ class Version:
     attempts: int
     kind: Literal["imported", "derived"] = "imported"
     parent_version_id: UUID | None = None
+    # Fase 13B: decisión automática de hoja o tabla de un .xlsx (`xlsx-selection-v1`).
+    source_selection: dict[str, Any] | None = None
