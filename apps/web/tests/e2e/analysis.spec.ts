@@ -77,6 +77,26 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
   await investigation.getByText(/Propuestas rechazadas/).click();
   await expect(investigation).toContainText("Ya se investigó");
   await expect(investigation.getByRole("button")).toHaveCount(0);
+  // Fase 17: resumen arriba con progreso por etapas e informe PDF descargable.
+  const summary = page.getByRole("region", { name: "Resumen" });
+  const report = summary.getByRole("link", {
+    name: "Descargar informe (PDF)",
+  });
+  await expect(report).toBeVisible({ timeout: 30_000 });
+  await expect(
+    summary
+      .getByRole("list", { name: "Progreso de la carga" })
+      .getByRole("listitem"),
+  ).toHaveCount(3);
+  await expect(summary).not.toContainText("Pendiente");
+  await expect(summary.getByText("Hallazgos principales")).toBeVisible();
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    report.click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("informe-ventas_mensuales-v1.pdf");
+  const pdf = await readFile((await download.path())!);
+  expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
   const reading = dashboard.getByRole("region", {
     name: "Lectura automática de los datos",
   });

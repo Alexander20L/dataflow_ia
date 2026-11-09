@@ -368,6 +368,7 @@ def test_import_investigates_with_the_fake_provider_and_explains_findings(
     path = f"/api/v1/versions/{version['id']}/investigation"
     assert client.get(path).json()["state"] == "queued"
     assert runner.run_once()
+    assert runner.run_once()  # informe automático (Fase 17)
     assert not runner.run_once()
     view = client.get(path).json()
     assert view["state"] == "ready", view

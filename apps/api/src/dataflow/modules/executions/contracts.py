@@ -8,6 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from dataflow.modules.datasets.contracts import StoredObject
 
 # report_render (Fase 9): informe exacto a PDF; su entrada es una instantánea del informe.
+# automatic_report (Fase 17): informe automático en PDF; su entrada es la investigación.
 RunKind = Literal[
     "csv_import",
     "table_analysis",
@@ -17,6 +18,7 @@ RunKind = Literal[
     "report_render",
     "overview_audit",
     "investigation",
+    "automatic_report",
 ]
 RunState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 ArtifactKind = Literal[
@@ -184,7 +186,7 @@ class Artifact:
     logical_content_sha256: str | None
 
 
-InputKind = Literal["source", "table", "report", "overview", "automatic"]
+InputKind = Literal["source", "table", "report", "overview", "automatic", "investigation"]
 
 
 @dataclass(frozen=True)
