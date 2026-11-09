@@ -1,6 +1,66 @@
 {
   "components": {
     "schemas": {
+      "AnalysisPlan": {
+        "additionalProperties": false,
+        "description": "Plan versionado y acotado; sólo contiene análisis del catálogo automático.",
+        "properties": {
+          "accepted": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedAnalysis"
+            },
+            "title": "Accepted",
+            "type": "array"
+          },
+          "estimated_cells": {
+            "title": "Estimated Cells",
+            "type": "integer"
+          },
+          "interpretation_rules": {
+            "const": "automatic-interpretation-v2",
+            "default": "automatic-interpretation-v2",
+            "title": "Interpretation Rules",
+            "type": "string"
+          },
+          "max_analyses": {
+            "title": "Max Analyses",
+            "type": "integer"
+          },
+          "measure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measure"
+          },
+          "omitted": {
+            "items": {
+              "$ref": "#/components/schemas/PlannedAnalysis"
+            },
+            "title": "Omitted",
+            "type": "array"
+          },
+          "rules_version": {
+            "const": "automatic-plan-v1",
+            "default": "automatic-plan-v1",
+            "title": "Rules Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "measure",
+          "accepted",
+          "omitted",
+          "max_analyses",
+          "estimated_cells"
+        ],
+        "title": "AnalysisPlan",
+        "type": "object"
+      },
       "AnalysisResult": {
         "additionalProperties": false,
         "properties": {
@@ -714,7 +774,8 @@
               "quality_rules",
               "analysis_result",
               "report_pdf",
-              "overview_audit"
+              "overview_audit",
+              "automatic_analysis"
             ],
             "title": "Kind",
             "type": "string"
@@ -938,6 +999,73 @@
         "title": "AuditContent",
         "type": "object"
       },
+      "AutomaticAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AutomaticEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "insights": {
+            "items": {
+              "$ref": "#/components/schemas/AutomaticInsight"
+            },
+            "title": "Insights",
+            "type": "array"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "operation": {
+            "const": "analytics.automatic@1",
+            "default": "analytics.automatic@1",
+            "title": "Operation",
+            "type": "string"
+          },
+          "plan": {
+            "$ref": "#/components/schemas/AnalysisPlan"
+          },
+          "queries": {
+            "additionalProperties": {
+              "$ref": "#/components/schemas/AnalysisResultV2"
+            },
+            "title": "Queries",
+            "type": "object"
+          },
+          "rules_version": {
+            "const": "automatic-analysis-v1",
+            "default": "automatic-analysis-v1",
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/AutomaticScope"
+          }
+        },
+        "required": [
+          "scope",
+          "plan",
+          "insights",
+          "evidence",
+          "queries",
+          "limitations"
+        ],
+        "title": "AutomaticAnalysis",
+        "type": "object"
+      },
       "AutomaticColumnHint": {
         "additionalProperties": false,
         "properties": {
@@ -982,6 +1110,137 @@
           "evidence"
         ],
         "title": "AutomaticColumnHint",
+        "type": "object"
+      },
+      "AutomaticEvidence": {
+        "additionalProperties": false,
+        "description": "Procedencia de una cifra: método y entradas exactas (otras evidencias o filas).",
+        "properties": {
+          "analysis_id": {
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "inputs": {
+            "additionalProperties": true,
+            "title": "Inputs",
+            "type": "object"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "number",
+              "percent",
+              "count",
+              "index"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "evidence_id",
+          "analysis_id",
+          "label",
+          "value",
+          "unit",
+          "method",
+          "inputs"
+        ],
+        "title": "AutomaticEvidence",
+        "type": "object"
+      },
+      "AutomaticInsight": {
+        "additionalProperties": false,
+        "description": "Hallazgo verificable: texto determinista, cifras con evidencia y su cobertura.",
+        "properties": {
+          "analysis_id": {
+            "title": "Analysis Id",
+            "type": "string"
+          },
+          "chart": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InsightChart"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "coverage": {
+            "title": "Coverage",
+            "type": "string"
+          },
+          "figures": {
+            "items": {
+              "$ref": "#/components/schemas/InsightFigure"
+            },
+            "title": "Figures",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "importance": {
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Importance",
+            "type": "integer"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "notes": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Notes",
+            "type": "array"
+          },
+          "statement": {
+            "title": "Statement",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "analysis_id",
+          "kind",
+          "title",
+          "statement",
+          "importance",
+          "figures",
+          "coverage"
+        ],
+        "title": "AutomaticInsight",
         "type": "object"
       },
       "AutomaticInterpretation": {
@@ -1124,6 +1383,39 @@
           "limitations"
         ],
         "title": "AutomaticOverview",
+        "type": "object"
+      },
+      "AutomaticScope": {
+        "additionalProperties": false,
+        "description": "La tabla de entrada la produce la propia carga: se identifica por su hash.",
+        "properties": {
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "step_id": {
+            "title": "Step Id",
+            "type": "string"
+          },
+          "table_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Table Sha256",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "execution_id",
+          "step_id",
+          "version_id",
+          "table_sha256"
+        ],
+        "title": "AutomaticScope",
         "type": "object"
       },
       "AutomaticTemplateHint": {
@@ -2391,6 +2683,128 @@
           "failed"
         ],
         "title": "IngestionSummary",
+        "type": "object"
+      },
+      "InsightChart": {
+        "additionalProperties": false,
+        "properties": {
+          "points": {
+            "items": {
+              "$ref": "#/components/schemas/InsightPoint"
+            },
+            "title": "Points",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "bar",
+              "line"
+            ],
+            "title": "Type",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "number",
+              "percent",
+              "count",
+              "index"
+            ],
+            "title": "Unit",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "title",
+          "unit",
+          "points"
+        ],
+        "title": "InsightChart",
+        "type": "object"
+      },
+      "InsightFigure": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "unit": {
+            "enum": [
+              "number",
+              "percent",
+              "count",
+              "index"
+            ],
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "label",
+          "value",
+          "unit",
+          "evidence_id"
+        ],
+        "title": "InsightFigure",
+        "type": "object"
+      },
+      "InsightPoint": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "label",
+          "value",
+          "evidence_id"
+        ],
+        "title": "InsightPoint",
         "type": "object"
       },
       "KeyCandidate": {
@@ -3733,6 +4147,100 @@
           "created_at"
         ],
         "title": "PlanResponse",
+        "type": "object"
+      },
+      "PlannedAnalysis": {
+        "additionalProperties": false,
+        "description": "Un análisis candidato con sus requisitos y la decisión del sistema (con motivo).",
+        "properties": {
+          "dimension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "evolution",
+              "year_over_year",
+              "breakdown",
+              "weighted_average",
+              "seasonality",
+              "anomalies"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "measure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measure"
+          },
+          "priority": {
+            "minimum": 1.0,
+            "title": "Priority",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "requirements": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Requirements",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "omitted"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "weight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Weight"
+          }
+        },
+        "required": [
+          "id",
+          "kind",
+          "title",
+          "priority",
+          "requirements",
+          "status",
+          "reason"
+        ],
+        "title": "PlannedAnalysis",
         "type": "object"
       },
       "PreviewPage": {
@@ -5267,7 +5775,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.21.0"
+    "version": "0.22.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -9286,6 +9794,346 @@
           }
         ],
         "summary": "Get Version",
+        "tags": [
+          "Datasets"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/automatic-analysis": {
+      "get": {
+        "description": "Plan analítico automático y hallazgos con evidencia, guardados al importar.",
+        "operationId": "getAutomaticAnalysis",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomaticAnalysis"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Automatic Analysis",
+        "tags": [
+          "Datasets"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/automatic-analysis/evidence/{evidence_id}": {
+      "get": {
+        "description": "Procedencia exacta de una cifra del análisis automático (método y entradas).",
+        "operationId": "getAutomaticEvidence",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomaticEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Automatic Evidence",
         "tags": [
           "Datasets"
         ]

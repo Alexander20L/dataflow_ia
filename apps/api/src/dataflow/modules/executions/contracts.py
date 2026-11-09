@@ -30,6 +30,7 @@ ArtifactKind = Literal[
     "analysis_result",
     "report_pdf",
     "overview_audit",
+    "automatic_analysis",
 ]
 
 
@@ -46,6 +47,7 @@ class ProcessingConfig(BaseModel):
     # analysis-v10: understanding.profile@3 (interpretación técnica y contextos candidatos).
     # analysis-v11: understanding.profile@4 y quality.evaluate@3 (Fase 14: interpretación
     # analítica, dashboard por medidas y calidad que indica los análisis afectados).
+    # analysis-v12: analytics.automatic@1 (Fase 15: plan analítico automático y hallazgos).
     # Los planes guardados conservan el valor con el que se crearon (y su hash).
     operation_catalog: Literal[
         "analysis-v1",
@@ -59,7 +61,8 @@ class ProcessingConfig(BaseModel):
         "analysis-v9",
         "analysis-v10",
         "analysis-v11",
-    ] = "analysis-v11"
+        "analysis-v12",
+    ] = "analysis-v12"
     rule_catalog: Literal["csv-quality-v1"] = "csv-quality-v1"
     max_rows: int = Field(ge=1, le=100000)
     max_columns: int = Field(ge=1, le=128)

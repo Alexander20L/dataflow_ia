@@ -1,4 +1,4 @@
-from dataflow.modules.understanding.analysis import analyze
+from dataflow.modules.understanding.analysis import analyze, row_periods
 from dataflow.modules.understanding.application import SemanticService
 from dataflow.modules.understanding.infrastructure import profile_rows
 from dataflow.modules.understanding.interpretation import interpret
@@ -7,6 +7,7 @@ from dataflow.modules.understanding.semantic_contracts import SemanticReference,
 
 __all__ = [
     "analyze",
+    "row_periods",
     "analytical_overview",
     "interpret",
     "profile_rows",

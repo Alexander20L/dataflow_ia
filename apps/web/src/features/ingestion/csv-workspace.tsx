@@ -15,11 +15,13 @@ import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
 import { number } from "@/lib/utils";
 import { useApp } from "@/lib/providers";
+import { AutomaticAnalysisView } from "./automatic-analysis";
 import { AutomaticOverview } from "./automatic-overview";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
 import {
   useCancelImport,
+  useAutomaticAnalysis,
   useDiagnostic,
   usePreview,
   useUploadFile,
@@ -86,6 +88,7 @@ export function CsvWorkspace({
       : `v${v.number} · ${v.file_name}`;
   };
   const diagnostic = useDiagnostic(version);
+  const automatic = useAutomaticAnalysis(version);
   if (versions.isPending || loadingOutside)
     return (
       <div className="loading-screen" aria-label="Cargando versiones">
@@ -301,6 +304,12 @@ export function CsvWorkspace({
             </div>
           ) : diagnostic.data?.profile.overview ? (
             <>
+              {automatic.data && (
+                <AutomaticAnalysisView
+                  key={`analysis-${version.id}`}
+                  analysis={automatic.data}
+                />
+              )}
               <AutomaticOverview
                 key={`overview-${version.id}`}
                 overview={diagnostic.data.profile.overview}

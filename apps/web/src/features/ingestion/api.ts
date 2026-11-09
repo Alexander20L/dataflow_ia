@@ -157,3 +157,21 @@ export function useCancelImport(projectId: string) {
     },
   });
 }
+export type AutomaticAnalysis = components["schemas"]["AutomaticAnalysis"];
+// Fase 15: plan analítico y hallazgos guardados al importar. Las versiones anteriores no lo
+// tienen (404 AUTOMATIC_ANALYSIS_NOT_AVAILABLE): se muestra sólo el dashboard descriptivo.
+export function useAutomaticAnalysis(version?: DatasetVersion) {
+  return useQuery({
+    queryKey: ["automatic-analysis", version?.id],
+    enabled: version?.state === "succeeded",
+    queryFn: async ({ signal }) => {
+      const result = await api.GET(
+        "/api/v1/versions/{version_id}/automatic-analysis",
+        { signal, params: { path: { version_id: version!.id } } },
+      );
+      if (result.response.status === 404) return null;
+      return requireData(result);
+    },
+    staleTime: Infinity,
+  });
+}

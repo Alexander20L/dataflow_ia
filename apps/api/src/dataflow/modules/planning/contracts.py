@@ -9,13 +9,15 @@ from pydantic import BaseModel, ConfigDict, Field
 from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.data_types import DataType
 
-CATALOG_VERSION = "analysis-v11"
+CATALOG_VERSION = "analysis-v12"
 MAX_STEPS = 16
 # Marca en el esquema de parámetros: el campo contiene IDs de columna de la tabla fijada.
 COLUMN_REF = "x-dataflow-column-ref"
 
 InputKind = Literal["source", "table"]
-OutputKind = Literal["table", "profile", "quality", "quality_rules", "analysis_result"]
+OutputKind = Literal[
+    "table", "profile", "quality", "quality_rules", "analysis_result", "automatic_analysis"
+]
 SemanticRole = Literal["unknown", "identifier", "dimension", "measure", "business_date"]
 ProblemCode = Literal[
     "EMPTY_PLAN",
@@ -274,3 +276,42 @@ class PlanningRepository(Protocol):
     def remember(
         self, project: UUID, key: UUID, owner: UUID, fingerprint: str, plan: UUID
     ) -> None: ...
+
+
+# --- Plan analítico automático (Fase 15, automatic-plan-v1) -------------------------------
+
+AutomaticAnalysisKind = Literal[
+    "evolution",
+    "year_over_year",
+    "breakdown",
+    "weighted_average",
+    "seasonality",
+    "anomalies",
+]
+
+
+class PlannedAnalysis(PlanningModel):
+    """Un análisis candidato con sus requisitos y la decisión del sistema (con motivo)."""
+
+    id: str
+    kind: AutomaticAnalysisKind
+    title: str
+    measure: str | None = None
+    weight: str | None = None  # promedio ponderado: medida ÷ peso (p. ej. Revenue ÷ Units)
+    dimension: str | None = None
+    priority: int = Field(ge=1)
+    requirements: list[str]
+    status: Literal["accepted", "omitted"]
+    reason: str
+
+
+class AnalysisPlan(PlanningModel):
+    """Plan versionado y acotado; sólo contiene análisis del catálogo automático."""
+
+    rules_version: Literal["automatic-plan-v1"] = "automatic-plan-v1"
+    interpretation_rules: Literal["automatic-interpretation-v2"] = "automatic-interpretation-v2"
+    measure: str | None
+    accepted: list[PlannedAnalysis]
+    omitted: list[PlannedAnalysis]
+    max_analyses: int
+    estimated_cells: int

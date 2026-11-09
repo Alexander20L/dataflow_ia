@@ -10,6 +10,9 @@ from dataflow.modules.analytics.contracts import (
     AnalysisResultV2,
     AnalysisResultV3,
     AnyAnalysisResult,
+    AutomaticAnalysis,
+    AutomaticAnalysisParameters,
+    AutomaticScope,
     BaseTable,
     EvidenceScope,
     MetricRevision,
@@ -167,6 +170,73 @@ class AnalyticsQueryStep:
                     "application/json",
                     parsed.row_count,
                     len(parsed.dimensions) + len(parsed.metrics),
+                )
+            ]
+        )
+
+
+class AutomaticAnalysisStep:
+    """analytics.automatic@1: plan analítico automático y hallazgos con evidencia (Fase 15).
+
+    De sólo lectura y sin métricas guardadas: el subproceso interpreta la tabla, planifica y
+    calcula con el motor de analytics.query@2 y métricas virtuales."""
+
+    output_kind: ArtifactKind = "automatic_analysis"
+    transforms_data = False
+
+    def __init__(self, objects: ObjectStore, root: Path) -> None:
+        self.objects, self.root = objects, root
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        if source.kind != "table":
+            raise ApplicationError(
+                "INPUT_KIND_MISMATCH", "El análisis requiere una entrada «table».", 409
+            )
+        AutomaticAnalysisParameters.model_validate(step.parameters)
+        plan = lease.execution.plan
+        assert plan
+        scope = AutomaticScope(
+            execution_id=lease.execution_id,
+            step_id=step.id,
+            version_id=lease.version_id,
+            table_sha256=source.content.sha256,
+        )
+        files = run_isolated(
+            self.root,
+            MODULE,
+            {"input.parquet": self.objects.read(source.content)},
+            [
+                "--mode",
+                "automatic",
+                "--input",
+                "{dir}/input.parquet",
+                "--scope-json",
+                scope.model_dump_json(),
+                "--max-rows",
+                str(plan.config.max_rows),
+                "--max-columns",
+                str(plan.config.max_columns),
+            ],
+            ["automatic.json"],
+            min(timeout, plan.config.timeout_seconds),
+        )
+        report = files["automatic.json"]
+        parsed = AutomaticAnalysis.model_validate_json(report)
+        prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
+        content = self.objects.put(f"{prefix}/automatic.json", report)
+        return StepResult(
+            [
+                ArtifactOutput(
+                    uuid4(),
+                    step.id,
+                    "automatic_analysis",
+                    "automatic_analysis",
+                    content,
+                    "application/json",
+                    len(parsed.insights),
+                    len(parsed.plan.accepted),
                 )
             ]
         )

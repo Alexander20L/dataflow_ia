@@ -3,11 +3,12 @@ from typing import Annotated, Literal
 from urllib.parse import quote
 from uuid import UUID
 
-from fastapi import APIRouter, Header, Query, Request, Response
+from fastapi import APIRouter, Header, Path, Query, Request, Response
 from pydantic import BaseModel, ConfigDict
 from starlette.concurrency import run_in_threadpool
 
 from dataflow.bootstrap.dependencies import Analysis, CurrentIdentity, Ingestion
+from dataflow.modules.analytics.contracts import AutomaticAnalysis, AutomaticEvidence
 from dataflow.modules.ingestion.contracts import (
     Diagnostic,
     IngestionSummary,
@@ -232,6 +233,33 @@ def get_version(version_id: UUID, identity: CurrentIdentity, service: Ingestion)
 )
 def diagnostic(version_id: UUID, identity: CurrentIdentity, service: Ingestion) -> Diagnostic:
     return service.diagnostic(identity.user.id, version_id)
+
+
+@router.get(
+    "/versions/{version_id}/automatic-analysis",
+    response_model=AutomaticAnalysis,
+    operation_id="getAutomaticAnalysis",
+)
+def automatic_analysis(
+    version_id: UUID, identity: CurrentIdentity, service: Ingestion
+) -> AutomaticAnalysis:
+    """Plan analítico automático y hallazgos con evidencia, guardados al importar."""
+    return service.automatic_analysis(identity.user.id, version_id)
+
+
+@router.get(
+    "/versions/{version_id}/automatic-analysis/evidence/{evidence_id}",
+    response_model=AutomaticEvidence,
+    operation_id="getAutomaticEvidence",
+)
+def automatic_evidence(
+    version_id: UUID,
+    evidence_id: Annotated[str, Path(pattern=r"^[0-9a-f]{64}$")],
+    identity: CurrentIdentity,
+    service: Ingestion,
+) -> AutomaticEvidence:
+    """Procedencia exacta de una cifra del análisis automático (método y entradas)."""
+    return service.automatic_evidence(identity.user.id, version_id, evidence_id)
 
 
 @router.get(
