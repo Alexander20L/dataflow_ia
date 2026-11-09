@@ -113,10 +113,15 @@ def build_plan(
             }
         ]
         step_input = {"kind": "step", "step_id": "read"}
+    # analysis-v11 (Fase 14): las cargas nuevas usan la interpretación analítica y la calidad
+    # que indica los análisis afectados. Las tablas derivadas conservan profile@1/quality@1.
+    analytical = table is None and config.operation_catalog == "analysis-v11"
     if analysis_kind == "profile_quality":
         profile_version = 1
         if table is None:
-            if config.operation_catalog == "analysis-v10":
+            if config.operation_catalog == "analysis-v11":
+                profile_version = 4
+            elif config.operation_catalog == "analysis-v10":
                 profile_version = 3
             elif config.operation_catalog == "analysis-v9":
                 profile_version = 2
@@ -131,6 +136,7 @@ def build_plan(
                         1: "column-profile-v1",
                         2: "column-profile-overview-v1",
                         3: "column-profile-interpreted-v1",
+                        4: "column-profile-analytical-v1",
                     }[profile_version]
                 },
             }
@@ -139,12 +145,13 @@ def build_plan(
         {
             "id": "quality",
             "operation": "quality.evaluate",
-            "version": 1,
+            "version": 3 if analytical else 1,
             "input": step_input,
             "parameters": {
                 "rule_set": "csv-quality-v1",
                 "rules": ["Q-001", "Q-002", "Q-003"],
                 "score": "cell_completeness_v1",
+                **({"analytical_rules": "automatic-quality-v1"} if analytical else {}),
             },
         }
     )

@@ -226,7 +226,7 @@ def test_xlsx_import_inspects_imports_and_matches_the_csv_figures(
     overview = client.get(f"/api/v1/versions/{xlsx_version}/diagnostic").json()["profile"][
         "overview"
     ]
-    assert overview["algorithm"] == "automatic-overview-v2"
+    assert overview["algorithm"] == "automatic-overview-v3"
     assert overview["kpis"][0]["value"] == "6"
     assert overview["table_detail"]["rows"][0][0] == "001"
 

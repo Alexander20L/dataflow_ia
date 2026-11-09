@@ -658,6 +658,134 @@ export interface components {
             /** Shares */
             shares: components["schemas"]["ShareTotal"][];
         };
+        /**
+         * AnalyticalColumn
+         * @description Papel de una columna según automatic-interpretation-v2, con su evidencia.
+         */
+        AnalyticalColumn: {
+            /** Additivity */
+            additivity?: ("additive" | "semi_additive" | "non_additive" | "unknown") | null;
+            /** Currency */
+            currency?: ("known" | "unknown" | "ambiguous") | null;
+            /** Currency Code */
+            currency_code?: string | null;
+            /** Evidence */
+            evidence: string[];
+            /**
+             * Monetary
+             * @default false
+             */
+            monetary: boolean;
+            /** Name */
+            name: string;
+            /** Ordinal */
+            ordinal: number;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "identifier" | "dimension" | "measure" | "time" | "text" | "empty";
+            /** Time Part */
+            time_part?: ("date" | "year" | "month") | null;
+            /** Unit */
+            unit?: ("known" | "unknown" | "ambiguous") | null;
+            /** Unit Label */
+            unit_label?: string | null;
+        };
+        /**
+         * AnalyticalFinding
+         * @description Hallazgo de automatic-quality-v1: qué problema hay y qué análisis afecta.
+         *
+         *     `blocking` bloquea sólo los análisis listados, no el resto del dashboard. Una observación
+         *     (`info`) no es un error: nada se corrige automáticamente.
+         */
+        AnalyticalFinding: {
+            /** Affected Analyses */
+            affected_analyses: string[];
+            /** Affected Rows */
+            affected_rows: number;
+            /**
+             * Check
+             * @enum {string}
+             */
+            check: "AQ-001" | "AQ-002" | "AQ-003" | "AQ-004" | "AQ-005" | "AQ-006" | "AQ-007" | "AQ-008";
+            /** Columns */
+            columns: string[];
+            /** Evidence */
+            evidence: string[];
+            /** Id */
+            id: string;
+            /** Sample Row Numbers */
+            sample_row_numbers: number[];
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "info" | "warning" | "blocking";
+            /** Title */
+            title: string;
+        };
+        /**
+         * AnalyticalInterpretation
+         * @description Interpretación sustentada por reglas: hipótesis con evidencia, no confirmaciones.
+         */
+        AnalyticalInterpretation: {
+            /** Available Analyses */
+            available_analyses: string[];
+            /** Columns */
+            columns: components["schemas"]["AnalyticalColumn"][];
+            /**
+             * Context
+             * @enum {string}
+             */
+            context: "generic" | "sales" | "inventory" | "ambiguous";
+            /** Dependencies */
+            dependencies: components["schemas"]["ColumnDependency"][];
+            /** Keys */
+            keys: components["schemas"]["KeyCandidate"][];
+            /** Label */
+            label: string;
+            /** Limitations */
+            limitations: string[];
+            /** Limited Analyses */
+            limited_analyses: components["schemas"]["LimitedAnalysis"][];
+            /** Relationships */
+            relationships: components["schemas"]["MeasureRelationship"][];
+            /** Row Meaning */
+            row_meaning: string;
+            /**
+             * Rules Version
+             * @default automatic-interpretation-v2
+             * @constant
+             */
+            rules_version: "automatic-interpretation-v2";
+            /** Summary */
+            summary: string;
+            time: components["schemas"]["TimeAxis"] | null;
+        };
+        /** AnalyticalQuality */
+        AnalyticalQuality: {
+            /** Blocking */
+            blocking: number;
+            /** Findings */
+            findings: components["schemas"]["AnalyticalFinding"][];
+            /**
+             * Interpretation Rules
+             * @default automatic-interpretation-v2
+             * @constant
+             */
+            interpretation_rules: "automatic-interpretation-v2";
+            /** Observations */
+            observations: number;
+            /**
+             * Rules Version
+             * @default automatic-quality-v1
+             * @constant
+             */
+            rules_version: "automatic-quality-v1";
+            /** Warnings */
+            warnings: number;
+        };
         /** ArchiveProjectRequest */
         ArchiveProjectRequest: {
             /** Expected Revision */
@@ -824,7 +952,8 @@ export interface components {
              * @default automatic-overview-v1
              * @enum {string}
              */
-            algorithm: "automatic-overview-v1" | "automatic-overview-v2";
+            algorithm: "automatic-overview-v1" | "automatic-overview-v2" | "automatic-overview-v3";
+            analysis?: components["schemas"]["AnalyticalInterpretation"] | null;
             /** Charts */
             charts: components["schemas"]["OverviewChart"][];
             interpretation?: components["schemas"]["AutomaticInterpretation"] | null;
@@ -884,6 +1013,29 @@ export interface components {
              * Format: uuid
              */
             version_id: string;
+        };
+        /**
+         * ColumnDependency
+         * @description Cada valor de `determinant` debería tener un único `dependent` (p. ej. código → nombre).
+         */
+        ColumnDependency: {
+            /** Conflicting Rows */
+            conflicting_rows: number;
+            /** Conflicting Values */
+            conflicting_values: number;
+            /** Dependent */
+            dependent: string;
+            /** Determinant */
+            determinant: string;
+            /** Determinant Values */
+            determinant_values: number;
+            /** Examples */
+            examples: string[];
+            /**
+             * Sample Row Numbers
+             * @default []
+             */
+            sample_row_numbers: number[];
         };
         /** ColumnProfile */
         ColumnProfile: {
@@ -1262,6 +1414,31 @@ export interface components {
             /** Versions */
             versions: number;
         };
+        /** KeyCandidate */
+        KeyCandidate: {
+            /** Columns */
+            columns: string[];
+            /** Duplicate Rows */
+            duplicate_rows: number;
+            /**
+             * Duplicate Sample Rows
+             * @default []
+             */
+            duplicate_sample_rows: number[];
+            /** Evidence */
+            evidence: string;
+            /** Unique */
+            unique: boolean;
+        };
+        /** LimitedAnalysis */
+        LimitedAnalysis: {
+            /** Columns */
+            columns: string[];
+            /** Reason */
+            reason: string;
+            /** Subject */
+            subject: string;
+        };
         /** LineageOperation */
         LineageOperation: {
             /** Operation */
@@ -1307,6 +1484,33 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * MeasureRelationship
+         * @description Relación comprobada fila a fila: `target` ≈ producto de `factors` con tolerancia.
+         */
+        MeasureRelationship: {
+            /** Compared Rows */
+            compared_rows: number;
+            /**
+             * Exception Sample Rows
+             * @default []
+             */
+            exception_sample_rows: number[];
+            /** Factors */
+            factors: string[];
+            /**
+             * Kind
+             * @default product
+             * @constant
+             */
+            kind: "product";
+            /** Matching Rows */
+            matching_rows: number;
+            /** Target */
+            target: string;
+            /** Tolerance */
+            tolerance: string;
         };
         /**
          * MetricCounts
@@ -1597,6 +1801,8 @@ export interface components {
             excluded_rows: number;
             /** Id */
             id: string;
+            /** Measure */
+            measure?: string | null;
             /**
              * Omitted Groups
              * @default 0
@@ -1665,6 +1871,8 @@ export interface components {
         };
         /** OverviewPoint */
         OverviewPoint: {
+            /** Amount */
+            amount?: string | null;
             /** Label */
             label: string;
             /** Value */
@@ -1800,6 +2008,7 @@ export interface components {
         };
         /** QualityReport */
         QualityReport: {
+            analytical?: components["schemas"]["AnalyticalQuality"] | null;
             /** Cell Count */
             cell_count: number;
             /** Completeness Percent */
@@ -2050,6 +2259,46 @@ export interface components {
             };
             /** Superseded Rows */
             superseded_rows: number;
+        };
+        /**
+         * TimeAxis
+         * @description Eje temporal mensual: una fecha o Año + Mes compuestos. No rellena meses vacíos.
+         */
+        TimeAxis: {
+            /** Columns */
+            columns: string[];
+            /** First */
+            first: string | null;
+            /**
+             * Granularity
+             * @default month
+             * @constant
+             */
+            granularity: "month";
+            /** Incomplete */
+            incomplete: string[];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "date" | "year_month";
+            /** Last */
+            last: string | null;
+            /** Missing */
+            missing: string[];
+            /** Missing Count */
+            missing_count: number;
+            /** Periods */
+            periods: number;
+            /** Unparsed Rows */
+            unparsed_rows: number;
+            /**
+             * Unparsed Sample Rows
+             * @default []
+             */
+            unparsed_sample_rows: number[];
+            /** Years */
+            years: string[];
         };
         /**
          * TimeRange

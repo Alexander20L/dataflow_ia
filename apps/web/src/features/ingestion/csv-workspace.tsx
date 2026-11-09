@@ -304,6 +304,7 @@ export function CsvWorkspace({
               <AutomaticOverview
                 key={`overview-${version.id}`}
                 overview={diagnostic.data.profile.overview}
+                quality={diagnostic.data.quality}
                 versionNumber={version.number}
               />
               <OverviewAudit

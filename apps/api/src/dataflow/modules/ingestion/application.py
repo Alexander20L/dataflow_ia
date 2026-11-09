@@ -89,8 +89,11 @@ class Analyzer(Protocol):
         timeout: float,
         include_overview: bool = False,
         include_interpretation: bool = False,
+        include_analysis: bool = False,
     ) -> DatasetProfile: ...
-    def quality(self, table: bytes, config: ProcessingConfig, timeout: float) -> QualityReport: ...
+    def quality(
+        self, table: bytes, config: ProcessingConfig, timeout: float, analytical: bool = False
+    ) -> QualityReport: ...
 
 
 class XlsxInspector(Protocol):

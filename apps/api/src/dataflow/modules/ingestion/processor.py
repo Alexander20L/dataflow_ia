@@ -16,14 +16,21 @@ from dataflow.modules.ingestion.domain import ENGINE_VERSION
 from dataflow.modules.quality.public import (
     Rule,
     RulesetReference,
+    assess,
     evaluate_quality,
     evaluate_rules,
 )
-from dataflow.modules.understanding.contracts import DatasetProfile
-from dataflow.modules.understanding.public import automatic_overview, interpret, profile_rows
+from dataflow.modules.understanding.contracts import DatasetProfile, profile_json
+from dataflow.modules.understanding.public import (
+    analytical_overview,
+    analyze,
+    automatic_overview,
+    interpret,
+    profile_rows,
+)
 from dataflow.platform.data_types import DataType
 from dataflow.platform.errors import ApplicationError
-from dataflow.platform.tabular import Cell, frame_types
+from dataflow.platform.tabular import Cell, display_cell, frame_types
 
 PREVIEW_ROWS = 20
 RULES: TypeAdapter[list[Rule]] = TypeAdapter(list[Rule])
@@ -226,6 +233,7 @@ def profile(
     max_columns: int,
     include_overview: bool = False,
     include_interpretation: bool = False,
+    include_analysis: bool = False,
 ) -> None:
     """understanding.profile@1 sobre una tabla; separador y hash son procedencia del original."""
     headers, rows, types = load_table(source, max_rows, max_columns)
@@ -238,24 +246,49 @@ def profile(
         column_count=len(headers),
         columns=profile_rows(headers, rows, types),
     )
-    if include_overview or include_interpretation:
+    if include_analysis:
+        cells = text_cells(rows, types)
+        result.overview = analytical_overview(result, cells, analyze(result, cells))
+    elif include_overview or include_interpretation:
         result.overview = automatic_overview(
             result, rows, types, interpret(result) if include_interpretation else None
         )
-    if include_interpretation:
-        content = result.model_dump_json()
-    elif include_overview:
-        content = result.model_dump_json(exclude={"overview": {"interpretation"}})
-    else:
-        content = result.model_dump_json(exclude={"overview"})
-    (output / "profile.json").write_text(content, encoding="utf-8")
+    version = (
+        4 if include_analysis else 3 if include_interpretation else 2 if include_overview else 1
+    )
+    (output / "profile.json").write_text(profile_json(result, version), encoding="utf-8")
+
+
+def text_cells(
+    rows: list[list[Cell]], types: list[tuple[DataType, dict[str, Any]]]
+) -> list[list[str | None]]:
+    """Celdas como texto canónico (el mismo de vistas y hashes) para las reglas puras."""
+    return [[display_cell(value, *types[index]) for index, value in enumerate(row)] for row in rows]
+
+
+def analytical_quality(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
+    """quality.evaluate@3: csv-quality-v1 más hallazgos automatic-quality-v1."""
+    headers, rows, types = load_table(source, max_rows, max_columns)
+    report = evaluate_quality(headers, rows, [data_type for data_type, _ in types])
+    cells = text_cells(rows, types)
+    profile = DatasetProfile(
+        engine_version=ENGINE_VERSION,
+        polars_version=pl.__version__,
+        source_sha256="",
+        separator="",
+        row_count=len(rows),
+        column_count=len(headers),
+        columns=profile_rows(headers, rows, types),
+    )
+    report.analytical = assess(analyze(profile, cells), cells)
+    (output / "quality.json").write_text(report.serialized(3), encoding="utf-8")
 
 
 def quality(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
     """quality.evaluate@1 sobre una tabla."""
     headers, rows, types = load_table(source, max_rows, max_columns)
     report = evaluate_quality(headers, rows, [data_type for data_type, _ in types])
-    (output / "quality.json").write_text(report.model_dump_json(), encoding="utf-8")
+    (output / "quality.json").write_text(report.serialized(1), encoding="utf-8")
 
 
 def quality_rules(
@@ -290,7 +323,9 @@ def main() -> None:
             "profile",
             "automatic_profile",
             "interpreted_profile",
+            "analytical_profile",
             "quality",
+            "analytical_quality",
             "quality_rules",
         ],
         required=True,
@@ -318,7 +353,12 @@ def main() -> None:
                 args.max_rows,
                 args.max_columns,
             )
-        elif args.mode in {"profile", "automatic_profile", "interpreted_profile"}:
+        elif args.mode in {
+            "profile",
+            "automatic_profile",
+            "interpreted_profile",
+            "analytical_profile",
+        }:
             if not args.source_sha256:
                 raise ApplicationError("PROCESSING_ERROR", "Falta el hash de procedencia.", 422)
             profile(
@@ -330,9 +370,12 @@ def main() -> None:
                 args.max_columns,
                 include_overview=args.mode == "automatic_profile",
                 include_interpretation=args.mode == "interpreted_profile",
+                include_analysis=args.mode == "analytical_profile",
             )
         elif args.mode == "quality":
             quality(args.input, args.output, args.max_rows, args.max_columns)
+        elif args.mode == "analytical_quality":
+            analytical_quality(args.input, args.output, args.max_rows, args.max_columns)
         else:
             quality_rules(
                 args.input,

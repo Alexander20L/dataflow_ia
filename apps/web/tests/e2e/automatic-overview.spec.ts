@@ -35,13 +35,15 @@ test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
     dashboard.getByRole("heading", { name: "Tu análisis automático" }),
   ).toBeVisible({ timeout: 30000 });
   await expect(
-    dashboard.getByRole("heading", { name: "Promedio de importe" }),
+    dashboard.getByRole("heading", { name: "Total de importe" }),
   ).toBeVisible();
   const interpretation = dashboard.getByRole("region", {
     name: "Lectura automática de los datos",
   });
   await expect(
-    interpretation.getByRole("heading", { name: "Posible contexto de ventas" }),
+    interpretation.getByRole("heading", {
+      name: "Posible contexto comercial (ventas)",
+    }),
   ).toBeVisible();
   await expect(
     interpretation.getByRole("button", {
@@ -49,10 +51,10 @@ test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
     }),
   ).toHaveCount(0);
   await expect(
-    dashboard.getByRole("img", { name: "Registros por mes de fecha" }),
+    dashboard.getByRole("img", { name: "importe por mes" }),
   ).toBeVisible();
   await expect(
-    dashboard.getByRole("img", { name: "Registros por region" }),
+    dashboard.getByRole("img", { name: "importe por region" }),
   ).toBeVisible();
   await expect(
     dashboard.getByText("3 valores utilizados · 1 vacíos excluidos").first(),
@@ -96,7 +98,9 @@ test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
     dashboard.getByRole("heading", { name: "Tu análisis automático" }),
   ).toBeVisible();
   await expect(
-    interpretation.getByRole("heading", { name: "Posible contexto de ventas" }),
+    interpretation.getByRole("heading", {
+      name: "Posible contexto comercial (ventas)",
+    }),
   ).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   expect(

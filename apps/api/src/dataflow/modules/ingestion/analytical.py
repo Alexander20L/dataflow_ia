@@ -135,9 +135,12 @@ class IsolatedAnalyzer:
         timeout: float,
         include_overview: bool = False,
         include_interpretation: bool = False,
+        include_analysis: bool = False,
     ) -> DatasetProfile:
         files = self.run(
-            "interpreted_profile"
+            "analytical_profile"
+            if include_analysis
+            else "interpreted_profile"
             if include_interpretation
             else ("automatic_profile" if include_overview else "profile"),
             table,
@@ -148,8 +151,11 @@ class IsolatedAnalyzer:
         )
         return DatasetProfile.model_validate_json(files["profile.json"])
 
-    def quality(self, table: bytes, config: ProcessingConfig, timeout: float) -> QualityReport:
-        files = self.run("quality", table, config, timeout, ["quality.json"])
+    def quality(
+        self, table: bytes, config: ProcessingConfig, timeout: float, analytical: bool = False
+    ) -> QualityReport:
+        mode = "analytical_quality" if analytical else "quality"
+        files = self.run(mode, table, config, timeout, ["quality.json"])
         return QualityReport.model_validate_json(files["quality.json"])
 
     def quality_rules(

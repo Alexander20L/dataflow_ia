@@ -102,8 +102,12 @@ def test_import_publishes_dashboard_without_policy_and_restores_it_after_reload(
     assert response.status_code == 200, response.text
     overview = response.json()["profile"]["overview"]
     assert overview["kpis"][0]["value"] == "3"
-    assert overview["algorithm"] == "automatic-overview-v2"
-    assert overview["interpretation"]["rules_version"] == "automatic-interpretation-v1"
+    # Fase 14 (analysis-v11): las cargas nuevas usan la interpretación analítica.
+    assert overview["algorithm"] == "automatic-overview-v3"
+    assert overview["interpretation"] is None
+    assert overview["analysis"]["rules_version"] == "automatic-interpretation-v2"
+    total = next(kpi for kpi in overview["kpis"] if kpi["id"] == "c1_total")
+    assert total["label"] == "Total de importe" and total["value"] == "60"
     assert (
         client.get(f"/api/v1/versions/{version['id']}/diagnostic").json()["profile"]["overview"]
         == overview

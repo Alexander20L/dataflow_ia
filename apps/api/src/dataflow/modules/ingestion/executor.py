@@ -17,7 +17,7 @@ from dataflow.modules.executions.public import (
 )
 from dataflow.modules.ingestion.application import Analyzer, ProjectAccess, ReadOutput
 from dataflow.modules.ingestion.contracts import ReadCsvParameters, ReadXlsxParameters
-from dataflow.modules.quality.contracts import QualityParameters
+from dataflow.modules.quality.contracts import AnalyticalQualityParameters, QualityParameters
 from dataflow.modules.quality.public import (
     QualityRulesParameters,
     QualityRulesReport,
@@ -25,9 +25,11 @@ from dataflow.modules.quality.public import (
     RulesetRevision,
 )
 from dataflow.modules.understanding.contracts import (
+    AnalyticalProfileParameters,
     AutomaticProfileParameters,
     InterpretedProfileParameters,
     ProfileParameters,
+    profile_json,
 )
 from dataflow.modules.understanding.public import SemanticReference, SemanticService, TableReference
 from dataflow.platform.errors import ApplicationError
@@ -189,7 +191,8 @@ def publish_read(
 
 
 class ProfileStep(AnalyzerStep):
-    """understanding.profile@1/@2: tabla → perfil, con snapshot automático sólo en @2."""
+    """understanding.profile@1–@4: tabla → perfil; dashboard desde @2, interpretación v1 en
+    @3 e interpretación analítica con dashboard por medidas en @4."""
 
     output_kind: ArtifactKind = "profile"
 
@@ -198,7 +201,9 @@ class ProfileStep(AnalyzerStep):
     ) -> StepResult:
         self.require(source, "table")
         assert lease.execution.plan
-        if step.version == 3:
+        if step.version == 4:
+            AnalyticalProfileParameters.model_validate(step.parameters)
+        elif step.version == 3:
             InterpretedProfileParameters.model_validate(step.parameters)
         elif step.version == 2:
             AutomaticProfileParameters.model_validate(step.parameters)
@@ -212,19 +217,12 @@ class ProfileStep(AnalyzerStep):
             timeout,
             include_overview=step.version == 2,
             include_interpretation=step.version == 3,
+            include_analysis=step.version == 4,
         )
         if profile.source_sha256 != source.source_sha256:
             raise ApplicationError("INTEGRITY_ERROR", "La salida no corresponde al original.", 409)
-        excluded: Any = (
-            {"overview"}
-            if step.version == 1
-            else ({"overview": {"interpretation"}} if step.version == 2 else set())
-        )
         content = self.put(
-            lease,
-            step,
-            "profile.json",
-            profile.model_dump_json(exclude=excluded).encode(),
+            lease, step, "profile.json", profile_json(profile, step.version).encode()
         )
         output = ArtifactOutput(
             uuid4(),
@@ -240,7 +238,7 @@ class ProfileStep(AnalyzerStep):
 
 
 class QualityStep(AnalyzerStep):
-    """quality.evaluate@1: tabla → calidad."""
+    """quality.evaluate@1: tabla → calidad; @3 añade los hallazgos automatic-quality-v1."""
 
     output_kind: ArtifactKind = "quality"
 
@@ -249,11 +247,17 @@ class QualityStep(AnalyzerStep):
     ) -> StepResult:
         self.require(source, "table")
         assert lease.execution.plan
-        QualityParameters.model_validate(step.parameters)
+        if step.version == 3:
+            AnalyticalQualityParameters.model_validate(step.parameters)
+        else:
+            QualityParameters.model_validate(step.parameters)
         quality = self.analyzer.quality(
-            self.objects.read(source.content), lease.execution.plan.config, timeout
+            self.objects.read(source.content),
+            lease.execution.plan.config,
+            timeout,
+            analytical=step.version == 3,
         )
-        content = self.put(lease, step, "quality.json", quality.model_dump_json().encode())
+        content = self.put(lease, step, "quality.json", quality.serialized(step.version).encode())
         output = ArtifactOutput(
             uuid4(),
             step.id,
