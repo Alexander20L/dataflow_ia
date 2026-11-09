@@ -13,11 +13,13 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     and_,
+    exists,
     func,
     or_,
     select,
+    text,
 )
-from sqlalchemy.orm import Mapped, Session, mapped_column
+from sqlalchemy.orm import Mapped, Session, aliased, mapped_column
 
 from dataflow.modules.audit.public import record_event
 from dataflow.modules.datasets.public import Datasets
@@ -33,10 +35,12 @@ from dataflow.modules.executions.contracts import (
     RunState,
     UserPlan,
 )
-from dataflow.modules.executions.domain import failure_state
+from dataflow.modules.executions.domain import RUNNING_LIMIT, failure_state
 from dataflow.platform.canonical import digest
 from dataflow.platform.database import Base
 from dataflow.platform.errors import ApplicationError
+
+CLAIM_LOCK = 0x0DF1_3C00
 
 
 class PlanRecord(Base):
@@ -563,8 +567,31 @@ class SQLExecutionRepository:
 
     def claim(self, kinds: set[RunKind], environment: dict[str, Any]) -> Lease | None:
         now = datetime.now(UTC)
+        # Serializa las reclamaciones entre workers para que los límites de concurrencia se
+        # evalúen sobre un estado estable (la transacción de reclamación es corta).
+        self.db.execute(text("SELECT pg_advisory_xact_lock(:key)"), {"key": CLAIM_LOCK})
         expired = select(AttemptRecord.execution_id).where(
             AttemptRecord.state == "running", AttemptRecord.lease_until < now
+        )
+        other = aliased(ExecutionRecord)
+        live = and_(other.state == "running", other.id.not_in(expired))
+        owner_running = (
+            select(func.count())
+            .select_from(other)
+            .where(other.owner_id == ExecutionRecord.owner_id, live)
+            .scalar_subquery()
+        )
+        project_importing = exists().where(
+            other.project_id == ExecutionRecord.project_id,
+            other.kind == "csv_import",
+            live,
+        )
+        # Un trabajo en cola espera si su propietario ya tiene RUNNING_LIMIT en marcha o, si
+        # es una importación, mientras otra importación del mismo proyecto se procesa (las
+        # versiones se procesan en orden de llegada). Una concesión vencida se recupera siempre.
+        waiting = or_(
+            owner_running >= RUNNING_LIMIT,
+            and_(ExecutionRecord.kind == "csv_import", project_importing),
         )
         record = self.db.scalar(
             select(ExecutionRecord)
@@ -572,7 +599,7 @@ class SQLExecutionRepository:
                 ExecutionRecord.kind.in_(kinds),
                 ExecutionRecord.plan_id.is_not(None),
                 or_(
-                    ExecutionRecord.state == "queued",
+                    and_(ExecutionRecord.state == "queued", ~waiting),
                     and_(ExecutionRecord.state == "running", ExecutionRecord.id.in_(expired)),
                 ),
             )

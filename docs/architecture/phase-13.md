@@ -97,3 +97,15 @@ Cierra los dos pasos que aún dependían de una persona tras la Fase 13:
 - Pruebas: reglas de elección (títulos, tablas, hojas ocultas, ilegibles o protegidas, empates),
   subida sin hoja con idempotencia y plan, rechazo de libros dañados, `auto` con y sin clave; E2E
   `xlsx.spec.ts` (libro con portada y título importado con cero clics desde `/new`).
+
+## Fase 13C — Las cargas esperan en cola
+
+Estado: **implementada** (API 0.20.0, sin migración). Decisión: [ADR-028](../adr/028-upload-queue.md).
+
+| Antes (0.19)                                                                             | Ahora (0.20)                                                                                                 |
+| ---------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| 409 `QUEUE_LIMIT` con 3 trabajos activos; 409 `PROJECT_BUSY` con otra carga del proyecto | La carga se registra y espera en cola; sólo se rechaza con 50 trabajos pendientes (`QUEUE_LIMIT`)            |
+| La persona debía esperar y volver a subir                                                | El worker ejecuta como máximo 3 trabajos por propietario y una importación por proyecto, en orden de llegada |
+
+- Pruebas: `test_uploads_wait_in_queue_instead_of_being_rejected` (límites al reclamar y orden) y
+  `test_queued_uploads_are_processed_in_order`.

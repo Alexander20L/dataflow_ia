@@ -14,6 +14,7 @@ from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.executions.infrastructure import (
     ArtifactRecord,
     AttemptRecord,
+    ExecutionRecord,
     SQLExecutionRepository,
 )
 from dataflow.modules.ingestion.analytical import IsolatedAnalyzer
@@ -150,7 +151,9 @@ def test_limits_archived_project_and_cross_account_access(
         upload(client, headers, project_id, content=b"a" * (5 * 1024 * 1024 + 1)).status_code == 413
     )
     version = upload(client, headers, project_id).json()
-    assert upload(client, headers, project_id).status_code == 409
+    # Fase 13C: una segunda carga del mismo proyecto espera en cola en vez de rechazarse.
+    assert upload(client, headers, project_id).status_code == 202
+    assert process(db, objects)
     assert process(db, objects)
     assert (
         client.post(
@@ -269,6 +272,7 @@ def test_repeated_worker_loss_exhausts_attempts(
 def test_account_queue_and_storage_limits(
     client: TestClient, objects: LocalObjects, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    monkeypatch.setattr("dataflow.modules.executions.application.PENDING_LIMIT", 3)
     headers = account(client)
     projects = [project(client, headers) for _ in range(4)]
     versions = [upload(client, headers, id).json() for id in projects[:3]]
@@ -288,3 +292,59 @@ def test_account_queue_and_storage_limits(
     assert rejected.status_code == 413 and rejected.json()["code"] == "STORAGE_QUOTA"
     account(client)
     assert client.get("/api/v1/datasets/summary").json()["versions"] == 0
+
+
+def test_uploads_wait_in_queue_instead_of_being_rejected(
+    client: TestClient, db: Session, objects: LocalObjects
+) -> None:
+    """Fase 13C: una carga nunca se rechaza por haber otras en curso; espera su turno."""
+    headers = account(client)
+    busy = project(client, headers)
+    first = upload(client, headers, busy, name="v1.csv")
+    second = upload(client, headers, busy, name="v2.csv")
+    assert first.status_code == 202 and second.status_code == 202
+    others = [project(client, headers) for _ in range(3)]
+    queued = [upload(client, headers, id) for id in others]
+    assert all(response.status_code == 202 for response in queued)
+    repo = SQLExecutionRepository(db, make_datasets(db))
+    leases = []
+    while lease := claim(repo):
+        db.commit()
+        leases.append(lease.execution_id)
+    db.commit()
+    expected = [first.json()["execution_id"], *(r.json()["execution_id"] for r in queued[:2])]
+    # Un máximo de tres trabajos a la vez por propietario y una importación por proyecto:
+    # la v2 espera a la v1 y el tercer proyecto espera a que se libere un hueco.
+    assert [str(id) for id in leases] == expected
+    db.execute(
+        update(AttemptRecord)
+        .where(AttemptRecord.execution_id == UUID(first.json()["execution_id"]))
+        .values(state="succeeded", finished_at=datetime.now(UTC), lease_until=None)
+    )
+    db.execute(
+        update(ExecutionRecord)
+        .where(ExecutionRecord.id == UUID(first.json()["execution_id"]))
+        .values(state="succeeded", active_attempt_id=None, finished_at=datetime.now(UTC))
+    )
+    db.commit()
+    nxt = claim(repo)
+    db.commit()
+    # Libre el hueco, la v2 (llegó antes) pasa por delante del último proyecto.
+    assert nxt and str(nxt.execution_id) == second.json()["execution_id"]
+    assert claim(repo) is None
+    db.commit()
+
+
+def test_queued_uploads_are_processed_in_order(
+    client: TestClient, db: Session, objects: LocalObjects
+) -> None:
+    headers = account(client)
+    project_id = project(client, headers)
+    names = ["v1.csv", "v2.csv", "v3.csv"]
+    for name in names:
+        assert upload(client, headers, project_id, name=name).status_code == 202
+    while process(db, objects):
+        pass
+    items = client.get(f"/api/v1/projects/{project_id}/versions").json()["items"]
+    assert {item["state"] for item in items} == {"succeeded"}
+    assert sorted(item["number"] for item in items) == [1, 2, 3]
