@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     ai_max_output_tokens: int = Field(default=4000, ge=500, le=16000)
     ai_user_daily_tokens: int = Field(default=200_000, ge=1)
     ai_project_monthly_cost_usd: Decimal = Field(default=Decimal("5"), ge=0)
+    # Fase 16: límites de cada investigación automática (ADR-033).
+    investigation_max_iterations: int = Field(default=3, ge=1, le=10)
+    investigation_max_ai_calls: int = Field(default=4, ge=0, le=20)
+    investigation_max_seconds: int = Field(default=60, ge=5, le=600)
+    investigation_max_cost_usd: Decimal = Field(default=Decimal("0.05"), ge=0)
 
     def effective_ai_provider(self) -> Literal["disabled", "fake", "anthropic"]:
         """Proveedor efectivo: `auto` se resuelve según haya clave o no."""

@@ -3,9 +3,9 @@
 import { Chart, seriesOption } from "@/components/ui/chart";
 import type { AutomaticAnalysis } from "./api";
 
-type Insight = AutomaticAnalysis["insights"][number];
+export type Insight = AutomaticAnalysis["insights"][number];
 
-function exactNumber(value: string | null | undefined) {
+export function exactNumber(value: string | null | undefined) {
   if (value == null) return "—";
   const negative = value.startsWith("-");
   const [integer, fraction] = (negative ? value.slice(1) : value).split(".");
@@ -14,9 +14,16 @@ function exactNumber(value: string | null | undefined) {
   return `${negative ? "-" : ""}${decimal ? `${grouped},${decimal}` : grouped}`;
 }
 
-function InsightCard({ insight }: { insight: Insight }) {
+export function InsightCard({
+  insight,
+  badge,
+}: {
+  insight: Insight;
+  badge?: string;
+}) {
   return (
     <article className="automatic-insight" aria-label={insight.title}>
+      {badge && <span className="insight-badge">{badge}</span>}
       <h3>{insight.title}</h3>
       <p>{insight.statement}</p>
       {insight.figures.length > 0 && (

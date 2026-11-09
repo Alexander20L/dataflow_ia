@@ -18,6 +18,7 @@ from dataflow.modules.executions.presentation import router as executions_router
 from dataflow.modules.identity.presentation import router as identity_router
 from dataflow.modules.ingestion.presentation import analysis_router
 from dataflow.modules.ingestion.presentation import router as ingestion_router
+from dataflow.modules.investigation.presentation import router as investigation_router
 from dataflow.modules.projects.presentation import router as projects_router
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import engine, session_factory
@@ -28,7 +29,7 @@ logger = logging.getLogger("dataflow.http")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 app = FastAPI(
     title="DataFlow AI API",
-    version="0.22.0",
+    version="0.23.0",
     description="DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     responses={
         status: {"model": ErrorResponse}
@@ -146,3 +147,4 @@ app.include_router(analysis_router)
 app.include_router(cleaning_router)
 app.include_router(analytics_router)
 app.include_router(copilot_router)
+app.include_router(investigation_router)

@@ -44,7 +44,9 @@ y difícil de mantener.
    (C2): disponibilidad, presupuesto y verificación de cifras.
 6. **Principio del producto** (sustituye al «principio híbrido»): el motor determinista decide y
    calcula con reglas versionadas; la IA sólo explica resultados publicados; ninguna cifra sale del
-   modelo; originales y versiones inmutables con linaje.
+   modelo; originales y versiones inmutables con linaje. _Modificado en la Fase 16 por
+   [ADR-033](033-bounded-investigation-and-ai-proposals.md): la IA también propone investigaciones
+   en un esquema cerrado, que Python valida y el motor calcula._
 
 ## Consecuencias
 

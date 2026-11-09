@@ -465,6 +465,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/versions/{version_id}/investigation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Investigation
+         * @description Seguimientos por reglas y propuestas de la IA validadas, con su explicación.
+         */
+        get: operations["getInvestigation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/investigation/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Investigation Evidence
+         * @description Procedencia de una cifra de la investigación o de los hallazgos que explica.
+         */
+        get: operations["getInvestigationEvidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/versions/{version_id}/lineage": {
         parameters: {
             query?: never;
@@ -885,7 +925,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis";
+            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis" | "investigation";
             /** Logical Content Sha256 */
             logical_content_sha256: string | null;
             /**
@@ -1268,6 +1308,15 @@ export interface components {
                 [key: string]: string;
             };
         };
+        /** Consumption */
+        Consumption: {
+            /** Ai Calls */
+            ai_calls: number;
+            /** Cost Usd */
+            cost_usd: string;
+            /** Elapsed Ms */
+            elapsed_ms: number;
+        };
         /** CreateProjectRequest */
         CreateProjectRequest: {
             /**
@@ -1473,7 +1522,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -1528,7 +1577,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -1571,6 +1620,46 @@ export interface components {
             operator: "eq" | "neq" | "in" | "not_in" | "gt" | "gte" | "lt" | "lte" | "between" | "is_null" | "is_not_null";
             /** Values */
             values?: string[];
+        };
+        /**
+         * FollowUpQuery
+         * @description Una consulta de seguimiento del catálogo cerrado `investigation-v1`.
+         *
+         *     La propone una regla o la IA, pero sólo llega aquí después de validarse en Python contra el
+         *     plan y los hallazgos: la medida es la del plan y la dimensión una de sus agrupaciones.
+         */
+        FollowUpQuery: {
+            /** Dimension */
+            dimension: string;
+            /** Group */
+            group?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "month_by_group" | "change_by_group" | "group_evolution";
+            /** Measure */
+            measure: string;
+            /** Month */
+            month?: string | null;
+            /** Year */
+            year?: number | null;
+        };
+        /** FollowUpResult */
+        FollowUpResult: {
+            /** Evidence */
+            evidence?: components["schemas"]["AutomaticEvidence"][];
+            insight?: components["schemas"]["AutomaticInsight"] | null;
+            /** Key */
+            key: string;
+            query: components["schemas"]["FollowUpQuery"];
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "computed" | "empty";
         };
         /** IngestionSummary */
         IngestionSummary: {
@@ -1624,6 +1713,142 @@ export interface components {
             label: string;
             /** Value */
             value: string | null;
+        };
+        /** Investigation */
+        Investigation: {
+            /**
+             * Ai
+             * @enum {string}
+             */
+            ai: "available" | "unavailable";
+            /** Ai Reason */
+            ai_reason?: string | null;
+            /** Calls */
+            calls: components["schemas"]["ModelCall"][];
+            consumption: components["schemas"]["Consumption"];
+            explanation?: components["schemas"]["AuditContent"] | null;
+            /** Explanation Reason */
+            explanation_reason?: string | null;
+            /**
+             * Explanation State
+             * @enum {string}
+             */
+            explanation_state: "ready" | "unavailable" | "failed";
+            /** Iterations */
+            iterations: number;
+            /** Limitations */
+            limitations: string[];
+            limits: components["schemas"]["InvestigationLimits"];
+            /**
+             * Operation
+             * @default investigation.investigate@1
+             * @constant
+             */
+            operation: "investigation.investigate@1";
+            /** Proposals */
+            proposals: components["schemas"]["Proposal"][];
+            /** Results */
+            results: components["schemas"]["FollowUpResult"][];
+            /**
+             * Rules Version
+             * @default investigation-v1
+             * @constant
+             */
+            rules_version: "investigation-v1";
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            scope: components["schemas"]["InvestigationScope"];
+            /**
+             * Stopped
+             * @enum {string}
+             */
+            stopped: "max_iterations" | "no_new_proposals" | "ai_unavailable" | "ai_error" | "max_ai_calls" | "max_cost" | "max_seconds" | "max_queries" | "nothing_to_investigate";
+        };
+        /**
+         * InvestigationLimits
+         * @description Límites duros del ciclo; se guardan con cada investigación.
+         */
+        InvestigationLimits: {
+            /**
+             * Max Ai Calls
+             * @default 4
+             */
+            max_ai_calls: number;
+            /**
+             * Max Cost Usd
+             * @default 0.05
+             */
+            max_cost_usd: string;
+            /**
+             * Max Iterations
+             * @default 3
+             */
+            max_iterations: number;
+            /**
+             * Max Proposals Per Call
+             * @default 4
+             */
+            max_proposals_per_call: number;
+            /**
+             * Max Queries
+             * @default 12
+             */
+            max_queries: number;
+            /**
+             * Max Seconds
+             * @default 60
+             */
+            max_seconds: number;
+        };
+        /** InvestigationScope */
+        InvestigationScope: {
+            /**
+             * Analysis Artifact Id
+             * Format: uuid
+             */
+            analysis_artifact_id: string;
+            /**
+             * Analysis Execution Id
+             * Format: uuid
+             */
+            analysis_execution_id: string;
+            /** Analysis Sha256 */
+            analysis_sha256: string;
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            /** Table Sha256 */
+            table_sha256: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
+        /**
+         * InvestigationView
+         * @description Estado de la investigación de una versión (sólo lectura).
+         */
+        InvestigationView: {
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            investigation?: components["schemas"]["Investigation"] | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "ready" | "failed";
         };
         /** KeyCandidate */
         KeyCandidate: {
@@ -1900,6 +2125,52 @@ export interface components {
              * Format: uuid
              */
             revision_id: string;
+        };
+        /**
+         * ModelCall
+         * @description Metadatos de una llamada al proveedor (nunca el contenido tabular).
+         */
+        ModelCall: {
+            /** Cache Read Tokens */
+            cache_read_tokens: number;
+            /** Cache Write Tokens */
+            cache_write_tokens: number;
+            /** Context Sha256 */
+            context_sha256: string;
+            /** Cost Usd */
+            cost_usd: string | null;
+            /** Error Code */
+            error_code?: string | null;
+            /** Input Tokens */
+            input_tokens: number;
+            /** Iteration */
+            iteration: number;
+            /** Latency Ms */
+            latency_ms: number;
+            /** Model */
+            model: string;
+            /**
+             * Outcome
+             * @enum {string}
+             */
+            outcome: "accepted" | "rejected" | "provider_error";
+            /** Output Tokens */
+            output_tokens: number;
+            /** Parameters */
+            parameters: {
+                [key: string]: unknown;
+            };
+            /** Prompt Id */
+            prompt_id: string;
+            /** Prompt Version */
+            prompt_version: string;
+            /** Provider */
+            provider: string;
+            /**
+             * Purpose
+             * @enum {string}
+             */
+            purpose: "proposal" | "explanation";
         };
         /** NumericSummary */
         NumericSummary: {
@@ -2223,6 +2494,40 @@ export interface components {
              * Format: date-time
              */
             updated_at: string;
+        };
+        /**
+         * Proposal
+         * @description Una consulta propuesta (por regla o por la IA) y la decisión de Python, con motivo.
+         */
+        Proposal: {
+            /** Dimension */
+            dimension: string | null;
+            /** Group */
+            group?: string | null;
+            /** Iteration */
+            iteration: number;
+            /** Key */
+            key?: string | null;
+            /** Kind */
+            kind: string;
+            /** Month */
+            month?: string | null;
+            /** Motive */
+            motive: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "rule" | "ai";
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "rejected";
+            /** Year */
+            year?: number | null;
         };
         /** QualityIssue */
         QualityIssue: {
@@ -6116,6 +6421,253 @@ export interface operations {
                 };
                 content: {
                     "text/csv": Blob;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getInvestigation: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestigationView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getInvestigationEvidence: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomaticEvidence"];
                 };
             };
             /** @description Bad Request */

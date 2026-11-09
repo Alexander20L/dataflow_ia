@@ -5,6 +5,7 @@ from fastapi import Depends, Header, Request, Security
 from fastapi.security import APIKeyCookie
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.investigation_job import InvestigationAccess
 from dataflow.bootstrap.overview_audit import OverviewAuditAccess
 from dataflow.bootstrap.services import (
     make_analysis,
@@ -78,6 +79,16 @@ def overview_audit_service(db: Db, objects: Objects) -> OverviewAuditAccess:
 
 
 OverviewAudits = Annotated[OverviewAuditAccess, Depends(overview_audit_service)]
+
+
+def investigation_service(db: Db, objects: Objects) -> InvestigationAccess:
+    from dataflow.platform.runtime import require_ready
+
+    require_ready(db)
+    return InvestigationAccess(make_datasets(db), make_executions(db), objects)
+
+
+Investigations = Annotated[InvestigationAccess, Depends(investigation_service)]
 
 
 def ingestion_service(db: Db, objects: Objects) -> IngestionService:

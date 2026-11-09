@@ -15,13 +15,15 @@ from dataflow.modules.analytics.contracts import (
     AutomaticScope,
     BaseTable,
     EvidenceScope,
+    FollowUpBatch,
+    FollowUpQuery,
     MetricRevision,
     QueryParameters,
     QueryParametersV2,
     QueryParametersV3,
     product_unit,
 )
-from dataflow.modules.datasets.public import ObjectStore
+from dataflow.modules.datasets.public import ObjectStore, StoredObject
 from dataflow.modules.executions.public import (
     ArtifactKind,
     ArtifactOutput,
@@ -240,3 +242,50 @@ class AutomaticAnalysisStep:
                 )
             ]
         )
+
+
+class FollowUpComputer:
+    """analytics.followup@1 (Fase 16): consultas de seguimiento ya validadas por la
+    investigación, en el subproceso aislado de analytics y sin acceso a la base de datos."""
+
+    def __init__(self, objects: ObjectStore, root: Path) -> None:
+        self.objects, self.root = objects, root
+
+    def compute(
+        self,
+        table: StoredObject,
+        scope: AutomaticScope,
+        queries: list[FollowUpQuery],
+        timeout: float,
+        max_rows: int,
+        max_columns: int,
+    ) -> FollowUpBatch:
+        if not queries:
+            return FollowUpBatch(scope=scope, results=[])
+        files = run_isolated(
+            self.root,
+            MODULE,
+            {"input.parquet": self.objects.read(table)},
+            [
+                "--mode",
+                "followup",
+                "--input",
+                "{dir}/input.parquet",
+                "--scope-json",
+                scope.model_dump_json(),
+                "--queries-json",
+                json.dumps([query.model_dump(mode="json") for query in queries]),
+                "--max-rows",
+                str(max_rows),
+                "--max-columns",
+                str(max_columns),
+            ],
+            ["followup.json"],
+            timeout,
+        )
+        batch = FollowUpBatch.model_validate_json(files["followup.json"])
+        if batch.scope != scope or [r.key for r in batch.results] != [q.key for q in queries]:
+            raise ApplicationError(
+                "OUTPUT_MANIFEST_INVALID", "El seguimiento no corresponde a la consulta.", 409
+            )
+        return batch
