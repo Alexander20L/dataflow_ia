@@ -30,6 +30,8 @@ READER_VERSION = "xlsx-reader-1"
 MAX_PART_BYTES = 64 * 1024 * 1024  # XML descomprimido de una parte
 MAX_PACKAGE_BYTES = 160 * 1024 * 1024  # paquete completo descomprimido
 MAX_WARNINGS = 20
+SELECTION_RULE = "xlsx-selection-v1"  # Fase 13B: elección automática de hoja o tabla
+HEADER_SCAN_ROWS = 50
 REL_TYPES = "/officeDocument/2006/relationships/"
 DATE_FORMAT_IDS = {*range(14, 23), *range(27, 37), 45, 46, 47, *range(50, 59)}
 CELL_REF = re.compile(r"^([A-Z]{1,3})([0-9]{1,7})$")
@@ -58,6 +60,16 @@ class TableInfo:
     last_col: int
     header_rows: int
     totals_rows: int
+
+
+@dataclass(frozen=True)
+class Selection:
+    """Decisión de `xlsx-selection-v1`: qué hoja o tabla se importa y cuáles quedan fuera."""
+
+    sheet: str
+    table: str | None
+    header_row: int
+    omitted: list[tuple[str, str | None]]
 
 
 @dataclass
@@ -342,6 +354,45 @@ class Workbook:
             raise fail("XLSX_SHEET_NOT_FOUND", f"El libro no contiene la hoja «{sheet}».")
         return chosen, None
 
+    def automatic(self, max_cells: int) -> Selection:
+        """Regla `xlsx-selection-v1`, determinista y sin intervención:
+
+        1. Sólo hojas visibles (si todas están ocultas, todas).
+        2. Si hay tablas con nombre y una fila de cabecera, se elige la de mayor área
+           (registros × columnas); las demás hojas sólo cuentan si no tienen tablas.
+        3. Si no, la hoja con más celdas con valor (las que no se pueden leer o están
+           protegidas van detrás, para que su error se explique si es la única).
+        4. Cabecera: la primera fila con el máximo de celdas con valor entre las primeras 50
+           filas con datos (salta títulos de una sola celda).
+        Empates: el orden del libro. Lo no elegido se informa en `omitted`.
+        """
+        visible = [s for s in self.sheets if not s.hidden] or self.sheets
+        names = {s.name for s in visible}
+        tables = [t for t in self.tables if t.sheet in names and t.header_rows == 1]
+        candidates: list[tuple[tuple[int, int], str, str | None, int]] = []
+        for sheet in visible:
+            for table in tables:
+                if table.sheet == sheet.name:
+                    area = (table.last_row - table.first_row - table.totals_rows) * (
+                        table.last_col - table.first_col + 1
+                    )
+                    candidates.append(((2, area), sheet.name, table.name, table.first_row))
+            if sheet.tables:
+                continue
+            try:
+                rows, _, protected, _ = self.cells(sheet, max_cells)
+            except ApplicationError:
+                candidates.append(((0, 0), sheet.name, None, 1))
+                continue
+            filled = sum(1 for row in rows.values() for v in row.values() if v and v.strip())
+            if filled:
+                candidates.append(((0 if protected else 1, filled), sheet.name, None, header(rows)))
+        if not candidates:
+            return Selection(visible[0].name, None, 1, [])
+        best = max(candidates, key=lambda c: c[0])
+        omitted = [(c[1], c[2]) for c in candidates if c is not best]
+        return Selection(best[1], best[2], best[3], omitted)
+
     def cells(
         self, sheet: SheetInfo, max_cells: int
     ) -> tuple[dict[int, dict[int, str | None]], list[tuple[int, int, int, int]], bool, list[str]]:
@@ -523,6 +574,13 @@ class Workbook:
             warnings,
             len(inexact),
         )
+
+
+def header(rows: dict[int, dict[int, str | None]]) -> int:
+    numbers = sorted(rows)[:HEADER_SCAN_ROWS]
+    widths = {n: sum(1 for v in rows[n].values() if v and v.strip()) for n in numbers}
+    widest = max(widths.values(), default=0)
+    return next((n for n in numbers if widths[n] == widest and widest), 1)
 
 
 def rich_text(element: Element) -> str:

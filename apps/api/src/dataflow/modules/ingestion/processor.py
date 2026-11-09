@@ -11,7 +11,7 @@ from typing import Any
 import polars as pl
 from pydantic import TypeAdapter
 
-from dataflow.integrations.sources.xlsx_reader import Workbook, read_xlsx
+from dataflow.integrations.sources.xlsx_reader import SELECTION_RULE, Workbook, read_xlsx
 from dataflow.modules.ingestion.domain import ENGINE_VERSION
 from dataflow.modules.quality.public import (
     Rule,
@@ -174,9 +174,22 @@ def inspect_xlsx(
     """Hojas, tablas y vista previa de la selección; un problema de la hoja elegida no
     impide listar el libro (se devuelve en `problem`)."""
     book = Workbook(source.read_bytes())
+    automatic: dict[str, Any] | None = None
+    if selection.get("sheet") is None and selection.get("table") is None:
+        # Fase 13B: sin hoja ni tabla pedidas, decide la regla xlsx-selection-v1.
+        chosen = book.automatic(max(1, max_rows + 1) * max_columns)
+        selection = {"sheet": chosen.sheet, "table": chosen.table, "header_row": chosen.header_row}
+        automatic = {
+            "rule": SELECTION_RULE,
+            "sheet": chosen.sheet,
+            "table": chosen.table,
+            "header_row": chosen.header_row,
+            "omitted": [{"sheet": s, "table": t} for s, t in chosen.omitted],
+        }
     sheet, table = book.select(selection.get("sheet"), selection.get("table"))
     header_row = int(selection.get("header_row") or 1)
     inspection: dict[str, Any] = {
+        "selection": automatic,
         "sheets": [{"name": s.name, "hidden": s.hidden, "tables": s.tables} for s in book.sheets],
         "sheet": sheet.name,
         "table": table.name if table else None,

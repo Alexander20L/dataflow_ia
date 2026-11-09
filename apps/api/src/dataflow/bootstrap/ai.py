@@ -1,7 +1,8 @@
 """Composición del proveedor de IA desde la configuración (ADR-022).
 
-`DATAFLOW_AI_PROVIDER`: `disabled` (por defecto), `fake` (pytest, CI y E2E) o `anthropic`.
-Sin clave, el copiloto informa `missing_key` y el resto del producto funciona igual.
+`DATAFLOW_AI_PROVIDER`: `auto` (por defecto: Anthropic si hay clave, si no desactivada),
+`disabled`, `fake` (pytest, CI y E2E) o `anthropic`. Con `anthropic` y sin clave se informa
+`missing_key`; el resto del producto funciona igual.
 """
 
 from functools import lru_cache
@@ -36,9 +37,10 @@ def configured(
     provider: AIProvider | None = None
     unavailable: Any = None
     model: str | None = None
-    if settings.ai_provider == "disabled":
+    effective = settings.effective_ai_provider()
+    if effective == "disabled":
         unavailable = "disabled"
-    elif settings.ai_provider == "fake":
+    elif effective == "fake":
         provider, model = FakeProvider(responder=simulated), "fake"
     else:
         key = settings.ai_key()
@@ -50,7 +52,7 @@ def configured(
                 key, settings.ai_model, settings.ai_effort, settings.ai_timeout_seconds, max_retries
             )
     return provider, CopilotConfig(
-        provider=settings.ai_provider,
+        provider=effective,
         unavailable=unavailable,
         model=model,
         user_daily_tokens=settings.ai_user_daily_tokens,

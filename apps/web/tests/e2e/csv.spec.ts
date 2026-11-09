@@ -55,7 +55,7 @@ test("CSV real: dashboard automático, descarga íntegra y versiones independien
     });
   await page
     .getByRole("dialog")
-    .getByRole("button", { name: "Subir y analizar CSV" })
+    .getByRole("button", { name: "Subir y analizar", exact: true })
     .click();
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(

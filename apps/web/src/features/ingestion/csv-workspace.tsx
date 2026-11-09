@@ -15,7 +15,6 @@ import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
 import { number } from "@/lib/utils";
 import { useApp } from "@/lib/providers";
-import { XlsxSource } from "./xlsx-source";
 import { AutomaticOverview } from "./automatic-overview";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
@@ -23,12 +22,12 @@ import {
   useCancelImport,
   useDiagnostic,
   usePreview,
-  useUploadCsv,
+  useUploadFile,
   useVersion,
   useVersions,
+  XLSX_MIME,
   type DatasetVersion,
   type Diagnostic,
-  type Separator,
 } from "./api";
 
 const states = {
@@ -248,6 +247,7 @@ export function CsvWorkspace({
               </span>
             )}
           </div>
+          <SourceSelection version={version} />
           {["queued", "processing"].includes(version.state) ? (
             <div className="processing-state" role="status">
               <LoaderCircle className="spin" size={30} />
@@ -381,27 +381,16 @@ export function CsvUpload({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [separator, setSeparator] = useState<Separator>("auto");
   const [error, setError] = useState("");
-  const upload = useUploadCsv(projectId);
+  const upload = useUploadFile(projectId);
   const { notify } = useApp();
   function select(value?: File) {
     if (!value || upload.isPending) return;
     setFile(null);
     setError("");
-    const name = value.name.toLowerCase();
-    if (/\.(xls|xlsm|xlsb)$/.test(name)) {
-      setError(
-        "Sólo se admiten libros .xlsx: guarda el archivo como «Libro de Excel (.xlsx)».",
-      );
-      return;
-    }
-    if (!name.endsWith(".csv") && !name.endsWith(".xlsx")) {
-      setError("Selecciona un archivo CSV o un libro de Excel (.xlsx).");
-      return;
-    }
-    if (!value.size || value.size > 5 * 1024 * 1024) {
-      setError("Selecciona un archivo no vacío de hasta 5 MB.");
+    const problem = fileProblem(value);
+    if (problem) {
+      setError(problem);
       return;
     }
     setFile(value);
@@ -412,7 +401,7 @@ export function CsvUpload({
         hidden
         ref={input}
         type="file"
-        accept=".csv,text/csv,.xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        accept={FILE_ACCEPT}
         aria-label="Archivo CSV o Excel"
         onChange={(e) => select(e.target.files?.[0])}
       />
@@ -437,67 +426,84 @@ export function CsvUpload({
           Seleccionar archivo
         </Button>
       </div>
-      {file && /\.xlsx$/i.test(file.name) ? (
-        <XlsxSource
-          key={`${file.name}-${file.size}-${file.lastModified}`}
-          projectId={projectId}
-          file={file}
-          onUploaded={() => {
+      <p className="muted">
+        El sistema detecta el separador del CSV o, en un libro de Excel, la hoja
+        o tabla principal y su fila de cabecera.
+      </p>
+      {upload.isError && (
+        <p className="auth-error" role="alert">
+          {errorMessage(upload.error)}
+        </p>
+      )}
+      <Button
+        disabled={!file || upload.isPending}
+        onClick={async () => {
+          if (!file) return;
+          try {
+            await upload.mutateAsync({ file });
             setFile(null);
             if (input.current) input.current.value = "";
+            notify("Original conservado. Procesamiento encolado.");
             onUploaded();
-          }}
-        />
-      ) : (
-        <>
-          <label htmlFor={`separator-${projectId}`}>
-            Separador de columnas
-          </label>
-          <select
-            id={`separator-${projectId}`}
-            disabled={upload.isPending}
-            value={separator}
-            onChange={(e) => setSeparator(e.target.value as Separator)}
-          >
-            <option value="auto">Detectar automáticamente</option>
-            <option value=",">Coma (,)</option>
-            <option value=";">Punto y coma (;)</option>
-            <option value="tab">Tabulador</option>
-          </select>
-          {upload.isError && (
-            <p className="auth-error" role="alert">
-              {errorMessage(upload.error)}
-            </p>
-          )}
-          <Button
-            disabled={!file || upload.isPending}
-            onClick={async () => {
-              if (!file) return;
-              try {
-                await upload.mutateAsync({ file, separator });
-                setFile(null);
-                if (input.current) input.current.value = "";
-                notify("Original conservado. Procesamiento encolado.");
-                onUploaded();
-              } catch {
-                /* Error visible y clave de reintento conservada. */
-              }
-            }}
-          >
-            {upload.isPending ? (
-              <LoaderCircle className="spin" size={16} />
-            ) : (
-              <UploadCloud size={16} />
-            )}
-            {upload.isPending ? "Enviando CSV…" : "Subir y analizar CSV"}
-          </Button>
-        </>
-      )}
+          } catch {
+            /* Error visible y clave de reintento conservada. */
+          }
+        }}
+      >
+        {upload.isPending ? (
+          <LoaderCircle className="spin" size={16} />
+        ) : (
+          <UploadCloud size={16} />
+        )}
+        {upload.isPending ? "Enviando archivo…" : "Subir y analizar"}
+      </Button>
       {error && (
         <p className="auth-error" role="alert">
           {error}
         </p>
       )}
+    </div>
+  );
+}
+
+export const FILE_ACCEPT = `.csv,text/csv,.xlsx,${XLSX_MIME}`;
+
+/** Comprobaciones previas comunes al asistente y al espacio de trabajo. */
+export function fileProblem(file: File): string | null {
+  const name = file.name.toLowerCase();
+  if (/\.(xls|xlsm|xlsb)$/.test(name))
+    return "Sólo se admiten libros .xlsx: guarda el archivo como «Libro de Excel (.xlsx)».";
+  if (!name.endsWith(".csv") && !name.endsWith(".xlsx"))
+    return "Selecciona un archivo CSV o un libro de Excel (.xlsx).";
+  if (!file.size) return "El archivo está vacío.";
+  if (file.size > 5 * 1024 * 1024)
+    return "El archivo debe tener como máximo 5 MB.";
+  return null;
+}
+
+/** Fase 13B: qué hoja o tabla eligió el sistema en un .xlsx y qué quedó fuera. */
+function SourceSelection({ version }: { version: DatasetVersion }) {
+  const selection = version.source_selection;
+  if (!selection) return null;
+  const describe = (sheet: string, table?: string | null) =>
+    table ? `la tabla «${table}» (hoja «${sheet}»)` : `la hoja «${sheet}»`;
+  return (
+    <div className="info-banner" role="note" aria-label="Hoja importada">
+      <FileSpreadsheet size={16} />
+      <span>
+        Se importó {describe(selection.sheet, selection.table)}, con la cabecera
+        en la fila {selection.header_row}.
+        {selection.omitted.length > 0 && (
+          <>
+            {" "}
+            No se importaron:{" "}
+            {selection.omitted
+              .map((item) => describe(item.sheet, item.table))
+              .join(", ")}
+            . Para analizarlas, guárdalas como un libro aparte.
+          </>
+        )}
+      </span>
     </div>
   );
 }

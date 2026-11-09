@@ -76,3 +76,24 @@ Limpieza automática segura, dashboard completo en la versión limpia, reglas de
 análisis con evidencia (`analytics.query@3`), robustez del encadenado, Excel en el asistente y
 E2E de cero clics con XLSX. Decidir el destino de las tablas sin uso de las Fases 4–10 y de
 `reportlab`.
+
+## Fase 13B — Excel e IA sin configuración
+
+Estado: **implementada** (API 0.19.0, sin migración). Decisión: [ADR-027](../adr/027-excel-and-ai-without-configuration.md).
+
+Cierra los dos pasos que aún dependían de una persona tras la Fase 13:
+
+| Antes (0.18)                                                                   | Ahora (0.19)                                                                                                                                                         |
+| ------------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `uploadXlsx` exigía `sheet`; la interfaz pedía hoja o tabla y fila de cabecera | Sin `sheet` ni `table`, el sistema aplica `xlsx-selection-v1` al recibir el libro y lo informa en `source_selection` (versión y plan). Con `sheet`, igual que en 12A |
+| `/new` sólo aceptaba CSV                                                       | `/new` y el espacio de trabajo aceptan `.csv` y `.xlsx` con un único botón «Subir y analizar»; la versión muestra «Se importó la hoja… No se importaron…»            |
+| El CSV ofrecía elegir separador                                                | Siempre detección automática en la interfaz (la API conserva el parámetro)                                                                                           |
+| `DATAFLOW_AI_PROVIDER=disabled` por defecto                                    | `auto` por defecto: Anthropic si hay clave, si no desactivada (`disabled`, `fake` y `anthropic` siguen)                                                              |
+
+- `ingestion.read_xlsx@1` y el catálogo `analysis-v10` no cambian: la decisión se toma antes y
+  se fija como parámetros explícitos del plan.
+- `inspectXlsx` sin `sheet` ni `table` devuelve la elección automática en `selection`; la
+  interfaz ya no lo usa.
+- Pruebas: reglas de elección (títulos, tablas, hojas ocultas, ilegibles o protegidas, empates),
+  subida sin hoja con idempotencia y plan, rechazo de libros dañados, `auto` con y sin clave; E2E
+  `xlsx.spec.ts` (libro con portada y título importado con cero clics desde `/new`).

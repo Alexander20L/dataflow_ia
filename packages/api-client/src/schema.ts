@@ -305,7 +305,9 @@ export interface paths {
         put?: never;
         /**
          * Upload Xlsx
-         * @description Fase 12A: importa la hoja o tabla elegida con ingestion.read_xlsx@1.
+         * @description Importa un libro con ingestion.read_xlsx@1. Sin `sheet` ni `table` (Fase 13B), el
+         *     sistema elige la hoja o tabla y la cabecera (`xlsx-selection-v1`) y lo informa en
+         *     `source_selection`; con `table` hay que indicar también su `sheet`.
          */
         post: operations["uploadXlsx"];
         delete?: never;
@@ -325,7 +327,8 @@ export interface paths {
         put?: never;
         /**
          * Inspect Xlsx
-         * @description Fase 12A: hojas, tablas con nombre y vista previa de la selección; no guarda nada.
+         * @description Hojas, tablas con nombre y vista previa; no guarda nada. Sin `sheet` ni `table`
+         *     muestra la elección automática del sistema (`selection`, Fase 13B).
          */
         post: operations["inspectXlsx"];
         delete?: never;
@@ -2145,11 +2148,19 @@ export interface components {
             row_count: number | null;
             /** Sha256 */
             sha256: string;
+            source_selection?: components["schemas"]["XlsxSelection"] | null;
             /**
              * State
              * @enum {string}
              */
             state: "queued" | "processing" | "succeeded" | "failed" | "cancelled";
+        };
+        /** XlsxCandidate */
+        XlsxCandidate: {
+            /** Sheet */
+            sheet: string;
+            /** Table */
+            table: string | null;
         };
         /**
          * XlsxInspection
@@ -2165,6 +2176,7 @@ export interface components {
             row_count: number;
             /** Rows */
             rows: (string | null)[][];
+            selection?: components["schemas"]["XlsxSelection"] | null;
             /** Sheet */
             sheet: string;
             /** Sheets */
@@ -2182,6 +2194,26 @@ export interface components {
             code: string;
             /** Message */
             message: string;
+        };
+        /**
+         * XlsxSelection
+         * @description Decisión automática del sistema (Fase 13B, regla `xlsx-selection-v1`): hoja o tabla
+         *     importada, fila de cabecera y lo que quedó fuera.
+         */
+        XlsxSelection: {
+            /** Header Row */
+            header_row: number;
+            /** Omitted */
+            omitted: components["schemas"]["XlsxCandidate"][];
+            /**
+             * Rule
+             * @constant
+             */
+            rule: "xlsx-selection-v1";
+            /** Sheet */
+            sheet: string;
+            /** Table */
+            table: string | null;
         };
         /** XlsxSheet */
         XlsxSheet: {
@@ -4567,7 +4599,7 @@ export interface operations {
         parameters: {
             query: {
                 file_name: string;
-                sheet: string;
+                sheet?: string | null;
                 table?: string | null;
                 header_row?: number;
             };

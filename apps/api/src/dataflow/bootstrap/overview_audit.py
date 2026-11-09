@@ -46,9 +46,8 @@ def enqueue_audit(
     config: ProcessingConfig,
 ) -> None:
     settings = get_settings()
-    if settings.ai_provider == "disabled" or (
-        settings.ai_provider == "anthropic" and not settings.ai_key()
-    ):
+    provider = settings.effective_ai_provider()
+    if provider == "disabled" or (provider == "anthropic" and not settings.ai_key()):
         return
     key = uuid5(lease.execution_id, "automatic-overview-audit@1")
     fingerprint = digest(

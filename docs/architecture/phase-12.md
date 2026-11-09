@@ -2,6 +2,8 @@
 
 Estado: **12A implementada** (Excel); 12B (SQL Server) y 12C (PDF) siguen como plan. Se separa de la [Fase 11](phase-11.md) para no mezclar dos cambios grandes: la automatización funciona primero con CSV y después se amplían las fuentes.
 
+> Fase 13B ([ADR-027](../adr/027-excel-and-ai-without-configuration.md)): la hoja o tabla y la fila de cabecera las elige el sistema (`xlsx-selection-v1`); la interfaz ya no muestra el selector ni la vista previa, y `/new` acepta `.xlsx`.
+
 ## Objetivo
 
 Que la fuente activa de una sesión de análisis (Fase 11A) pueda ser, además de un CSV, una hoja de Excel, una tabla o vista de SQL Server, o una tabla de un PDF con texto.

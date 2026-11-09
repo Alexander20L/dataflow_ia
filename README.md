@@ -1,6 +1,6 @@
 # DataFlow AI
 
-**API 0.18 — análisis completamente automático (Fase 13):** subes un CSV o un libro de Excel y el sistema lo lee, lo perfila, evalúa su calidad, lo interpreta y publica un dashboard con indicadores, gráficos y detalle, sin formularios, aprobaciones ni configuración. Si la IA está configurada, un trabajo independiente explica los resultados guardados con cifras verificadas por su evidencia; sin IA o ante errores, el dashboard sigue disponible. Al modelo sólo se envían cifras agregadas acotadas, sus etiquetas y limitaciones; nunca filas. El original y cada versión son inmutables. [Decisión (ADR-026)](docs/adr/026-fully-automatic-single-path.md) · [Fase 13](docs/architecture/phase-13.md) · [analista automático](docs/architecture/automatic-analyst.md).
+**API 0.19 — análisis completamente automático (Fases 13 y 13B):** subes un CSV o un libro de Excel y el sistema lo lee (en un libro elige solo la hoja o tabla principal y su cabecera), lo perfila, evalúa su calidad, lo interpreta y publica un dashboard con indicadores, gráficos y detalle, sin formularios, aprobaciones ni configuración. Si la IA está configurada, un trabajo independiente explica los resultados guardados con cifras verificadas por su evidencia; sin IA o ante errores, el dashboard sigue disponible. Al modelo sólo se envían cifras agregadas acotadas, sus etiquetas y limitaciones; nunca filas. El original y cada versión son inmutables. [Decisión (ADR-026)](docs/adr/026-fully-automatic-single-path.md) · [Fase 13 y 13B](docs/architecture/phase-13.md) · [ADR-027](docs/adr/027-excel-and-ai-without-configuration.md) · [analista automático](docs/architecture/automatic-analyst.md).
 
 Las Fases 4 a 10 construyeron un recorrido supervisado (semántica, planes, limpieza con aprobación, reglas, métricas, dashboards editables, informes y copiloto con botones). Desde la Fase 13 ya no forma parte del producto: se conservan sus motores (limpieza, calidad, análisis con evidencia), que el recorrido automático incorporará en la Fase 14, y sus tablas históricas.
 
@@ -39,15 +39,14 @@ Abrir http://localhost:3002 y crear una cuenta (contraseña de 12 caracteres com
 
 ### Explicación con IA (opcional)
 
-Está desactivado por defecto y el producto funciona igual sin él. Para activarlo en local, en `apps/api/.env` (ignorado por git; nunca en el repositorio ni en el frontend):
+Se activa sola en cuanto hay una clave (`DATAFLOW_AI_PROVIDER=auto`, el valor por defecto); sin clave queda desactivada y el producto funciona igual. En local, en `apps/api/.env` (ignorado por git; nunca en el repositorio ni en el frontend):
 
 ```sh
-DATAFLOW_AI_PROVIDER=anthropic
 DATAFLOW_AI_API_KEY=<tu clave de la API de Anthropic>
 # Opcional: DATAFLOW_AI_MODEL=claude-opus-5-5 · DATAFLOW_AI_EFFORT=low
 ```
 
-Con Docker, guarda la clave en un archivo fuera del repositorio (o en `infrastructure/compose/secrets/`, que git ignora) y arranca con `DATAFLOW_AI_PROVIDER=anthropic` y `DATAFLOW_AI_API_KEY_SECRET_FILE=<ruta del archivo>`: se monta como secreto en `/run/secrets/ai_api_key`. Límites de uso por usuario y día (tokens) y por proyecto y mes (costo estimado) en `apps/api/.env.example`. `DATAFLOW_AI_PROVIDER=fake` usa un proveedor determinista sin red (pruebas y E2E). Casos reales opcionales contra el modelo: `DATAFLOW_AI_LIVE_TESTS=1` con la clave configurada y `pytest apps/api/tests/ai/test_ai_live.py` (generan costo).
+Con Docker, guarda la clave en un archivo fuera del repositorio (o en `infrastructure/compose/secrets/`, que git ignora) y arranca con `DATAFLOW_AI_API_KEY_SECRET_FILE=<ruta del archivo>`: se monta como secreto en `/run/secrets/ai_api_key`. Límites de uso por usuario y día (tokens) y por proyecto y mes (costo estimado) en `apps/api/.env.example`. `DATAFLOW_AI_PROVIDER=disabled` la apaga aunque haya clave y `fake` usa un proveedor determinista sin red (pruebas y E2E; pytest fuerza `disabled` si no se indica otro). Casos reales opcionales contra el modelo: `DATAFLOW_AI_LIVE_TESTS=1` con la clave configurada y `pytest apps/api/tests/ai/test_ai_live.py` (generan costo).
 Variables opcionales en `apps/api/.env` y `apps/web/.env.local`: consultar sus `.env.example`. El frontend usa un proxy same-origin, `API_INTERNAL_URL` privado y cookies HttpOnly. No requiere CORS abierto.
 
 ### Calidad y pruebas
@@ -84,7 +83,7 @@ No editar `contracts/openapi/dataflow.json` ni `packages/api-client/src/schema.t
 
 ## Recorrido
 
-Crear cuenta → Nuevo análisis → seleccionar un CSV (o crear el proyecto y subir un `.xlsx` desde su espacio de trabajo) → el original se conserva → procesamiento en cola → **Tu análisis automático** (indicadores, gráficos, lectura de las columnas y detalle) → **Explicación automática IA** si está activada. No hay pasos intermedios ni decisiones que tomar.
+Crear cuenta → Nuevo análisis → seleccionar un CSV o un `.xlsx` → el original se conserva → procesamiento en cola → **Tu análisis automático** (indicadores, gráficos, lectura de las columnas y detalle) → **Explicación automática IA** si está activada. No hay pasos intermedios ni decisiones que tomar.
 
 Prueba con `examples/ventas_calidad.csv`: 6 registros, 5 columnas, una celda vacía, una fila duplicada adicional y una celda de espacios. Completitud: 96,67 %. `examples/ventas.xlsx` produce las mismas cifras.
 
@@ -92,7 +91,7 @@ Los proyectos se guardan en PostgreSQL con propietario, revisión y eventos de a
 
 ### CSV admitidos
 
-- UTF-8 con o sin BOM; coma, punto y coma o tabulador, con detección automática u opción explícita.
+- UTF-8 con o sin BOM; coma, punto y coma o tabulador, siempre con detección automática (la API conserva la opción explícita).
 - Hasta 5 MiB, 100.000 registros, 128 columnas y 10.000 caracteres por campo. Cabecera única y no vacía; errores estructurales se muestran sin publicar resultados parciales.
 - Original byte a byte y SHA-256. Copia Parquet con texto nullable: conserva ceros iniciales y espacios; campos vacíos se representan como nulos. Los tipos sugeridos son heurísticos y no convierten los valores.
 - Reglas: vacíos por columna, duplicados posteriores a su primera aparición y campos sólo con espacios/tabuladores/saltos. Completitud mide celdas no vacías; no una calidad universal.
@@ -126,11 +125,13 @@ Consultar `docs/architecture/implementation-plan.md` para fases y verificación 
 
 ### Diseño del siguiente incremento — Fase 1
 
-Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación de datasets/ejecuciones: [Fase 2](docs/architecture/phase-2.md). Revisión semántica persistida: [Fase 3](docs/architecture/phase-3.md). Planes y catálogo de operaciones: [Fase 4](docs/architecture/phase-4.md). Limpieza supervisada y versiones derivadas: [Fase 5](docs/architecture/phase-5.md). Tablas tipadas y conversiones: [Fase 6](docs/architecture/phase-6.md). Análisis de negocio: [Fase 7](docs/architecture/phase-7.md). Dashboards: [Fase 8](docs/architecture/phase-8.md). Informes y exportaciones: [Fase 9](docs/architecture/phase-9.md). Copiloto de IA: [Fase 10](docs/architecture/phase-10.md). Automatización determinista (pipeline por política retirado en la Fase 13): [Fase 11](docs/architecture/phase-11.md). Nuevas fuentes (Excel implementado; SQL Server y PDF en plan): [Fase 12](docs/architecture/phase-12.md). Un solo recorrido automático: [Fase 13](docs/architecture/phase-13.md).
+Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación de datasets/ejecuciones: [Fase 2](docs/architecture/phase-2.md). Revisión semántica persistida: [Fase 3](docs/architecture/phase-3.md). Planes y catálogo de operaciones: [Fase 4](docs/architecture/phase-4.md). Limpieza supervisada y versiones derivadas: [Fase 5](docs/architecture/phase-5.md). Tablas tipadas y conversiones: [Fase 6](docs/architecture/phase-6.md). Análisis de negocio: [Fase 7](docs/architecture/phase-7.md). Dashboards: [Fase 8](docs/architecture/phase-8.md). Informes y exportaciones: [Fase 9](docs/architecture/phase-9.md). Copiloto de IA: [Fase 10](docs/architecture/phase-10.md). Automatización determinista (pipeline por política retirado en la Fase 13): [Fase 11](docs/architecture/phase-11.md). Nuevas fuentes (Excel implementado; SQL Server y PDF en plan): [Fase 12](docs/architecture/phase-12.md). Un solo recorrido automático, con Excel e IA sin configuración: [Fase 13 y 13B](docs/architecture/phase-13.md).
 
 `npm run contracts:check` verifica sus esquemas, ejemplos y casos negativos sin API ni PostgreSQL. Para regenerar exclusivamente los artefactos de diseño: `npm run contracts:examples`. El contrato HTTP vigente continúa en `contracts/openapi/dataflow.json`.
 
 ## Contenedor y CI
+
+**Actualizar desde 0.18:** sin migración. `DATAFLOW_AI_PROVIDER` pasa a `auto` por defecto: si el entorno ya tiene una clave, la explicación con IA se activa; para mantenerla apagada, fija `disabled`. `uploadXlsx` admite omitir `sheet` (el sistema elige y lo informa en `source_selection`); las llamadas con `sheet` no cambian. Detalles en [Fase 13B](docs/architecture/phase-13.md#fase-13b--excel-e-ia-sin-configuración).
 
 **Actualizar desde 0.17 / esquema 0018:** 0019 **no es aditiva**: elimina las tablas del pipeline por política (0013–0017) y sus datos (políticas, mapeos, ejecuciones del pipeline, sesión de análisis). Haz una copia de seguridad antes si los necesitas. Las tablas de las Fases 3–10 y 11F se conservan. Desplegar API y worker juntos: el worker ya no avanza pipelines ni atiende `report_render`. Detalles en [Fase 13](docs/architecture/phase-13.md).
 

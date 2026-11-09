@@ -74,6 +74,22 @@ class XlsxProblem(BaseModel):
     message: str
 
 
+class XlsxCandidate(BaseModel):
+    sheet: str
+    table: str | None
+
+
+class XlsxSelection(BaseModel):
+    """Decisión automática del sistema (Fase 13B, regla `xlsx-selection-v1`): hoja o tabla
+    importada, fila de cabecera y lo que quedó fuera."""
+
+    rule: Literal["xlsx-selection-v1"]
+    sheet: str
+    table: str | None
+    header_row: int
+    omitted: list[XlsxCandidate]
+
+
 class XlsxInspection(BaseModel):
     """Hojas y tablas del libro y vista previa de la selección, antes de importar."""
 
@@ -87,3 +103,4 @@ class XlsxInspection(BaseModel):
     warnings: list[XlsxWarning]
     warning_count: int
     problem: XlsxProblem | None = None
+    selection: XlsxSelection | None = None
