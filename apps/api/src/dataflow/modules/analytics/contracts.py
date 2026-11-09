@@ -731,3 +731,46 @@ class AutomaticAnalysis(AnalyticsModel):
     evidence: list[AutomaticEvidence]
     queries: dict[str, AnalysisResultV2]
     limitations: list[str]
+
+
+# --- Fase 16: consultas de seguimiento de la investigación (catálogo cerrado) -----------------
+
+FollowUpKind = Literal["month_by_group", "change_by_group", "group_evolution"]
+
+
+class FollowUpQuery(AnalyticsModel):
+    """Una consulta de seguimiento del catálogo cerrado `investigation-v1`.
+
+    La propone una regla o la IA, pero sólo llega aquí después de validarse en Python contra el
+    plan y los hallazgos: la medida es la del plan y la dimensión una de sus agrupaciones."""
+
+    kind: FollowUpKind
+    measure: str = Field(min_length=1, max_length=200)
+    dimension: str = Field(min_length=1, max_length=200)
+    month: str | None = Field(default=None, pattern=r"^\d{4}-(0[1-9]|1[0-2])$")
+    year: int | None = Field(default=None, ge=1900, le=2999)
+    group: str | None = Field(default=None, min_length=1, max_length=200)
+
+    @property
+    def key(self) -> str:
+        target = self.month or (str(self.year) if self.year is not None else self.group)
+        return f"{self.kind}:{self.dimension}:{target}"
+
+
+class FollowUpResult(AnalyticsModel):
+    key: str
+    query: FollowUpQuery
+    status: Literal["computed", "empty"]
+    reason: str | None = None
+    insight: AutomaticInsight | None = None
+    evidence: list[AutomaticEvidence] = Field(default_factory=list)
+
+
+class FollowUpBatch(AnalyticsModel):
+    """Resultado de `analytics.followup@1` (regla `investigation-followup-v1`)."""
+
+    schema_version: Literal[1] = 1
+    operation: Literal["analytics.followup@1"] = "analytics.followup@1"
+    rules_version: Literal["investigation-followup-v1"] = "investigation-followup-v1"
+    scope: AutomaticScope
+    results: list[FollowUpResult]

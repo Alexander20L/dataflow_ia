@@ -17,11 +17,13 @@ import { number } from "@/lib/utils";
 import { useApp } from "@/lib/providers";
 import { AutomaticAnalysisView } from "./automatic-analysis";
 import { AutomaticOverview } from "./automatic-overview";
+import { InvestigationPanel } from "./investigation";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
 import {
   useCancelImport,
   useAutomaticAnalysis,
+  useInvestigation,
   useDiagnostic,
   usePreview,
   useUploadFile,
@@ -89,6 +91,7 @@ export function CsvWorkspace({
   };
   const diagnostic = useDiagnostic(version);
   const automatic = useAutomaticAnalysis(version);
+  const investigation = useInvestigation(version);
   if (versions.isPending || loadingOutside)
     return (
       <div className="loading-screen" aria-label="Cargando versiones">
@@ -316,10 +319,18 @@ export function CsvWorkspace({
                 quality={diagnostic.data.quality}
                 versionNumber={version.number}
               />
-              <OverviewAudit
-                key={`audit-${version.id}`}
-                versionId={version.id}
-              />
+              {investigation.data ? (
+                <InvestigationPanel
+                  key={`investigation-${version.id}`}
+                  view={investigation.data}
+                  versionId={version.id}
+                />
+              ) : investigation.data === null ? (
+                <OverviewAudit
+                  key={`audit-${version.id}`}
+                  versionId={version.id}
+                />
+              ) : null}
             </>
           ) : diagnostic.data ? (
             <RealResults

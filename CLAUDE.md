@@ -14,7 +14,9 @@ Documentación y UI en español.
 - **El motor determinista decide y calcula** con reglas versionadas (Polars, hashes canónicos, conteos
   exactos sobre todo el dataset). Sólo transformaciones seguras y sin pérdida; ante la duda, no se
   transforma y se explica la limitación.
-- **La IA sólo explica** resultados publicados; ninguna cifra sale del modelo (sólo `{{evidence:id}}`).
+- **La IA explica y propone, nunca calcula** (Fase 16, ADR-033): explica resultados publicados y propone
+  investigaciones en un esquema cerrado que Python valida y el motor calcula; ninguna cifra sale del modelo
+  (sólo `{{evidence:id}}`).
   `DATAFLOW_AI_PROVIDER=auto` por defecto: activa sólo si hay clave (Fase 13B, ADR-027).
 - **Excel sin elegir hoja**: la regla `xlsx-selection-v1` decide hoja/tabla y cabecera al subir y
   la decisión queda en el plan (`source_selection`); la interfaz no ofrece opciones de lectura.
@@ -27,7 +29,7 @@ de conversión §3, hash canónico §6), `docs/architecture/phase-N.md` y `docs/
 ## Arquitectura y reglas de módulos
 
 Módulos en `apps/api/src/dataflow/modules/`: identity, projects, audit, datasets, ingestion, understanding,
-quality, planning, executions, cleaning, analytics, copilot; dashboards y reports sólo conservan sus clases
+quality, planning, executions, cleaning, analytics, copilot, investigation; dashboards y reports sólo conservan sus clases
 de tabla (Fase 13). Adaptador de IA en `integrations/ai` (puerto `AIProvider`, proveedor falso; sólo
 `anthropic_provider.py` importa el SDK); lectores de fuentes en `integrations/sources` (sólo desde el
 subproceso de ingesta).
@@ -40,8 +42,11 @@ descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
 - **executions** no importa planning, cleaning, quality, ingestion, understanding ni analytics: recibe puertos
   (`StepRegistry`, `StepExecutor`, `InputResolver`, finalizadores, ganchos de publicación).
 - planning no importa polars/duckdb ni implementaciones de operaciones (validación pura en `planning/domain.py`).
-- copilot sólo usa `integrations.ai` y `audit`: explica el dashboard publicado (C2, `bootstrap/overview_audit.py`),
-  controla disponibilidad y presupuesto y verifica cifras. Ya no conversa ni propone acciones.
+- copilot sólo usa `integrations.ai` y `audit`: explica el dashboard publicado (C2, `bootstrap/overview_audit.py`)
+  y, desde la Fase 16, propone investigaciones y explica hallazgos (`copilot/investigation.py`); controla
+  disponibilidad y presupuesto y verifica cifras. No conversa ni ejecuta acciones.
+- investigation (Fase 16): ciclo acotado puro con puertos; `bootstrap/investigation_job.py` lo une a la cola,
+  al motor (`analytics.followup@1`) y a la IA.
 - No volver a crear `automation`, `templates` ni `analysis_sessions` (prueba AST). La detección pura de
   contextos vive en `understanding/templates.py`.
 - El cómputo de cleaning (`domain`, `contracts`, `infrastructure`, `engine`, `processor`) no accede a la BD.
@@ -102,7 +107,7 @@ npm run dev --workspace @dataflow/web -- --port 3002
 Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:check + contracts:check +
 `export_openapi.py --check` + test:e2e.
 
-## Estado (2026-11-08)
+## Estado (2026-11-09)
 
 | Fase | API  | Rama                           | Estado                                                                       |
 | ---- | ---- | ------------------------------ | ---------------------------------------------------------------------------- |
@@ -124,13 +129,14 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 13C  | 0.20 | `feat/fase-13c-cola`           | las cargas esperan en cola (sin `PROJECT_BUSY`); 3 en marcha por propietario |
 | 14   | 0.21 | `feat/fase-14-comprender`      | `profile@4`, `quality.evaluate@3`, dashboard por medidas, `analysis-v11`     |
 | 15   | 0.22 | `feat/fase-15-criterio`        | plan automático, `analytics.automatic@1` (hallazgos), `analysis-v12`         |
+| 16   | 0.23 | `feat/fase-16-investigar`      | módulo `investigation`, reglas + propuestas IA validadas, límites duros      |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
 no regenerar sus referencias para hacer pasar una prueba.
 Integración: `develop` contiene las Fases 4 a 14 y A–C (merge `--no-ff` o PR; desde 2026-11-09, siempre PR). Fase 13: ADR-026 sustituye
 al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
-`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
+`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
 (limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
 contradiga el enfoque automático. Fase 7 completa (7A y 7B): ADR-018 y
 ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa

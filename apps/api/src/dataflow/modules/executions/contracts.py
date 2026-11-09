@@ -16,6 +16,7 @@ RunKind = Literal[
     "cleaning_apply",
     "report_render",
     "overview_audit",
+    "investigation",
 ]
 RunState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 ArtifactKind = Literal[
@@ -31,6 +32,7 @@ ArtifactKind = Literal[
     "report_pdf",
     "overview_audit",
     "automatic_analysis",
+    "investigation",
 ]
 
 
@@ -182,7 +184,7 @@ class Artifact:
     logical_content_sha256: str | None
 
 
-InputKind = Literal["source", "table", "report", "overview"]
+InputKind = Literal["source", "table", "report", "overview", "automatic"]
 
 
 @dataclass(frozen=True)

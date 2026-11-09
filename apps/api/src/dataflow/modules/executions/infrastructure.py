@@ -13,6 +13,7 @@ from sqlalchemy import (
     UniqueConstraint,
     Uuid,
     and_,
+    case,
     exists,
     func,
     or_,
@@ -35,7 +36,7 @@ from dataflow.modules.executions.contracts import (
     RunState,
     UserPlan,
 )
-from dataflow.modules.executions.domain import RUNNING_LIMIT, failure_state
+from dataflow.modules.executions.domain import BACKGROUND_KINDS, RUNNING_LIMIT, failure_state
 from dataflow.platform.canonical import digest
 from dataflow.platform.database import Base
 from dataflow.platform.errors import ApplicationError
@@ -603,7 +604,13 @@ class SQLExecutionRepository:
                     and_(ExecutionRecord.state == "running", ExecutionRecord.id.in_(expired)),
                 ),
             )
-            .order_by(ExecutionRecord.created_at, ExecutionRecord.id)
+            # Trabajo de fondo (investigación, Fase 16) después de lo demás: nunca retrasa una
+            # carga, una limpieza o un plan del mismo propietario.
+            .order_by(
+                case((ExecutionRecord.kind.in_(BACKGROUND_KINDS), 1), else_=0),
+                ExecutionRecord.created_at,
+                ExecutionRecord.id,
+            )
             .with_for_update(skip_locked=True)
             .limit(1)
         )

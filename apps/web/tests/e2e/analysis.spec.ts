@@ -52,6 +52,31 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
   await findings.getByText(/Análisis omitidos/).click();
   await expect(findings).toContainText("Hacen falta 24 meses seguidos");
   await expect(findings.getByRole("button")).toHaveCount(0);
+  // Fase 16: la investigación sigue los hallazgos (reglas + IA validada) sin ninguna acción.
+  const investigation = page.getByRole("region", {
+    name: "Investigación automática",
+  });
+  await expect(
+    investigation.getByRole("article", {
+      name: "Variación 2024 frente a 2023 por Region",
+    }),
+  ).toContainText("el mayor aporte por Region es de Norte", { timeout: 30000 });
+  await expect(
+    investigation.getByRole("article", {
+      name: "2024-10: Revenue por Product frente a su nivel habitual",
+    }),
+  ).toContainText("es Monitor");
+  await expect(
+    investigation.getByText("Propuesto por la IA").first(),
+  ).toBeVisible();
+  await expect(
+    investigation
+      .getByRole("region", { name: "Explicación automática IA" })
+      .getByRole("link", { name: /De dónde sale/ }),
+  ).toHaveCount(1);
+  await investigation.getByText(/Propuestas rechazadas/).click();
+  await expect(investigation).toContainText("Ya se investigó");
+  await expect(investigation.getByRole("button")).toHaveCount(0);
   const reading = dashboard.getByRole("region", {
     name: "Lectura automática de los datos",
   });

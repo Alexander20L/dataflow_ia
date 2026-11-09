@@ -39,6 +39,22 @@ class AuditoriaTextual(OutputModel):
     recomendaciones: list[str] = Field(min_length=2, max_length=2)
 
 
+class PropuestaIA(OutputModel):
+    """Propuesta de investigación de la IA (Fase 16, ADR-033): sólo nombra un tipo del catálogo
+    y elementos que ya existen; Python la valida y el motor la calcula. Nunca contiene cifras."""
+
+    tipo: str = Field(max_length=60, description="Uno de los tipos del catálogo.")
+    dimension: str | None = Field(default=None, max_length=200)
+    mes: str | None = Field(default=None, max_length=20, description="AAAA-MM")
+    anio: int | None = None
+    grupo: str | None = Field(default=None, max_length=200)
+    motivo: str = Field(max_length=300, description="Qué pregunta responde, sin cifras.")
+
+
+class PropuestasInvestigacion(OutputModel):
+    propuestas: list[PropuestaIA] = Field(max_length=10)
+
+
 class CopilotModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

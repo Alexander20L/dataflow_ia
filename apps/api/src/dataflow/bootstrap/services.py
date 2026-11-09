@@ -5,6 +5,12 @@ from sqlalchemy.orm import Session
 from dataflow.bootstrap.ai import configured
 from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
 from dataflow.bootstrap.cleaning_access import CleaningPlanAccess, CleaningProposalAccess
+from dataflow.bootstrap.investigation_job import (
+    InvestigationInput,
+    InvestigationStep,
+    enqueue_investigation,
+    record_investigation_calls,
+)
 from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry, WorkerRegistry
 from dataflow.bootstrap.overview_audit import (
     OverviewAuditStep,
@@ -19,7 +25,12 @@ from dataflow.bootstrap.semantic_access import SemanticRepresentationAccess
 from dataflow.integrations.ai import AIProvider
 from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.analytics.infrastructure import SQLMetricRepository
-from dataflow.modules.analytics.steps import AnalyticsQueryStep, AutomaticAnalysisStep, MetricSource
+from dataflow.modules.analytics.steps import (
+    AnalyticsQueryStep,
+    AutomaticAnalysisStep,
+    FollowUpComputer,
+    MetricSource,
+)
 from dataflow.modules.audit.public import record_event
 from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
 from dataflow.modules.cleaning.engine import IsolatedCleaner
@@ -171,6 +182,11 @@ class DatasetPublication:
         self.objects = objects
 
     def prepare(self, lease: Lease, outputs: list[ArtifactOutput]) -> None:
+        if lease.execution.kind == "investigation":
+            record_investigation_calls(
+                self.db, lease, next(o for o in outputs if o.kind == "investigation"), self.objects
+            )
+            return
         if lease.execution.kind == "overview_audit":
             record_audit_call(
                 self.db, lease, next(o for o in outputs if o.kind == "overview_audit"), self.objects
@@ -199,6 +215,13 @@ class DatasetPublication:
                 lease.execution_id,
                 {artifact.kind: artifact.id for artifact in artifacts},
             )
+            analysis = next((a for a in artifacts if a.kind == "automatic_analysis"), None)
+            table = next((a for a in artifacts if a.kind == "table"), None)
+            if analysis is not None and table is not None:
+                # Fase 16: la investigación (reglas + IA) sustituye a la explicación del
+                # dashboard; explica los hallazgos y sus seguimientos.
+                enqueue_investigation(self.executions, lease, analysis, table, self.config)
+                return
             profile = next((a for a in artifacts if a.kind == "profile"), None)
             if (
                 profile is not None
@@ -245,6 +268,7 @@ class DatasetPublication:
 
 WORKER_KINDS: set[RunKind] = {
     "overview_audit",
+    "investigation",
     "csv_import",
     "table_analysis",
     "plan",
@@ -320,6 +344,7 @@ def make_runner(
                 datasets, executions, projects, make_semantics(db, objects)
             ),
             "overview": OverviewInput(datasets, executions, projects),
+            "automatic": InvestigationInput(datasets, executions, projects),
         },
         WorkerRegistry(
             make_operations(
@@ -332,6 +357,11 @@ def make_runner(
             {
                 "copilot.audit_overview@1": OverviewAuditStep(
                     objects, make_copilot(db, provider, ai_config)
+                ),
+                "investigation.investigate@1": InvestigationStep(
+                    objects,
+                    FollowUpComputer(objects, objects.root),
+                    make_copilot(db, provider, ai_config),
                 ),
             },
         ),

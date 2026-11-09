@@ -192,8 +192,9 @@ def test_save_reload_and_execute_exact_table_after_default_changes(
         f"/api/v1/plans/{second['id']}/executions", headers=key(headers, request_key)
     )
     assert replay.status_code == 202 and replay.json()["id"] == run["id"]
-    # Encolar referencia la revisión guardada: 2 planes de importación + 2 revisiones de usuario.
-    assert db.scalar(select(func.count()).select_from(PlanRecord)) == 4
+    # Encolar referencia la revisión guardada: 2 planes de importación + 2 revisiones de usuario
+    # + 2 planes internos de investigación (Fase 16, uno por carga).
+    assert db.scalar(select(func.count()).select_from(PlanRecord)) == 6
     assert db.scalar(select(func.count()).select_from(PlanBindingRecord)) == 2
     assert make_runner(db, objects).run_once()
     done = client.get(f"/api/v1/executions/{run['id']}").json()

@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from test_csv_ingestion import CSV, account, process, project, upload
 
 from dataflow.bootstrap.services import (
+    WORKER_KINDS,
     make_analysis,
     make_datasets,
     make_executions,
@@ -250,7 +251,8 @@ def test_two_workers_claim_and_publish_independent_runs(
     def worker() -> bool:
         with Session(committed_engine, expire_on_commit=False) as db:
             barrier.wait(timeout=10)
-            return make_runner(db, store).run_once()
+            # La investigación de la carga (Fase 16) queda en cola: aquí compiten por los análisis.
+            return make_runner(db, store, kinds=WORKER_KINDS - {"investigation"}).run_once()
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(worker) for _ in range(2)]

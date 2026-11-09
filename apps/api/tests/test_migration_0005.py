@@ -87,7 +87,10 @@ def test_0005_is_additive_keeps_05_executions_and_protects_user_plans(
                 for run in executions.for_version(owner, version.id)
             }
             diagnostic = make_ingestion(db, objects).diagnostic(owner, version.id)
-            assert {run.state for run, _ in before.values()} == {"succeeded"}
+            # La investigación de la carga (Fase 16) sigue en cola: no es un trabajo 0.5.
+            assert {run.state for run, _ in before.values() if run.kind != "investigation"} == {
+                "succeeded"
+            }
 
         command.upgrade(config, "0005")
         # Ida y vuelta sin planes de usuario: el downgrade conserva los datos 0.5.

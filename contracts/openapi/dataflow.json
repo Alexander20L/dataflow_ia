@@ -775,7 +775,8 @@
               "analysis_result",
               "report_pdf",
               "overview_audit",
-              "automatic_analysis"
+              "automatic_analysis",
+              "investigation"
             ],
             "title": "Kind",
             "type": "string"
@@ -1738,6 +1739,30 @@
         "title": "ComparisonCell",
         "type": "object"
       },
+      "Consumption": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_calls": {
+            "title": "Ai Calls",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "ai_calls",
+          "cost_usd",
+          "elapsed_ms"
+        ],
+        "title": "Consumption",
+        "type": "object"
+      },
       "CreateProjectRequest": {
         "additionalProperties": false,
         "properties": {
@@ -2363,7 +2388,8 @@
               "cleaning_preview",
               "cleaning_apply",
               "report_render",
-              "overview_audit"
+              "overview_audit",
+              "investigation"
             ],
             "title": "Kind",
             "type": "string"
@@ -2533,7 +2559,8 @@
               "cleaning_preview",
               "cleaning_apply",
               "report_render",
-              "overview_audit"
+              "overview_audit",
+              "investigation"
             ],
             "title": "Kind",
             "type": "string"
@@ -2650,6 +2677,133 @@
           "operator"
         ],
         "title": "Filter",
+        "type": "object"
+      },
+      "FollowUpQuery": {
+        "additionalProperties": false,
+        "description": "Una consulta de seguimiento del catálogo cerrado `investigation-v1`.\n\nLa propone una regla o la IA, pero sólo llega aquí después de validarse en Python contra el\nplan y los hallazgos: la medida es la del plan y la dimensión una de sus agrupaciones.",
+        "properties": {
+          "dimension": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Dimension",
+            "type": "string"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "minLength": 1,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "kind": {
+            "enum": [
+              "month_by_group",
+              "change_by_group",
+              "group_evolution"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "measure": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Measure",
+            "type": "string"
+          },
+          "month": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-(0[1-9]|1[0-2])$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "maximum": 2999.0,
+                "minimum": 1900.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "kind",
+          "measure",
+          "dimension"
+        ],
+        "title": "FollowUpQuery",
+        "type": "object"
+      },
+      "FollowUpResult": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/AutomaticEvidence"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "insight": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AutomaticInsight"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/FollowUpQuery"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "computed",
+              "empty"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "key",
+          "query",
+          "status"
+        ],
+        "title": "FollowUpResult",
         "type": "object"
       },
       "IngestionSummary": {
@@ -2805,6 +2959,289 @@
           "evidence_id"
         ],
         "title": "InsightPoint",
+        "type": "object"
+      },
+      "Investigation": {
+        "additionalProperties": false,
+        "properties": {
+          "ai": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Ai",
+            "type": "string"
+          },
+          "ai_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Reason"
+          },
+          "calls": {
+            "items": {
+              "$ref": "#/components/schemas/ModelCall"
+            },
+            "title": "Calls",
+            "type": "array"
+          },
+          "consumption": {
+            "$ref": "#/components/schemas/Consumption"
+          },
+          "explanation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AuditContent"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "explanation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Explanation Reason"
+          },
+          "explanation_state": {
+            "enum": [
+              "ready",
+              "unavailable",
+              "failed"
+            ],
+            "title": "Explanation State",
+            "type": "string"
+          },
+          "iterations": {
+            "title": "Iterations",
+            "type": "integer"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/InvestigationLimits"
+          },
+          "operation": {
+            "const": "investigation.investigate@1",
+            "default": "investigation.investigate@1",
+            "title": "Operation",
+            "type": "string"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/Proposal"
+            },
+            "title": "Proposals",
+            "type": "array"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/FollowUpResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "rules_version": {
+            "const": "investigation-v1",
+            "default": "investigation-v1",
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/InvestigationScope"
+          },
+          "stopped": {
+            "enum": [
+              "max_iterations",
+              "no_new_proposals",
+              "ai_unavailable",
+              "ai_error",
+              "max_ai_calls",
+              "max_cost",
+              "max_seconds",
+              "max_queries",
+              "nothing_to_investigate"
+            ],
+            "title": "Stopped",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "limits",
+          "iterations",
+          "proposals",
+          "results",
+          "calls",
+          "consumption",
+          "stopped",
+          "ai",
+          "explanation_state",
+          "limitations"
+        ],
+        "title": "Investigation",
+        "type": "object"
+      },
+      "InvestigationLimits": {
+        "additionalProperties": false,
+        "description": "Límites duros del ciclo; se guardan con cada investigación.",
+        "properties": {
+          "max_ai_calls": {
+            "default": 4,
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Max Ai Calls",
+            "type": "integer"
+          },
+          "max_cost_usd": {
+            "default": "0.05",
+            "title": "Max Cost Usd",
+            "type": "string"
+          },
+          "max_iterations": {
+            "default": 3,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Iterations",
+            "type": "integer"
+          },
+          "max_proposals_per_call": {
+            "default": 4,
+            "maximum": 10.0,
+            "minimum": 1.0,
+            "title": "Max Proposals Per Call",
+            "type": "integer"
+          },
+          "max_queries": {
+            "default": 12,
+            "maximum": 50.0,
+            "minimum": 1.0,
+            "title": "Max Queries",
+            "type": "integer"
+          },
+          "max_seconds": {
+            "default": 60,
+            "maximum": 600.0,
+            "minimum": 5.0,
+            "title": "Max Seconds",
+            "type": "integer"
+          }
+        },
+        "title": "InvestigationLimits",
+        "type": "object"
+      },
+      "InvestigationScope": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_artifact_id": {
+            "format": "uuid",
+            "title": "Analysis Artifact Id",
+            "type": "string"
+          },
+          "analysis_execution_id": {
+            "format": "uuid",
+            "title": "Analysis Execution Id",
+            "type": "string"
+          },
+          "analysis_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Analysis Sha256",
+            "type": "string"
+          },
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "table_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Table Sha256",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "execution_id",
+          "version_id",
+          "analysis_artifact_id",
+          "analysis_sha256",
+          "analysis_execution_id",
+          "table_sha256"
+        ],
+        "title": "InvestigationScope",
+        "type": "object"
+      },
+      "InvestigationView": {
+        "description": "Estado de la investigación de una versión (sólo lectura).",
+        "properties": {
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "investigation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Investigation"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "ready",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "execution_id"
+        ],
+        "title": "InvestigationView",
         "type": "object"
       },
       "KeyCandidate": {
@@ -3566,6 +4003,119 @@
           "content_sha256"
         ],
         "title": "MetricReference",
+        "type": "object"
+      },
+      "ModelCall": {
+        "additionalProperties": false,
+        "description": "Metadatos de una llamada al proveedor (nunca el contenido tabular).",
+        "properties": {
+          "cache_read_tokens": {
+            "title": "Cache Read Tokens",
+            "type": "integer"
+          },
+          "cache_write_tokens": {
+            "title": "Cache Write Tokens",
+            "type": "integer"
+          },
+          "context_sha256": {
+            "title": "Context Sha256",
+            "type": "string"
+          },
+          "cost_usd": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cost Usd"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "input_tokens": {
+            "title": "Input Tokens",
+            "type": "integer"
+          },
+          "iteration": {
+            "title": "Iteration",
+            "type": "integer"
+          },
+          "latency_ms": {
+            "title": "Latency Ms",
+            "type": "integer"
+          },
+          "model": {
+            "title": "Model",
+            "type": "string"
+          },
+          "outcome": {
+            "enum": [
+              "accepted",
+              "rejected",
+              "provider_error"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "output_tokens": {
+            "title": "Output Tokens",
+            "type": "integer"
+          },
+          "parameters": {
+            "additionalProperties": true,
+            "title": "Parameters",
+            "type": "object"
+          },
+          "prompt_id": {
+            "title": "Prompt Id",
+            "type": "string"
+          },
+          "prompt_version": {
+            "title": "Prompt Version",
+            "type": "string"
+          },
+          "provider": {
+            "title": "Provider",
+            "type": "string"
+          },
+          "purpose": {
+            "enum": [
+              "proposal",
+              "explanation"
+            ],
+            "title": "Purpose",
+            "type": "string"
+          }
+        },
+        "required": [
+          "purpose",
+          "iteration",
+          "provider",
+          "model",
+          "prompt_id",
+          "prompt_version",
+          "parameters",
+          "context_sha256",
+          "input_tokens",
+          "output_tokens",
+          "cache_read_tokens",
+          "cache_write_tokens",
+          "cost_usd",
+          "latency_ms",
+          "outcome"
+        ],
+        "title": "ModelCall",
         "type": "object"
       },
       "NumericSummary": {
@@ -4401,6 +4951,116 @@
           "updated_at"
         ],
         "title": "ProjectResponse",
+        "type": "object"
+      },
+      "Proposal": {
+        "additionalProperties": false,
+        "description": "Una consulta propuesta (por regla o por la IA) y la decisión de Python, con motivo.",
+        "properties": {
+          "dimension": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Dimension"
+          },
+          "group": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Group"
+          },
+          "iteration": {
+            "title": "Iteration",
+            "type": "integer"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "month": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Month"
+          },
+          "motive": {
+            "title": "Motive",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "rule",
+              "ai"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "year": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Year"
+          }
+        },
+        "required": [
+          "origin",
+          "iteration",
+          "kind",
+          "dimension",
+          "motive",
+          "status"
+        ],
+        "title": "Proposal",
         "type": "object"
       },
       "QualityIssue": {
@@ -5775,7 +6435,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.22.0"
+    "version": "0.23.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -10648,6 +11308,346 @@
         "summary": "Export Version",
         "tags": [
           "Datasets"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/investigation": {
+      "get": {
+        "description": "Seguimientos por reglas y propuestas de la IA validadas, con su explicación.",
+        "operationId": "getInvestigation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Investigation",
+        "tags": [
+          "Investigación automática"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/investigation/evidence/{evidence_id}": {
+      "get": {
+        "description": "Procedencia de una cifra de la investigación o de los hallazgos que explica.",
+        "operationId": "getInvestigationEvidence",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "path",
+            "name": "evidence_id",
+            "required": true,
+            "schema": {
+              "pattern": "^[0-9a-f]{64}$",
+              "title": "Evidence Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/AutomaticEvidence"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Investigation Evidence",
+        "tags": [
+          "Investigación automática"
         ]
       }
     },

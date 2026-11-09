@@ -1,4 +1,5 @@
-"""Explicación independiente sobre un perfil inmutable, sin llamadas externas."""
+"""Explicación independiente sobre un perfil inmutable, sin llamadas externas (C2, cargas
+anteriores a analysis-v12)."""
 
 from copy import deepcopy
 from dataclasses import replace
@@ -21,6 +22,18 @@ from dataflow.modules.executions.infrastructure import SQLExecutionRepository
 from dataflow.modules.projects.public import ProjectPermissions
 from dataflow.platform.config import get_settings
 from dataflow.platform.errors import ApplicationError
+
+
+@pytest.fixture(autouse=True)
+def catalog_v11(monkeypatch: pytest.MonkeyPatch) -> None:
+    """La explicación del dashboard (C2) se conserva para cargas anteriores a analysis-v12; desde
+    la Fase 16 las cargas con hallazgos se explican en la investigación."""
+    original = services.processing_config
+    monkeypatch.setattr(
+        services,
+        "processing_config",
+        lambda: original().model_copy(update={"operation_catalog": "analysis-v11"}),
+    )
 
 
 @pytest.mark.parametrize("provider", ["fake", "disabled"])

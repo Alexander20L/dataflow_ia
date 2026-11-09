@@ -175,3 +175,28 @@ export function useAutomaticAnalysis(version?: DatasetVersion) {
     staleTime: Infinity,
   });
 }
+
+export type Investigation = components["schemas"]["Investigation"];
+export type InvestigationView = components["schemas"]["InvestigationView"];
+// Fase 16: investigación automática tras la carga (reglas + propuestas de la IA validadas).
+// Las versiones anteriores no la tienen (404 INVESTIGATION_NOT_AVAILABLE): se muestra la
+// explicación del dashboard como antes.
+export function useInvestigation(version?: DatasetVersion) {
+  return useQuery({
+    queryKey: ["investigation", version?.id],
+    enabled: version?.state === "succeeded",
+    queryFn: async ({ signal }) => {
+      const result = await api.GET(
+        "/api/v1/versions/{version_id}/investigation",
+        {
+          signal,
+          params: { path: { version_id: version!.id } },
+        },
+      );
+      if (result.response.status === 404) return null;
+      return requireData(result);
+    },
+    refetchInterval: (q) =>
+      ["queued", "running"].includes(q.state.data?.state ?? "") ? 1000 : false,
+  });
+}
