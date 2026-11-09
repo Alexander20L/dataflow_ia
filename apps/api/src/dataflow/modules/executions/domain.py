@@ -3,6 +3,13 @@ from typing import Any
 from dataflow.modules.executions.contracts import InputKind, PlanStepSpec, RunState
 from dataflow.platform.errors import ApplicationError
 
+# Cola de trabajos (Fase 13C): ninguna carga se rechaza por haber otra en curso. Se admiten
+# hasta PENDING_LIMIT trabajos pendientes por propietario (protección frente a abusos) y el
+# worker ejecuta a la vez como máximo RUNNING_LIMIT por propietario y una sola importación
+# por proyecto; el resto espera en cola en orden de llegada.
+PENDING_LIMIT = 50
+RUNNING_LIMIT = 3
+
 
 def failure_state(attempts: int, maximum: int, retryable: bool) -> RunState:
     return "queued" if retryable and attempts < maximum else "failed"

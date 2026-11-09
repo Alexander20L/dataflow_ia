@@ -253,12 +253,13 @@ export function CsvWorkspace({
               <LoaderCircle className="spin" size={30} />
               <h3>
                 {version.state === "queued"
-                  ? "Esperando al worker"
+                  ? "En cola: esperando su turno"
                   : "Analizando tus datos"}
               </h3>
               <p>
-                El original ya está guardado. Puedes salir y volver; la
-                ejecución permanece en PostgreSQL.
+                {version.state === "queued"
+                  ? "El original ya está guardado. Se analizará automáticamente en cuanto terminen las cargas anteriores; no hace falta volver a subirlo."
+                  : "El original ya está guardado. Puedes salir y volver; la ejecución permanece en PostgreSQL."}
               </p>
               <small>
                 Intento {version.attempts} de 3 · no se publican resultados

@@ -22,7 +22,7 @@ from dataflow.modules.executions.contracts import (
     StepRegistry,
     UserPlan,
 )
-from dataflow.modules.executions.domain import plan_input_kind, plan_steps
+from dataflow.modules.executions.domain import PENDING_LIMIT, plan_input_kind, plan_steps
 from dataflow.platform.canonical import digest
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.transactions import UnitOfWork
@@ -145,11 +145,15 @@ class Executions:
         return self.repository.plans_for_project(owner, project, limit, offset)
 
     def ensure_capacity(self, owner: UUID, project: UUID, kind: RunKind) -> None:
-        if self.repository.active_count(owner) >= 3:
-            raise ApplicationError("QUEUE_LIMIT", "Ya tienes tres trabajos en curso.", 409)
-        if kind == "csv_import" and self.repository.active_count(owner, project, "csv_import") >= 1:
+        """Admisión en la cola. Una carga nunca se rechaza por haber otras en curso: espera
+        su turno (el worker limita la concurrencia al reclamar). Sólo un número anómalo de
+        trabajos pendientes se rechaza."""
+        del project, kind
+        if self.repository.active_count(owner) >= PENDING_LIMIT:
             raise ApplicationError(
-                "PROJECT_BUSY", "Este proyecto ya tiene una carga en curso.", 409
+                "QUEUE_LIMIT",
+                f"Tienes {PENDING_LIMIT} trabajos pendientes; espera a que terminen.",
+                409,
             )
 
     def get(self, owner: UUID, execution: UUID) -> Execution:
