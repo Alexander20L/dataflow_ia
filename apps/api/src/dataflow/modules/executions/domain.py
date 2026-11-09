@@ -9,8 +9,9 @@ from dataflow.platform.errors import ApplicationError
 # por proyecto; el resto espera en cola en orden de llegada.
 PENDING_LIMIT = 50
 RUNNING_LIMIT = 3
-# Fase 16: trabajos de fondo que se reclaman después de cualquier otro en cola.
-BACKGROUND_KINDS: frozenset[str] = frozenset({"investigation"})
+# Fase 16: trabajos de fondo que se reclaman después de cualquier otro en cola (Fase 17: y el
+# informe automático).
+BACKGROUND_KINDS: frozenset[str] = frozenset({"investigation", "automatic_report"})
 
 
 def failure_state(attempts: int, maximum: int, retryable: bool) -> RunState:
@@ -33,6 +34,8 @@ def plan_input_kind(content: dict[str, Any]) -> InputKind:
         return "overview"
     if kind == "automatic":
         return "automatic"
+    if kind == "investigation":
+        return "investigation"
     raise ApplicationError("INPUT_MISMATCH", "El plan no declara un input admitido.", 409)
 
 

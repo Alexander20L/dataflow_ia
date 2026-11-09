@@ -17,6 +17,7 @@ import { number } from "@/lib/utils";
 import { useApp } from "@/lib/providers";
 import { AutomaticAnalysisView } from "./automatic-analysis";
 import { AutomaticOverview } from "./automatic-overview";
+import { DeliverySummary } from "./delivery-summary";
 import { InvestigationPanel } from "./investigation";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
@@ -24,6 +25,7 @@ import {
   useCancelImport,
   useAutomaticAnalysis,
   useInvestigation,
+  useProgress,
   useDiagnostic,
   usePreview,
   useUploadFile,
@@ -92,6 +94,7 @@ export function CsvWorkspace({
   const diagnostic = useDiagnostic(version);
   const automatic = useAutomaticAnalysis(version);
   const investigation = useInvestigation(version);
+  const progress = useProgress(version);
   if (versions.isPending || loadingOutside)
     return (
       <div className="loading-screen" aria-label="Cargando versiones">
@@ -308,24 +311,33 @@ export function CsvWorkspace({
           ) : diagnostic.data?.profile.overview ? (
             <>
               {automatic.data && (
+                <DeliverySummary
+                  key={`summary-${version.id}`}
+                  versionId={version.id}
+                  progress={progress.data}
+                  analysis={automatic.data}
+                />
+              )}
+              {automatic.data && (
                 <AutomaticAnalysisView
                   key={`analysis-${version.id}`}
                   analysis={automatic.data}
                 />
               )}
-              <AutomaticOverview
-                key={`overview-${version.id}`}
-                overview={diagnostic.data.profile.overview}
-                quality={diagnostic.data.quality}
-                versionNumber={version.number}
-              />
               {investigation.data ? (
                 <InvestigationPanel
                   key={`investigation-${version.id}`}
                   view={investigation.data}
                   versionId={version.id}
                 />
-              ) : investigation.data === null ? (
+              ) : null}
+              <AutomaticOverview
+                key={`overview-${version.id}`}
+                overview={diagnostic.data.profile.overview}
+                quality={diagnostic.data.quality}
+                versionNumber={version.number}
+              />
+              {investigation.data === null ? (
                 <OverviewAudit
                   key={`audit-${version.id}`}
                   versionId={version.id}

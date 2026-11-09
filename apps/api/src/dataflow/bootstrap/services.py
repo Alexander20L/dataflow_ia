@@ -5,6 +5,7 @@ from sqlalchemy.orm import Session
 from dataflow.bootstrap.ai import configured
 from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
 from dataflow.bootstrap.cleaning_access import CleaningPlanAccess, CleaningProposalAccess
+from dataflow.bootstrap.delivery_job import ReportInput, ReportStep, enqueue_report
 from dataflow.bootstrap.investigation_job import (
     InvestigationInput,
     InvestigationStep,
@@ -232,6 +233,15 @@ class DatasetPublication:
                 )
             ):
                 enqueue_audit(self.executions, lease, profile, self.config)
+        elif kind == "investigation":
+            # Fase 17: el informe automático se genera al publicarse la investigación.
+            enqueue_report(
+                self.executions,
+                self.datasets,
+                lease,
+                next(a for a in artifacts if a.kind == "investigation"),
+                self.config,
+            )
         elif kind == "table_analysis":
             self.datasets.materialize_derived(
                 lease.version_id,
@@ -269,6 +279,7 @@ class DatasetPublication:
 WORKER_KINDS: set[RunKind] = {
     "overview_audit",
     "investigation",
+    "automatic_report",
     "csv_import",
     "table_analysis",
     "plan",
@@ -345,6 +356,7 @@ def make_runner(
             ),
             "overview": OverviewInput(datasets, executions, projects),
             "automatic": InvestigationInput(datasets, executions, projects),
+            "investigation": ReportInput(datasets, executions, projects),
         },
         WorkerRegistry(
             make_operations(
@@ -363,6 +375,7 @@ def make_runner(
                     FollowUpComputer(objects, objects.root),
                     make_copilot(db, provider, ai_config),
                 ),
+                "delivery.report@1": ReportStep(objects),
             },
         ),
         DatasetPublication(db, datasets, executions, approvals, config, objects),

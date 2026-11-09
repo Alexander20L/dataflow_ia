@@ -227,3 +227,26 @@ def test_source_readers_run_only_in_the_isolated_ingestion_process() -> None:
             assert not module.startswith(
                 ("sqlalchemy", "psycopg", "socket", "urllib", "http", "dataflow.modules")
             ), (file, module)
+
+
+def test_delivery_only_reorders_published_results() -> None:
+    """Fase 17 (ADR-034): la entrega lee contratos publicados; no calcula, no accede a la base
+    de datos ni a la IA, y ReportLab sólo se usa en su renderizador."""
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "delivery"
+    allowed = {
+        "dataflow.modules.analytics.contracts",
+        "dataflow.modules.copilot.contracts",
+        "dataflow.modules.investigation.contracts",
+        "dataflow.modules.quality.contracts",
+    }
+    for file in root.glob("*.py"):
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            assert not module.startswith(
+                ("sqlalchemy", "polars", "duckdb", "anthropic", "dataflow.integrations")
+            ), (file, module)
+            if module.startswith("dataflow.modules.") and not module.startswith(
+                "dataflow.modules.delivery"
+            ):
+                assert module in allowed, (file, module)
+            if module.startswith("reportlab"):
+                assert file.name == "pdf.py", (file, module)

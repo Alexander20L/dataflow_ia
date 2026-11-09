@@ -200,3 +200,22 @@ export function useInvestigation(version?: DatasetVersion) {
       ["queued", "running"].includes(q.state.data?.state ?? "") ? 1000 : false,
   });
 }
+
+export type VersionProgress = components["schemas"]["Progress"];
+
+// Fase 17: etapas de la carga (análisis, investigación e informe); se consulta mientras
+// alguna siga pendiente.
+export function useProgress(version?: DatasetVersion) {
+  return useQuery({
+    queryKey: ["progress", version?.id],
+    enabled: version?.state === "succeeded",
+    queryFn: async ({ signal }) =>
+      requireData(
+        await api.GET("/api/v1/versions/{version_id}/progress", {
+          signal,
+          params: { path: { version_id: version!.id } },
+        }),
+      ),
+    refetchInterval: (q) => (q.state.data?.complete === false ? 1500 : false),
+  });
+}

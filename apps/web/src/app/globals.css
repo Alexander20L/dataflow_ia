@@ -4861,3 +4861,53 @@ tbody tr:hover {
   font-size: 0.75rem;
   font-weight: 600;
 }
+
+/* Fase 17: resumen de la entrega (progreso, hallazgos principales e informe). */
+.delivery-summary {
+  margin: 24px 0;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.delivery-summary .section-heading {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+.delivery-stages {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 200px), 1fr));
+  gap: 8px;
+  margin: 16px 0;
+  padding: 0;
+  list-style: none;
+}
+.delivery-stage {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.delivery-stage small {
+  display: block;
+  color: var(--muted);
+}
+.delivery-stage.done svg {
+  color: #16a34a;
+}
+.delivery-stage.failed svg {
+  color: #dc2626;
+}
+.delivery-findings ul {
+  margin: 8px 0 0;
+  padding-left: 1.2rem;
+}
+.delivery-findings li {
+  margin-bottom: 6px;
+}

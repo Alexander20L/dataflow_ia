@@ -52,7 +52,7 @@ evidencia por cifra), los motores de cleaning, `csv-quality-v2`, la cola con fen
 | 14   | Comprender y comprobar                                       | understanding, quality, prep. técnica | Interpretación útil y advertencias relevantes; dashboard sin errores de criterio evidentes    |
 | 15   | Analizar con criterio (hecha, [Fase 15](phase-15.md))        | planning, analytics, dashboard        | Plan automático: indicadores por relevancia, comparaciones válidas, análisis omitidos         |
 | 16   | Investigar de forma autónoma (hecha, [Fase 16](phase-16.md)) | `investigation`, copilot, executions  | Ciclo acotado (iteraciones, tiempo, llamadas, presupuesto durable); propuestas IA según D1    |
-| 17   | Consolidar la entrega                                        | reports, frontend, operación          | Informe automático, progreso y hallazgos primero; destino de tablas sin uso de las Fases 4–10 |
+| 17   | Consolidar la entrega (hecha, [Fase 17](phase-17.md))        | `delivery`, frontend, executions      | Informe automático, progreso y hallazgos primero; destino de tablas sin uso de las Fases 4–10 |
 | 18   | Ampliar fuentes                                              | ingestion, adaptadores                | CSV/Excel regionales, varias tablas, cambios de estructura, SQL Server y PDF sin elección     |
 
 Se retira (sin borrar datos): la elección de las tres primeras columnas numéricas, las frecuencias

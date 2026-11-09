@@ -5,6 +5,7 @@ from fastapi import Depends, Header, Request, Security
 from fastapi.security import APIKeyCookie
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.delivery_job import DeliveryAccess
 from dataflow.bootstrap.investigation_job import InvestigationAccess
 from dataflow.bootstrap.overview_audit import OverviewAuditAccess
 from dataflow.bootstrap.services import (
@@ -89,6 +90,16 @@ def investigation_service(db: Db, objects: Objects) -> InvestigationAccess:
 
 
 Investigations = Annotated[InvestigationAccess, Depends(investigation_service)]
+
+
+def delivery_service(db: Db, objects: Objects) -> DeliveryAccess:
+    from dataflow.platform.runtime import require_ready
+
+    require_ready(db)
+    return DeliveryAccess(make_datasets(db), make_executions(db), objects)
+
+
+Delivery = Annotated[DeliveryAccess, Depends(delivery_service)]
 
 
 def ingestion_service(db: Db, objects: Objects) -> IngestionService:

@@ -29,7 +29,7 @@ de conversión §3, hash canónico §6), `docs/architecture/phase-N.md` y `docs/
 ## Arquitectura y reglas de módulos
 
 Módulos en `apps/api/src/dataflow/modules/`: identity, projects, audit, datasets, ingestion, understanding,
-quality, planning, executions, cleaning, analytics, copilot, investigation; dashboards y reports sólo conservan sus clases
+quality, planning, executions, cleaning, analytics, copilot, investigation, delivery; dashboards y reports sólo conservan sus clases
 de tabla (Fase 13). Adaptador de IA en `integrations/ai` (puerto `AIProvider`, proveedor falso; sólo
 `anthropic_provider.py` importa el SDK); lectores de fuentes en `integrations/sources` (sólo desde el
 subproceso de ingesta).
@@ -47,6 +47,8 @@ descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
   disponibilidad y presupuesto y verifica cifras. No conversa ni ejecuta acciones.
 - investigation (Fase 16): ciclo acotado puro con puertos; `bootstrap/investigation_job.py` lo une a la cola,
   al motor (`analytics.followup@1`) y a la IA.
+- delivery (Fase 17): informe automático (`delivery.report@1`, sólo reordena lo publicado; ReportLab
+  sólo en `delivery/pdf.py`) y progreso por etapas; `bootstrap/delivery_job.py` lo une a la cola.
 - No volver a crear `automation`, `templates` ni `analysis_sessions` (prueba AST). La detección pura de
   contextos vive en `understanding/templates.py`.
 - El cómputo de cleaning (`domain`, `contracts`, `infrastructure`, `engine`, `processor`) no accede a la BD.
@@ -130,13 +132,14 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 14   | 0.21 | `feat/fase-14-comprender`      | `profile@4`, `quality.evaluate@3`, dashboard por medidas, `analysis-v11`     |
 | 15   | 0.22 | `feat/fase-15-criterio`        | plan automático, `analytics.automatic@1` (hallazgos), `analysis-v12`         |
 | 16   | 0.23 | `feat/fase-16-investigar`      | módulo `investigation`, reglas + propuestas IA validadas, límites duros      |
+| 17   | 0.24 | `feat/fase-17-entrega`         | módulo `delivery`: informe PDF automático, progreso por etapas, resumen      |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
 no regenerar sus referencias para hacer pasar una prueba.
 Integración: `develop` contiene las Fases 4 a 14 y A–C (merge `--no-ff` o PR; desde 2026-11-09, siempre PR). Fase 13: ADR-026 sustituye
 al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
-`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
+`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
 (limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
 contradiga el enfoque automático. Fase 7 completa (7A y 7B): ADR-018 y
 ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa
@@ -146,8 +149,8 @@ catálogo, `bootstrap/reports_access.py`). El perfil CSV `standard` (`platform/c
 nunca: garantiza la ida y vuelta con la ingesta.
 IA: `DATAFLOW_AI_PROVIDER=fake` en E2E y pytest fuerza `disabled` si queda en `auto` (conftest); `tests/ai/test_ai_live.py` sólo corre con `DATAFLOW_AI_LIVE_TESTS=1` y
 clave. Cambiar el prompt de `copilot/overview.py` exige subir su versión. Al escribir archivos desde scripts en Windows, forzar LF.
-Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015); tablas sin uso de las Fases 4–10
-y dependencia `reportlab` sin uso (decidir en la Fase 14). Al añadir una migración, las pruebas de migraciones
+Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015). Las tablas sin uso de las Fases 4–10
+se conservan como archivo histórico de sólo lectura (ADR-034); `reportlab` se usa en el informe automático. Al añadir una migración, las pruebas de migraciones
 anteriores excluyen sus tablas nuevas (`LATER_TABLES`).
 
 ## Forma de trabajo
