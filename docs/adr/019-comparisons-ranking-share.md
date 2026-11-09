@@ -2,6 +2,8 @@
 
 Estado: implementado en Fase 7B / API 0.11. Documentación: [Fase 7](../architecture/phase-7.md). Amplía [ADR-018](018-deterministic-business-analysis.md).
 
+> **Vigencia (Fase 13, [ADR-026](026-fully-automatic-single-path.md))**: `analytics.query@2` sigue vigente como motor; ya no hay interfaz para pedir comparaciones, rankings o participaciones.
+
 ## Contexto
 
 La 7A responde «importe total por región y mes» con cifras exactas y evidencia por cifra. Las preguntas siguientes son comparativas: cuánto cambió frente al mes anterior o al mismo mes del año pasado, qué regiones están arriba y qué parte del total aporta cada una. Responderlas exige filas fuera del periodo consultado, cocientes exactos y un orden reproducible, sin cambiar ni una cifra de los planes de la 7A.

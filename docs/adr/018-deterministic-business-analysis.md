@@ -2,6 +2,8 @@
 
 Estado: implementado en Fase 7A / API 0.10. Documentación: [Fase 7](../architecture/phase-7.md). Desarrolla la sección de determinismo de la [arquitectura](../architecture/architecture.md) y el requisito semántico de la [Fase 4](014-planning-catalog.md).
 
+> **Vigencia (Fase 13, [ADR-026](026-fully-automatic-single-path.md))**: la supervisión humana que fija este ADR quedó sin efecto en el producto; se retiraron la definición de métricas por una persona y el análisis a petición. Siguen vigentes `analytics.query@1`, sus cifras exactas y la evidencia por cifra (resultado, evidencia y CSV del análisis).
+
 ## Contexto
 
 Hasta 0.9 el producto diagnostica, limpia y convierte datos, pero no responde preguntas de negocio sobre ellos; la etapa de análisis era sólo una demostración con un KPI fijo. Responder «importe total por región y mes» exige que la cifra sea exacta, reproducible y trazable, y que nadie —ni el sistema ni, más adelante, una IA— decida por su cuenta que una suma son «ingresos».

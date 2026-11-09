@@ -2,6 +2,8 @@
 
 Estado: implementado en Fase 9 / API 0.13. Documentación: [Fase 9](../architecture/phase-9.md). Se apoya en [ADR-018](018-deterministic-business-analysis.md) y [ADR-020](020-persisted-dashboards.md).
 
+> **Vigencia (Fase 13, [ADR-026](026-fully-automatic-single-path.md))**: la supervisión humana que fija este ADR quedó sin efecto en el producto; se retiraron los informes y el PDF (servicio, paso `reports.render_pdf@1` y rutas). Sus tablas se conservan; la dependencia `reportlab` queda sin uso hasta la Fase 14. Sigue vigente el CSV `standard` (`platform/csv_export.py`).
+
 ## Contexto
 
 El usuario necesita presentar sus resultados fuera de la aplicación sin perder la trazabilidad: un informe con texto propio y cifras exactas, un PDF reproducible y CSV que otras herramientas (y Excel en configuración regional española) lean bien.

@@ -1,6 +1,6 @@
 # Fase 12 — Nuevas fuentes: Excel, SQL Server y PDF
 
-Estado: **12A implementada** (Excel); 12B (SQL Server) y 12C (PDF) siguen como plan. Se separa de la [Fase 11](phase-11.md) para no mezclar dos cambios grandes: la automatización funciona primero con CSV y después se amplían las fuentes.
+Estado: **12A implementada** (Excel, [ADR-030](../adr/030-excel-import.md)); 12B (SQL Server) y 12C (PDF) siguen como plan. Se separa de la [Fase 11](phase-11.md) para no mezclar dos cambios grandes: la automatización funciona primero con CSV y después se amplían las fuentes.
 
 > Fase 13B ([ADR-027](../adr/027-excel-and-ai-without-configuration.md)): la hoja o tabla y la fila de cabecera las elige el sistema (`xlsx-selection-v1`); la interfaz ya no muestra el selector ni la vista previa, y `/new` acepta `.xlsx`.
 
@@ -61,6 +61,11 @@ Pendiente para más adelante: advertencias de la extracción visibles también d
 Cierre: un `.xlsx` con el mismo contenido que un CSV del repositorio produce la misma tabla y las mismas cifras.
 
 ## 12B · SQL Server
+
+> **Pendiente de redefinir (ADR-026)**: 12B y 12C se escribieron para el recorrido supervisado y
+> piden que una persona elija objetos, tablas o uniones. Antes de implementarlas se redefinirán con
+> las especificaciones de la Fase 14 para que no exijan elecciones manuales (en SQL Server, la
+> conexión y sus credenciales siguen siendo configuración necesaria).
 
 - **SQLAlchemy** con controlador **ODBC** (`pyodbc` + Microsoft ODBC Driver 18). La imagen de Docker debe instalar `msodbcsql18`, lo que exige aceptar la licencia de Microsoft al construirla (decisión de despliegue).
 - **Credenciales protegidas**: conexiones guardadas por proyecto con la contraseña **cifrada** con una clave del servidor (secreto de Docker, como la clave de IA). Nunca vuelven al frontend, a los logs ni a OpenAPI.

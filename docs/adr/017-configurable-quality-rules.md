@@ -2,6 +2,8 @@
 
 Estado: implementado en Fase 6B / API 0.9. Documentación: [Fase 6](../architecture/phase-6.md). Complementa el [ADR-016](016-typed-tables-and-conversions.md).
 
+> **Vigencia (Fase 13, [ADR-026](026-fully-automatic-single-path.md))**: la supervisión humana que fija este ADR quedó sin efecto en el producto; se retiró el editor de reglas de calidad. Siguen vigentes `csv-quality-v2` y su motor, que la Fase 14 usará con reglas deducidas por el sistema.
+
 ## Contexto
 
 `csv-quality-v1` sólo evalúa reglas técnicas fijas (Q-001 vacíos, Q-002 filas repetidas, Q-003 sólo espacios) y una completitud de celdas. Los usuarios necesitan expresar reglas de negocio (una columna obligatoria, una clave única, un rango, un catálogo de valores, un formato convertible) sin que se mezclen con la completitud técnica, sin modificar diagnósticos existentes y con la misma reproducibilidad que planes y revisiones semánticas.
