@@ -115,11 +115,11 @@ def build_plan(
         step_input = {"kind": "step", "step_id": "read"}
     # analysis-v11 (Fase 14): las cargas nuevas usan la interpretación analítica y la calidad
     # que indica los análisis afectados. Las tablas derivadas conservan profile@1/quality@1.
-    analytical = table is None and config.operation_catalog == "analysis-v11"
+    analytical = table is None and config.operation_catalog in {"analysis-v11", "analysis-v12"}
     if analysis_kind == "profile_quality":
         profile_version = 1
         if table is None:
-            if config.operation_catalog == "analysis-v11":
+            if analytical:
                 profile_version = 4
             elif config.operation_catalog == "analysis-v10":
                 profile_version = 3
@@ -155,6 +155,17 @@ def build_plan(
             },
         }
     )
+    if table is None and config.operation_catalog == "analysis-v12":
+        # Fase 15: plan analítico automático y hallazgos sobre la misma tabla importada.
+        steps.append(
+            {
+                "id": "analysis",
+                "operation": "analytics.automatic",
+                "version": 1,
+                "input": step_input,
+                "parameters": {"rules": "automatic-analysis-v1", "plan_rules": "automatic-plan-v1"},
+            }
+        )
     content = {
         "objective": None,
         "input": input_ref,

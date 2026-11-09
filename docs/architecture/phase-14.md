@@ -47,13 +47,13 @@ evidencia por cifra), los motores de cleaning, `csv-quality-v2`, la cola con fen
 
 ## Plan por fases (orden del análisis)
 
-| Fase | Objetivo                     | Módulos                               | Resultado                                                                                     |
-| ---- | ---------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------- |
-| 14   | Comprender y comprobar       | understanding, quality, prep. técnica | Interpretación útil y advertencias relevantes; dashboard sin errores de criterio evidentes    |
-| 15   | Analizar con criterio        | planning, analytics, dashboard        | Plan automático: indicadores por relevancia, comparaciones válidas, análisis omitidos         |
-| 16   | Investigar de forma autónoma | `investigation`, copilot, executions  | Ciclo acotado (iteraciones, tiempo, llamadas, presupuesto durable); propuestas IA según D1    |
-| 17   | Consolidar la entrega        | reports, frontend, operación          | Informe automático, progreso y hallazgos primero; destino de tablas sin uso de las Fases 4–10 |
-| 18   | Ampliar fuentes              | ingestion, adaptadores                | CSV/Excel regionales, varias tablas, cambios de estructura, SQL Server y PDF sin elección     |
+| Fase | Objetivo                                              | Módulos                               | Resultado                                                                                     |
+| ---- | ----------------------------------------------------- | ------------------------------------- | --------------------------------------------------------------------------------------------- |
+| 14   | Comprender y comprobar                                | understanding, quality, prep. técnica | Interpretación útil y advertencias relevantes; dashboard sin errores de criterio evidentes    |
+| 15   | Analizar con criterio (hecha, [Fase 15](phase-15.md)) | planning, analytics, dashboard        | Plan automático: indicadores por relevancia, comparaciones válidas, análisis omitidos         |
+| 16   | Investigar de forma autónoma                          | `investigation`, copilot, executions  | Ciclo acotado (iteraciones, tiempo, llamadas, presupuesto durable); propuestas IA según D1    |
+| 17   | Consolidar la entrega                                 | reports, frontend, operación          | Informe automático, progreso y hallazgos primero; destino de tablas sin uso de las Fases 4–10 |
+| 18   | Ampliar fuentes                                       | ingestion, adaptadores                | CSV/Excel regionales, varias tablas, cambios de estructura, SQL Server y PDF sin elección     |
 
 Se retira (sin borrar datos): la elección de las tres primeras columnas numéricas, las frecuencias
 presentadas como medidas y `drop_nulls` en la propuesta de limpieza de 11A.

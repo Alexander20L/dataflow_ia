@@ -3,6 +3,7 @@
 from collections.abc import Mapping
 
 from dataflow.modules.analytics.contracts import (
+    AutomaticAnalysisParameters,
     QueryParameters,
     QueryParametersV2,
     QueryParametersV3,
@@ -90,6 +91,14 @@ DESCRIPTORS: tuple[OperationDescriptor, ...] = (
         "quality_rules",
         QualityRulesParameters,
         ruleset_reference=("ruleset_revision_id", "ruleset_sha256"),
+    ),
+    OperationDescriptor(
+        "analytics.automatic",
+        1,
+        "Plan analítico automático y hallazgos",
+        "table",
+        "automatic_analysis",
+        AutomaticAnalysisParameters,
     ),
     OperationDescriptor(
         "analytics.query",

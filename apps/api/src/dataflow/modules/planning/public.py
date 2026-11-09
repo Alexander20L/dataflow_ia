@@ -1,10 +1,13 @@
+from dataflow.modules.planning.automatic import plan_analyses
 from dataflow.modules.planning.contracts import (
     CATALOG_VERSION,
     COLUMN_REF,
+    AnalysisPlan,
     ConfirmedColumnRole,
     IdentifierConversionGuard,
     OperationCatalog,
     OperationDescriptor,
+    PlannedAnalysis,
     SemanticRevisionRequirement,
 )
 
@@ -12,6 +15,9 @@ from dataflow.modules.planning.contracts import (
 OperationRegistry = OperationCatalog
 
 __all__ = [
+    "AnalysisPlan",
+    "PlannedAnalysis",
+    "plan_analyses",
     "CATALOG_VERSION",
     "COLUMN_REF",
     "ConfirmedColumnRole",

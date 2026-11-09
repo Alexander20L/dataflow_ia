@@ -371,6 +371,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/versions/{version_id}/automatic-analysis": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Automatic Analysis
+         * @description Plan analítico automático y hallazgos con evidencia, guardados al importar.
+         */
+        get: operations["getAutomaticAnalysis"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/automatic-analysis/evidence/{evidence_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Automatic Evidence
+         * @description Procedencia exacta de una cifra del análisis automático (método y entradas).
+         */
+        get: operations["getAutomaticEvidence"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/versions/{version_id}/diagnostic": {
         parameters: {
             query?: never;
@@ -565,6 +605,34 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * AnalysisPlan
+         * @description Plan versionado y acotado; sólo contiene análisis del catálogo automático.
+         */
+        AnalysisPlan: {
+            /** Accepted */
+            accepted: components["schemas"]["PlannedAnalysis"][];
+            /** Estimated Cells */
+            estimated_cells: number;
+            /**
+             * Interpretation Rules
+             * @default automatic-interpretation-v2
+             * @constant
+             */
+            interpretation_rules: "automatic-interpretation-v2";
+            /** Max Analyses */
+            max_analyses: number;
+            /** Measure */
+            measure: string | null;
+            /** Omitted */
+            omitted: components["schemas"]["PlannedAnalysis"][];
+            /**
+             * Rules Version
+             * @default automatic-plan-v1
+             * @constant
+             */
+            rules_version: "automatic-plan-v1";
+        };
         /** AnalysisResult */
         AnalysisResult: {
             /** Avg Scale */
@@ -817,7 +885,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit";
+            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis";
             /** Logical Content Sha256 */
             logical_content_sha256: string | null;
             /**
@@ -894,6 +962,39 @@ export interface components {
             /** Unverified Numbers */
             unverified_numbers: number;
         };
+        /** AutomaticAnalysis */
+        AutomaticAnalysis: {
+            /** Evidence */
+            evidence: components["schemas"]["AutomaticEvidence"][];
+            /** Insights */
+            insights: components["schemas"]["AutomaticInsight"][];
+            /** Limitations */
+            limitations: string[];
+            /**
+             * Operation
+             * @default analytics.automatic@1
+             * @constant
+             */
+            operation: "analytics.automatic@1";
+            plan: components["schemas"]["AnalysisPlan"];
+            /** Queries */
+            queries: {
+                [key: string]: components["schemas"]["AnalysisResultV2"];
+            };
+            /**
+             * Rules Version
+             * @default automatic-analysis-v1
+             * @constant
+             */
+            rules_version: "automatic-analysis-v1";
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            scope: components["schemas"]["AutomaticScope"];
+        };
         /** AutomaticColumnHint */
         AutomaticColumnHint: {
             /** Evidence */
@@ -912,6 +1013,56 @@ export interface components {
              * @default false
              */
             statistics_allowed: boolean;
+        };
+        /**
+         * AutomaticEvidence
+         * @description Procedencia de una cifra: método y entradas exactas (otras evidencias o filas).
+         */
+        AutomaticEvidence: {
+            /** Analysis Id */
+            analysis_id: string;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Inputs */
+            inputs: {
+                [key: string]: unknown;
+            };
+            /** Label */
+            label: string;
+            /** Method */
+            method: string;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "number" | "percent" | "count" | "index";
+            /** Value */
+            value: string | null;
+        };
+        /**
+         * AutomaticInsight
+         * @description Hallazgo verificable: texto determinista, cifras con evidencia y su cobertura.
+         */
+        AutomaticInsight: {
+            /** Analysis Id */
+            analysis_id: string;
+            chart?: components["schemas"]["InsightChart"] | null;
+            /** Coverage */
+            coverage: string;
+            /** Figures */
+            figures: components["schemas"]["InsightFigure"][];
+            /** Id */
+            id: string;
+            /** Importance */
+            importance: number;
+            /** Kind */
+            kind: string;
+            /** Notes */
+            notes?: string[];
+            /** Statement */
+            statement: string;
+            /** Title */
+            title: string;
         };
         /**
          * AutomaticInterpretation
@@ -964,6 +1115,26 @@ export interface components {
             /** Source Sha256 */
             source_sha256: string;
             table_detail: components["schemas"]["OverviewDetail"];
+        };
+        /**
+         * AutomaticScope
+         * @description La tabla de entrada la produce la propia carga: se identifica por su hash.
+         */
+        AutomaticScope: {
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            /** Step Id */
+            step_id: string;
+            /** Table Sha256 */
+            table_sha256: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
         };
         /** AutomaticTemplateHint */
         AutomaticTemplateHint: {
@@ -1413,6 +1584,46 @@ export interface components {
             processed: number;
             /** Versions */
             versions: number;
+        };
+        /** InsightChart */
+        InsightChart: {
+            /** Points */
+            points: components["schemas"]["InsightPoint"][];
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "bar" | "line";
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "number" | "percent" | "count" | "index";
+        };
+        /** InsightFigure */
+        InsightFigure: {
+            /** Evidence Id */
+            evidence_id: string;
+            /** Label */
+            label: string;
+            /**
+             * Unit
+             * @enum {string}
+             */
+            unit: "number" | "percent" | "count" | "index";
+            /** Value */
+            value: string | null;
+        };
+        /** InsightPoint */
+        InsightPoint: {
+            /** Evidence Id */
+            evidence_id: string | null;
+            /** Label */
+            label: string;
+            /** Value */
+            value: string | null;
         };
         /** KeyCandidate */
         KeyCandidate: {
@@ -1916,6 +2127,38 @@ export interface components {
              * @constant
              */
             schema_version: 1;
+        };
+        /**
+         * PlannedAnalysis
+         * @description Un análisis candidato con sus requisitos y la decisión del sistema (con motivo).
+         */
+        PlannedAnalysis: {
+            /** Dimension */
+            dimension?: string | null;
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "evolution" | "year_over_year" | "breakdown" | "weighted_average" | "seasonality" | "anomalies";
+            /** Measure */
+            measure?: string | null;
+            /** Priority */
+            priority: number;
+            /** Reason */
+            reason: string;
+            /** Requirements */
+            requirements: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "omitted";
+            /** Title */
+            title: string;
+            /** Weight */
+            weight?: string | null;
         };
         /** PreviewPage */
         PreviewPage: {
@@ -5255,6 +5498,253 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["VersionResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAutomaticAnalysis: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomaticAnalysis"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getAutomaticEvidence: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+                evidence_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AutomaticEvidence"];
                 };
             };
             /** @description Bad Request */

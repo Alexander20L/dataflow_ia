@@ -33,6 +33,25 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
   await expect(
     dashboard.getByRole("heading", { name: "Tu análisis automático" }),
   ).toBeVisible({ timeout: 30000 });
+  // Fase 15: los hallazgos aparecen antes del dashboard descriptivo, sin ninguna acción.
+  const findings = page.getByRole("region", {
+    name: "Hallazgos del análisis automático",
+  });
+  await expect(
+    findings.getByRole("heading", { name: "Hallazgos" }),
+  ).toBeVisible();
+  await expect(findings).toContainText(
+    "En los 11 meses de 2024 con dato también en 2023",
+  );
+  await expect(
+    findings.getByRole("article", { name: "Mes atípico de Revenue: 2024-10" }),
+  ).toContainText("Se asocia sobre todo a Product = Monitor");
+  await expect(findings).toContainText(
+    "Laptop concentra el 62,00 % de Revenue",
+  );
+  await findings.getByText(/Análisis omitidos/).click();
+  await expect(findings).toContainText("Hacen falta 24 meses seguidos");
+  await expect(findings.getByRole("button")).toHaveCount(0);
   const reading = dashboard.getByRole("region", {
     name: "Lectura automática de los datos",
   });

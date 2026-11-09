@@ -112,7 +112,9 @@ def test_end_to_end_csv_integrity_quality_versions_and_reproducibility(
     assert process(db, objects)
     assert client.get(f"/api/v1/versions/{second['id']}/diagnostic").json() == result
     assert client.get(f"/api/v1/projects/{project_id}/versions").json()["total"] == 2
-    assert db.scalar(select(func.count()).select_from(ArtifactRecord)) == 6
+    assert (
+        db.scalar(select(func.count()).select_from(ArtifactRecord)) == 8
+    )  # tabla, perfil, calidad y análisis automático (Fase 15)
 
 
 @pytest.mark.parametrize(
@@ -200,7 +202,9 @@ def test_lease_recovery_and_stale_worker_fencing(
         UUID(client.get("/api/v1/auth/me").json()["user"]["id"]), UUID(version["execution_id"])
     )
     assert result.state == "succeeded" and result.attempts == 3
-    assert db.scalar(select(func.count()).select_from(ArtifactRecord)) == 3
+    assert (
+        db.scalar(select(func.count()).select_from(ArtifactRecord)) == 4
+    )  # tabla, perfil, calidad y análisis automático (Fase 15)
 
 
 def test_cancel_fences_running_worker(

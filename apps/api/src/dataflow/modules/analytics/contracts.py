@@ -8,7 +8,7 @@ negocio («Ingresos») es una etiqueta sobre una métrica definida explícitamen
 
 from datetime import date, datetime
 from typing import Annotated, Any, Final, Literal, Protocol
-from uuid import UUID
+from uuid import NAMESPACE_URL, UUID, uuid5
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -19,7 +19,7 @@ from dataflow.modules.analytics.periods import (
     ends_period,
     starts_period,
 )
-from dataflow.modules.planning.public import COLUMN_REF
+from dataflow.modules.planning.public import COLUMN_REF, AnalysisPlan
 from dataflow.platform.data_types import ALL_TYPES, NUMERIC, DataType
 
 Aggregation = Literal["sum", "count", "count_distinct", "avg", "min", "max", "sum_product"]
@@ -643,3 +643,91 @@ class MetricRepository(Protocol):
     def head(self, family: UUID) -> tuple[MetricRevision, int] | None: ...
     def families(self, owner: UUID, project: UUID) -> list[UUID]: ...
     def revision(self, owner: UUID, revision: UUID) -> MetricRevision: ...
+
+
+# --- Análisis automático (Fase 15, analytics.automatic@1) ---------------------------------
+
+AutomaticUnit = Literal["number", "percent", "count", "index"]
+
+
+class AutomaticAnalysisParameters(AnalyticsModel):
+    """analytics.automatic@1: ejecuta el plan automatic-plan-v1 con automatic-analysis-v1."""
+
+    rules: Literal["automatic-analysis-v1"] = "automatic-analysis-v1"
+    plan_rules: Literal["automatic-plan-v1"] = "automatic-plan-v1"
+
+
+class AutomaticScope(AnalyticsModel):
+    """La tabla de entrada la produce la propia carga: se identifica por su hash."""
+
+    execution_id: UUID
+    step_id: str
+    version_id: UUID
+    table_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @property
+    def input(self) -> BaseTable:
+        return BaseTable(
+            version_id=self.version_id,
+            artifact_id=uuid5(NAMESPACE_URL, f"automatic-table:{self.execution_id}"),
+            artifact_sha256=self.table_sha256,
+        )
+
+
+class InsightFigure(AnalyticsModel):
+    label: str
+    value: str | None
+    unit: AutomaticUnit
+    evidence_id: str
+
+
+class InsightPoint(AnalyticsModel):
+    label: str
+    value: str | None
+    evidence_id: str | None
+
+
+class InsightChart(AnalyticsModel):
+    type: Literal["bar", "line"]
+    title: str
+    unit: AutomaticUnit
+    points: list[InsightPoint]
+
+
+class AutomaticInsight(AnalyticsModel):
+    """Hallazgo verificable: texto determinista, cifras con evidencia y su cobertura."""
+
+    id: str
+    analysis_id: str
+    kind: str
+    title: str
+    statement: str
+    importance: int = Field(ge=0, le=100)
+    figures: list[InsightFigure]
+    chart: InsightChart | None = None
+    coverage: str
+    notes: list[str] = Field(default_factory=list)
+
+
+class AutomaticEvidence(AnalyticsModel):
+    """Procedencia de una cifra: método y entradas exactas (otras evidencias o filas)."""
+
+    evidence_id: str
+    analysis_id: str
+    label: str
+    value: str | None
+    unit: AutomaticUnit
+    method: str
+    inputs: dict[str, Any]
+
+
+class AutomaticAnalysis(AnalyticsModel):
+    schema_version: Literal[1] = 1
+    operation: Literal["analytics.automatic@1"] = "analytics.automatic@1"
+    rules_version: Literal["automatic-analysis-v1"] = "automatic-analysis-v1"
+    scope: AutomaticScope
+    plan: AnalysisPlan
+    insights: list[AutomaticInsight]
+    evidence: list[AutomaticEvidence]
+    queries: dict[str, AnalysisResultV2]
+    limitations: list[str]

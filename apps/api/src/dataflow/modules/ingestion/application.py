@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Literal, Protocol, cast
 from uuid import UUID, uuid4
 
+from dataflow.modules.analytics.contracts import AutomaticAnalysis, AutomaticEvidence
 from dataflow.modules.datasets.public import Datasets, DatasetVersion, ObjectStore
 from dataflow.modules.executions.public import (
     Execution,
@@ -403,6 +404,37 @@ class IngestionService:
                 "INTEGRITY_ERROR", "El diagnóstico no coincide con el original.", 409
             )
         return result
+
+    def automatic_analysis(self, owner: UUID, version_id: UUID) -> AutomaticAnalysis:
+        """Plan analítico y hallazgos guardados al importar (Fase 15). Sólo lectura: nunca
+        recalcula; las versiones anteriores a analysis-v12 no lo tienen."""
+        binding = self.datasets.binding(owner, version_id)
+        run = self.executions.get(owner, binding.execution_id)
+        self._ready(run)
+        artifact = next(
+            (a for a in self.executions.artifacts(owner, run.id) if a.kind == "automatic_analysis"),
+            None,
+        )
+        if artifact is None:
+            raise ApplicationError(
+                "AUTOMATIC_ANALYSIS_NOT_AVAILABLE",
+                "Esta versión se procesó antes del análisis automático y no lo tiene.",
+                404,
+            )
+        result = AutomaticAnalysis.model_validate_json(self.objects.read(artifact.content))
+        if result.scope.version_id != version_id or result.scope.execution_id != run.id:
+            raise ApplicationError(
+                "INTEGRITY_ERROR", "El análisis no corresponde a esta versión.", 409
+            )
+        return result
+
+    def automatic_evidence(
+        self, owner: UUID, version_id: UUID, evidence_id: str
+    ) -> AutomaticEvidence:
+        for item in self.automatic_analysis(owner, version_id).evidence:
+            if item.evidence_id == evidence_id:
+                return item
+        raise ApplicationError("EVIDENCE_NOT_FOUND", "Esa cifra no existe en el análisis.", 404)
 
     def preview(
         self, owner: UUID, version_id: UUID, limit: int, offset: int, issue_id: str | None = None

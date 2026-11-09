@@ -19,7 +19,7 @@ from dataflow.bootstrap.semantic_access import SemanticRepresentationAccess
 from dataflow.integrations.ai import AIProvider
 from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.analytics.infrastructure import SQLMetricRepository
-from dataflow.modules.analytics.steps import AnalyticsQueryStep, MetricSource
+from dataflow.modules.analytics.steps import AnalyticsQueryStep, AutomaticAnalysisStep, MetricSource
 from dataflow.modules.audit.public import record_event
 from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
 from dataflow.modules.cleaning.engine import IsolatedCleaner
@@ -271,6 +271,7 @@ def make_operations(
             "quality.evaluate@1": QualityStep(objects, analyzer),
             "quality.evaluate@3": QualityStep(objects, analyzer),
             "quality.evaluate@2": QualityRulesStep(objects, analyzer, rulesets),
+            "analytics.automatic@1": AutomaticAnalysisStep(objects, objects.root),
             "analytics.query@1": AnalyticsQueryStep(objects, objects.root, metrics),
             "analytics.query@2": AnalyticsQueryStep(objects, objects.root, metrics),
             "analytics.query@3": AnalyticsQueryStep(objects, objects.root, metrics),
