@@ -2,6 +2,8 @@
 
 Estado: implementado en Fase 4 / API 0.6. Desarrolla el contrato de planes y el registro de operaciones de Fase 1 ([execution-contract](../architecture/phase-1/execution-contract.md), [module-boundaries](../architecture/phase-1/module-boundaries.md)).
 
+> **Vigencia (Fase 13, [ADR-026](026-fully-automatic-single-path.md))**: la supervisión humana que fija este ADR quedó sin efecto en el producto; se retiraron el editor de planes, el catálogo público y la ejecución de planes a petición. Siguen vigentes los planes inmutables, el catálogo versionado y el worker por pasos como sustrato del recorrido automático.
+
 ## Contexto
 
 Hasta 0.5 las ejecuciones usaban planes de sistema construidos al vuelo (`csv_import`, `table_analysis`) y el worker despachaba por tipo de ejecución con una correspondencia operación → salida fijada en código. El usuario no podía componer, guardar ni volver a ejecutar un plan, y añadir operaciones (limpieza en Fase 5) obligaba a tocar executions.

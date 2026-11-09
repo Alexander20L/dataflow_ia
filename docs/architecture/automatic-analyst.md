@@ -1,14 +1,26 @@
-# Analista automático — transición del recorrido supervisado
+# Analista automático — dashboard y explicación sin configuración
+
+> **Estado actual (Fases 13–13C)**: este recorrido es ya el **único** del producto
+> ([ADR-026](../adr/026-fully-automatic-single-path.md)). Las secciones A1–C2 se conservan como
+> historia de cada incremento y algunas de sus frases ya no describen el sistema:
+>
+> - A1 estabilizó el pipeline por política, retirado en la Fase 13 (migración 0019).
+> - B2 ofrecía «Herramientas avanzadas (opcionales)»; se retiraron en la Fase 13.
+> - C2 dejaba la IA desactivada por defecto; desde la Fase 13B es `auto` (activa si hay clave,
+>   [ADR-027](../adr/027-excel-and-ai-without-configuration.md)). Decisión de C2:
+>   [ADR-029](../adr/029-automatic-ai-explanation.md).
+> - La IA **sólo explica** resultados publicados; no propone interpretaciones, transformaciones ni
+>   análisis.
 
 ## Objetivo acordado
 
 **Subir una fuente → procesar sin formularios → dashboard → explicación opcional.**
 
-El recorrido principal no exige activar políticas, confirmar semántica, elegir moldes, aprobar limpiezas ni ejecutar planes manualmente. El backend calcula con Polars; la IA puede proponer una interpretación estructurada y explicar resultados, pero no generar código ejecutable ni SQL libre. Se conserva la evidencia y el original inmutable.
+El recorrido principal no exige activar políticas, confirmar semántica, elegir moldes, aprobar limpiezas ni ejecutar planes manualmente. El backend calcula con Polars y decide con reglas versionadas; la IA sólo explica resultados publicados, sin generar cifras, código ejecutable ni SQL libre. Se conserva la evidencia y el original inmutable.
 
 La fuente activa puede contener varias tablas. Se analizan por separado, sin joins ni concatenaciones inferidos. Cuando una interpretación es ambigua, se muestran análisis genéricos y limitaciones, no preguntas ni significados inventados. Los errores de lectura siguen siendo explícitos.
 
-Este documento describe una **transición incremental**, no una funcionalidad terminada. Las fases 11/12 existentes conservan su valor histórico: parte de su recorrido supervisado será sustituida en la experiencia principal, no borrada de la persistencia.
+Este documento describe cómo se construyó el recorrido por incrementos. El recorrido supervisado de las Fases 4–11 se retiró de la API y de la interfaz en la Fase 13, conservando sus tablas y su historia.
 
 ## A1 — Estabilización inicial implementada
 
@@ -69,13 +81,19 @@ Compose pasa al worker el mismo proveedor, modelo y secreto que a la API. No se 
 
 ## Siguientes entregas
 
-1. **Completar la estabilización:** autorización vigente al publicar, protección contra cargas obsoletas y consistencia de fechas de corte de inventario. Añadir pruebas de concurrencia y caídas.
-2. **Ampliar el inicio predeterminado:** partiendo del snapshot B1, completar la configuración interna segura y la generación de carga para impedir que trabajos anteriores sustituyan resultados recientes. Unificar la selección de fuente y reducir la interfaz avanzada.
-3. **Interpretación y preparación:** reglas deterministas, propuestas IA acotadas y validación por catálogo. Columnas interpretadas sin sobrescribir el original; nulos y conversiones ambiguas con cobertura explícita. No deduplicar ni rellenar valores por suposición.
-4. **Dashboard:** elección automática de análisis aplicables, etiquetas neutrales, orden estable, evidencia y estado parcial explícito. No sumar medidas no aditivas o mezclar monedas.
-5. **Endurecer la explicación C2:** reservas durables de presupuesto, recuperación y contabilización ante caídas, y validaciones semánticas adicionales. El trabajo posterior al dashboard, las salidas estructuradas y las cifras por evidencia ya están implementados; su fallo no impide consultar los resultados.
-6. **Fuentes:** descubrimiento de múltiples tablas, endurecimiento de Excel, SQL Server controlado y extracción de PDF; OCR por separado.
-7. **Experiencia y operación:** retirar configuración del recorrido principal sin borrar historia; cuotas totales, retención, aislamiento, backups y E2E sin clics intermedios.
+Hechas desde entonces: retirar la configuración del recorrido principal sin borrar historia (Fase 13),
+Excel sin elegir hoja e IA `auto` (13B) y cargas en cola en vez de rechazos (13C). Lo pendiente se
+especifica en la Fase 14 a partir de las especificaciones del producto:
+
+1. **Preparación automática**: sólo transformaciones seguras y sin pérdida, decididas por reglas
+   versionadas y registradas como decisión del sistema; nunca excluir filas ni convertir
+   identificadores. Versiones derivadas con el dashboard descriptivo (`profile@3`).
+2. **Análisis**: calidad con reglas deducidas y análisis con evidencia (`analytics.query@3`) elegidos
+   por reglas, sin sumar medidas no aditivas ni mezclar monedas.
+3. **Endurecer la explicación C2**: reservas durables de presupuesto y contabilización ante caídas.
+4. **Fuentes**: varias tablas por libro, SQL Server y PDF, redefinidos sin elección humana.
+5. **Operación**: cuotas totales, retención, backups y destino de las tablas sin uso de las
+   Fases 4–10 y de `reportlab`.
 
 ## Criterio de producto
 

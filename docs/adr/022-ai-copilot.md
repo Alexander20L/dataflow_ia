@@ -2,6 +2,8 @@
 
 Estado: implementado en Fase 10 / API 0.14. Documentación: [Fase 10](../architecture/phase-10.md). Concreta el [ADR-006](decisions.md) y se apoya en [ADR-014](014-planning-catalog.md), [ADR-015](015-supervised-cleaning.md) y [ADR-018](018-deterministic-business-analysis.md).
 
+> **Vigencia (Fase 13, [ADR-026](026-fully-automatic-single-path.md))**: la supervisión humana que fija este ADR quedó sin efecto en el producto; se retiraron el chat, las propuestas de acciones y los botones del copiloto. Siguen vigentes el puerto `AIProvider`, el presupuesto y las cifras sólo por evidencia, ahora en la explicación automática ([ADR-029](029-automatic-ai-explanation.md)).
+
 ## Contexto
 
 El usuario quiere pedir y entender análisis en lenguaje natural. Un modelo de lenguaje no es determinista, puede inventar cifras y lee texto que viene de los datos (nombres de columnas, descripciones, etiquetas) y que puede contener instrucciones. El producto ya tiene un catálogo validado, un ciclo de aprobación y evidencia por cifra: el copiloto debe usarlos, no rodearlos.

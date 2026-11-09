@@ -2,6 +2,8 @@
 
 Estado: implementado en Fase 8 / API 0.12. Documentación: [Fase 8](../architecture/phase-8.md). Se apoya en [ADR-018](018-deterministic-business-analysis.md) y [ADR-019](019-comparisons-ranking-share.md).
 
+> **Vigencia (Fase 13, [ADR-026](026-fully-automatic-single-path.md))**: la supervisión humana que fija este ADR quedó sin efecto en el producto; se retiraron los dashboards editables y el botón «Actualizar» (servicio y rutas). Sus tablas y datos se conservan sin interfaz. El dashboard vigente es el descriptivo automático ([ADR-024](024-automatic-descriptive-overview.md)).
+
 ## Contexto
 
 Los análisis de la Fase 7 se calculan y se consultan uno a uno. El usuario necesita reunirlos en dashboards que se conserven entre sesiones, sin que una cifra cambie sin una acción explícita y sin perder la trazabilidad de cada número.

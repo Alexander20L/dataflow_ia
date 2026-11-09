@@ -2,6 +2,8 @@
 
 Estado: implementado en Fase 6A / API 0.8. Desarrolla las secciones 3 y 6 del [contrato de ejecución](../architecture/phase-1/execution-contract.md) sobre el ciclo de limpieza del [ADR-015](015-supervised-cleaning.md). Documentación: [Fase 6](../architecture/phase-6.md).
 
+> **Vigencia (Fase 13, [ADR-026](026-fully-automatic-single-path.md))**: la supervisión humana que fija este ADR quedó sin efecto en el producto; las conversiones ya no llegan de una persona ni de un mapeo confirmado. Siguen vigentes las tablas tipadas, las gramáticas de conversión y los errores estrictos; la deducción automática de conversiones sin pérdida queda para la Fase 14.
+
 ## Contexto
 
 Hasta 0.7 toda tabla publicada era texto nullable: perfil y calidad rechazaban otro tipo (`UNSUPPORTED_TABLE_TYPE`) y el hash lógico serializaba las celdas tal cual. Convertir tipos, normalizar marcadores de nulo y deduplicar exige tipos reales sin cambiar ningún resultado existente, sin decidir conversiones por inferencia y sin publicar efectos parciales.

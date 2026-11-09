@@ -128,7 +128,7 @@ resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` lo
 no regenerar sus referencias para hacer pasar una prueba.
 Integración: `develop` contiene las Fases 4 a 13 y A–C (merge `--no-ff` o PR). Fase 13: ADR-026 sustituye
 al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
-`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Antes de la Fase 14
+`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
 (limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
 contradiga el enfoque automático. Fase 7 completa (7A y 7B): ADR-018 y
 ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa

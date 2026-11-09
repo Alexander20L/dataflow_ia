@@ -2,6 +2,8 @@
 
 Estado: implementado en Fase 5 / API 0.7. Desarrolla las secciones 3–6 del [contrato de ejecución](../architecture/phase-1/execution-contract.md) sobre el catálogo y el worker por pasos del [ADR-014](014-planning-catalog.md).
 
+> **Vigencia (Fase 13, [ADR-026](026-fully-automatic-single-path.md))**: la supervisión humana que fija este ADR quedó sin efecto en el producto; se retiraron la vista previa, la aprobación y la aplicación de limpiezas por una persona. Siguen vigentes el efecto exacto (`effect_sha256`), las derivadas con linaje y el motor; la Fase 14 registrará la decisión como del sistema y sólo con transformaciones seguras y sin pérdida.
+
 ## Contexto
 
 Las incidencias Q-001 (nulos) y Q-003 (sólo espacios) se detectaban pero no se corregían. Corregir datos exige que el usuario vea el efecto exacto antes de autorizarlo, que la autorización no pueda aplicarse a otro efecto y que el original y la versión de origen no cambien nunca.
