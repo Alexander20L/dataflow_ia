@@ -4,6 +4,10 @@ import type { components } from "@dataflow/api-client";
 import { Chart, seriesOption } from "@/components/ui/chart";
 
 type Overview = components["schemas"]["AutomaticOverview"];
+type Analysis = components["schemas"]["AnalyticalInterpretation"];
+type Quality = components["schemas"]["QualityReport"];
+type Finding = components["schemas"]["AnalyticalFinding"];
+
 const columnRoles = {
   identifier: "Identificador probable (sin agregación)",
   date: "Fecha reconocible",
@@ -12,20 +16,186 @@ const columnRoles = {
   text: "Texto sin interpretación suficiente",
   empty: "Sin valores para interpretar",
 };
+const analyticalRoles = {
+  identifier: "Identificador (no se suma)",
+  dimension: "Dimensión para agrupar",
+  measure: "Medida",
+  time: "Tiempo",
+  text: "Texto",
+  empty: "Sin valores",
+};
+const additivity = {
+  additive: "se puede sumar",
+  semi_additive: "no se suma entre fechas",
+  non_additive: "no se suma",
+  unknown: "aditividad desconocida: no se suma",
+};
+const severities = {
+  blocking: "Limita análisis",
+  warning: "Advertencia",
+  info: "Observación",
+};
 
 function exactNumber(value: string) {
-  const [integer, fraction] = value.split(".");
+  const negative = value.startsWith("-");
+  const [integer, fraction] = (negative ? value.slice(1) : value).split(".");
   const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   const decimal = fraction?.replace(/0+$/, "");
-  return decimal ? `${grouped},${decimal}` : grouped;
+  return `${negative ? "-" : ""}${decimal ? `${grouped},${decimal}` : grouped}`;
+}
+
+function AnalysisSummary({ analysis }: { analysis: Analysis }) {
+  const time = analysis.time;
+  return (
+    <section
+      className="automatic-interpretation"
+      aria-label="Lectura automática de los datos"
+    >
+      <h3>{analysis.label}</h3>
+      <p>{analysis.row_meaning}</p>
+      {time && (
+        <p>
+          Periodo mensual ({time.columns.join(" + ")}): {time.first} a{" "}
+          {time.last} · {time.periods} meses con datos
+          {time.missing_count > 0
+            ? ` · faltan ${time.missing_count}: ${time.missing.join(", ")}`
+            : ""}
+          .
+        </p>
+      )}
+      <h4>Qué se puede analizar</h4>
+      <ul>
+        {analysis.available_analyses.map((item) => (
+          <li key={item}>{item}</li>
+        ))}
+      </ul>
+      {analysis.limited_analyses.length > 0 && (
+        <div
+          className="limited-analyses"
+          role="note"
+          aria-label="Análisis limitados"
+        >
+          <h4>Análisis limitados</h4>
+          <ul>
+            {analysis.limited_analyses.map((item) => (
+              <li key={item.subject}>
+                <strong>{item.subject}</strong>: {item.reason}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      <details>
+        <summary>Interpretación de columnas, claves y relaciones</summary>
+        <ul>
+          {analysis.columns.map((column) => (
+            <li key={column.ordinal}>
+              <strong>{column.name}</strong>: {analyticalRoles[column.role]}
+              {column.additivity ? `, ${additivity[column.additivity]}` : ""}
+              {column.monetary
+                ? column.currency_code
+                  ? ` · moneda ${column.currency_code}`
+                  : column.currency === "ambiguous"
+                    ? " · varias monedas"
+                    : " · moneda desconocida"
+                : ""}
+              . {column.evidence.join(" ")}
+            </li>
+          ))}
+        </ul>
+        {analysis.keys.length > 0 && (
+          <ul>
+            {analysis.keys.map((key) => (
+              <li key={key.columns.join("|")}>{key.evidence}</li>
+            ))}
+          </ul>
+        )}
+        {analysis.relationships.length > 0 && (
+          <ul>
+            {analysis.relationships.map((item) => (
+              <li key={item.target}>
+                {item.target} ≈ {item.factors.join(" × ")} en{" "}
+                {item.matching_rows} de {item.compared_rows} filas (tolerancia{" "}
+                {item.tolerance}).
+              </li>
+            ))}
+          </ul>
+        )}
+        <ul>
+          {analysis.limitations.map((limitation) => (
+            <li key={limitation}>{limitation}</li>
+          ))}
+        </ul>
+        <p>
+          Reglas: {analysis.rules_version}. Son hipótesis con evidencia, no
+          confirmaciones; no hace falta responder nada.
+        </p>
+      </details>
+    </section>
+  );
+}
+
+function FindingItem({ finding }: { finding: Finding }) {
+  return (
+    <li className={`quality-finding ${finding.severity}`}>
+      <span className={`badge ${finding.severity}`}>
+        <i />
+        {severities[finding.severity]}
+      </span>
+      <strong>{finding.title}</strong>
+      <ul>
+        {finding.evidence.map((text) => (
+          <li key={text}>{text}</li>
+        ))}
+      </ul>
+      {finding.affected_analyses.length > 0 && (
+        <p className="muted">
+          Afecta a: {finding.affected_analyses.join(", ")}
+        </p>
+      )}
+      {finding.sample_row_numbers.length > 0 && (
+        <p className="muted">
+          Filas de ejemplo: {finding.sample_row_numbers.join(", ")}
+        </p>
+      )}
+    </li>
+  );
+}
+
+function DataQuality({ quality }: { quality: Quality }) {
+  const analytical = quality.analytical;
+  if (!analytical) return null;
+  return (
+    <section className="data-quality" aria-label="Calidad de los datos">
+      <h3>Calidad de los datos</h3>
+      <p>
+        {analytical.blocking} limitan análisis · {analytical.warnings}{" "}
+        advertencias · {analytical.observations} observaciones · completitud{" "}
+        {quality.completeness_percent.toLocaleString("es-ES")} %. Nada se
+        corrigió automáticamente.
+      </p>
+      {analytical.findings.length ? (
+        <ul className="quality-findings">
+          {analytical.findings.map((finding) => (
+            <FindingItem key={finding.id} finding={finding} />
+          ))}
+        </ul>
+      ) : (
+        <p>No se encontraron problemas que cambien las conclusiones.</p>
+      )}
+      <p className="muted">Reglas: {analytical.rules_version}.</p>
+    </section>
+  );
 }
 
 export function AutomaticOverview({
   overview,
   versionNumber,
+  quality,
 }: {
   overview: Overview;
   versionNumber: number;
+  quality?: Quality;
 }) {
   return (
     <section className="automatic-overview" aria-label="Dashboard automático">
@@ -39,6 +209,7 @@ export function AutomaticOverview({
         </div>
         <span className="badge completed">Listo</span>
       </header>
+      {overview.analysis && <AnalysisSummary analysis={overview.analysis} />}
       {overview.interpretation && (
         <section
           className="automatic-interpretation"
@@ -99,7 +270,9 @@ export function AutomaticOverview({
               option={{
                 ...seriesOption(
                   chart.points.map((p) => p.label),
-                  chart.points.map((p) => p.value),
+                  chart.points.map((p) =>
+                    chart.measure ? Number(p.amount ?? 0) : p.value,
+                  ),
                   chart.type,
                 ),
                 // Los nombres y categorías proceden del archivo: nunca tratarlos como HTML.
@@ -107,8 +280,9 @@ export function AutomaticOverview({
               }}
             />
             <p className="muted">
-              {chart.valid_rows} registros cubiertos · {chart.excluded_rows}{" "}
-              fuera de esta vista
+              {chart.measure
+                ? `Suma exacta de ${chart.measure} · ${chart.valid_rows} registros · ${chart.excluded_rows} fuera de esta vista`
+                : `${chart.valid_rows} registros cubiertos · ${chart.excluded_rows} fuera de esta vista`}
             </p>
             {chart.omitted_groups > 0 && (
               <p className="muted">
@@ -119,6 +293,7 @@ export function AutomaticOverview({
           </article>
         ))}
       </div>
+      {quality && <DataQuality quality={quality} />}
       <details aria-label="Detalle del análisis automático">
         <summary>Detalle de los datos</summary>
         <p>
@@ -169,8 +344,9 @@ export function AutomaticOverview({
           ))}
         </ul>
         <p>
-          Promedios redondeados a seis decimales. Las fechas se agrupan por su
-          formato reconocido, sin atribuirles significado de negocio.
+          {overview.analysis
+            ? "Las sumas son exactas sobre todas las filas; los promedios simples se redondean a seis decimales. Los meses se ordenan cronológicamente y los vacíos no cuentan como cero."
+            : "Promedios redondeados a seis decimales. Las fechas se agrupan por su formato reconocido, sin atribuirles significado de negocio."}
         </p>
         <p className="mono">
           Algoritmo: {overview.algorithm} · SHA-256 del original:{" "}

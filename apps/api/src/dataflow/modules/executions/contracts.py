@@ -44,6 +44,8 @@ class ProcessingConfig(BaseModel):
     # analysis-v8: ingestion.read_xlsx@1 (Fase 12A).
     # analysis-v9: understanding.profile@2 (perfil y dashboard descriptivo automático).
     # analysis-v10: understanding.profile@3 (interpretación técnica y contextos candidatos).
+    # analysis-v11: understanding.profile@4 y quality.evaluate@3 (Fase 14: interpretación
+    # analítica, dashboard por medidas y calidad que indica los análisis afectados).
     # Los planes guardados conservan el valor con el que se crearon (y su hash).
     operation_catalog: Literal[
         "analysis-v1",
@@ -56,7 +58,8 @@ class ProcessingConfig(BaseModel):
         "analysis-v8",
         "analysis-v9",
         "analysis-v10",
-    ] = "analysis-v10"
+        "analysis-v11",
+    ] = "analysis-v11"
     rule_catalog: Literal["csv-quality-v1"] = "csv-quality-v1"
     max_rows: int = Field(ge=1, le=100000)
     max_columns: int = Field(ge=1, le=128)

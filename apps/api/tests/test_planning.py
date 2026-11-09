@@ -84,7 +84,7 @@ def test_catalog_and_applicable_operations(
 ) -> None:
     _, _, _, table = prepared(client, db, objects)
     catalog = client.get("/api/v1/operations").json()
-    assert catalog["catalog_version"] == "analysis-v10"
+    assert catalog["catalog_version"] == "analysis-v11"
     operations = {op["key"]: op for op in catalog["operations"]}
     assert set(operations) == {
         "ingestion.read_csv@1",
@@ -92,8 +92,10 @@ def test_catalog_and_applicable_operations(
         "understanding.profile@1",
         "understanding.profile@2",
         "understanding.profile@3",
+        "understanding.profile@4",
         "quality.evaluate@1",
         "quality.evaluate@2",
+        "quality.evaluate@3",
         "analytics.query@1",
         "analytics.query@2",
         "analytics.query@3",

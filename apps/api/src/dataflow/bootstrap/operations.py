@@ -27,9 +27,10 @@ from dataflow.modules.planning.public import (
     IdentifierConversionGuard,
     OperationDescriptor,
 )
-from dataflow.modules.quality.contracts import QualityParameters
+from dataflow.modules.quality.contracts import AnalyticalQualityParameters, QualityParameters
 from dataflow.modules.quality.public import QualityRulesParameters
 from dataflow.modules.understanding.contracts import (
+    AnalyticalProfileParameters,
     AutomaticProfileParameters,
     InterpretedProfileParameters,
     ProfileParameters,
@@ -63,7 +64,23 @@ DESCRIPTORS: tuple[OperationDescriptor, ...] = (
         InterpretedProfileParameters,
     ),
     OperationDescriptor(
+        "understanding.profile",
+        4,
+        "Interpretación analítica y dashboard por medidas",
+        "table",
+        "profile",
+        AnalyticalProfileParameters,
+    ),
+    OperationDescriptor(
         "quality.evaluate", 1, "Evaluar calidad", "table", "quality", QualityParameters
+    ),
+    OperationDescriptor(
+        "quality.evaluate",
+        3,
+        "Evaluar calidad y análisis afectados",
+        "table",
+        "quality",
+        AnalyticalQualityParameters,
     ),
     OperationDescriptor(
         "quality.evaluate",

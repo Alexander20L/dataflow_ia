@@ -204,7 +204,7 @@ class DatasetPublication:
                 profile is not None
                 and lease.execution.plan
                 and any(
-                    s.get("operation") == "understanding.profile" and s.get("version") in {2, 3}
+                    s.get("operation") == "understanding.profile" and s.get("version") in {2, 3, 4}
                     for s in lease.execution.plan.content["steps"]
                 )
             ):
@@ -267,7 +267,9 @@ def make_operations(
             "understanding.profile@1": ProfileStep(objects, analyzer),
             "understanding.profile@2": ProfileStep(objects, analyzer),
             "understanding.profile@3": ProfileStep(objects, analyzer),
+            "understanding.profile@4": ProfileStep(objects, analyzer),
             "quality.evaluate@1": QualityStep(objects, analyzer),
+            "quality.evaluate@3": QualityStep(objects, analyzer),
             "quality.evaluate@2": QualityRulesStep(objects, analyzer, rulesets),
             "analytics.query@1": AnalyticsQueryStep(objects, objects.root, metrics),
             "analytics.query@2": AnalyticsQueryStep(objects, objects.root, metrics),

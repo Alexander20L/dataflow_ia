@@ -115,8 +115,17 @@ def overview_evidence(overview: AutomaticOverview, sha256: str) -> list[Overview
         for point_index, point in enumerate(chart.points[:12]):
             if len(cells) >= 64:
                 return cells
+            # Gráficos de una medida (automatic-overview-v3): la cifra es la suma exacta.
             cells.append(
                 figure(
+                    sha256,
+                    f"/charts/{index}/points/{point_index}/amount",
+                    f"{chart.title}: {point.label}",
+                    point.amount,
+                    "number",
+                )
+                if point.amount is not None
+                else figure(
                     sha256,
                     f"/charts/{index}/points/{point_index}/value",
                     f"{chart.title}: {point.label}",
@@ -192,6 +201,12 @@ class OverviewAuditStep:
         ]
         if profile.overview.interpretation:
             limitations.extend(profile.overview.interpretation.limitations)
+        if profile.overview.analysis:
+            limitations.extend(profile.overview.analysis.limitations)
+            limitations.extend(
+                f"{item.subject}: {item.reason}"
+                for item in profile.overview.analysis.limited_analyses
+            )
         cells = overview_evidence(profile.overview, source.content.sha256)
         result = explain_overview(
             lease.execution.input_artifact_id,

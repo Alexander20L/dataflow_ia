@@ -260,6 +260,379 @@
         "title": "AnalysisResultV3",
         "type": "object"
       },
+      "AnalyticalColumn": {
+        "additionalProperties": false,
+        "description": "Papel de una columna según automatic-interpretation-v2, con su evidencia.",
+        "properties": {
+          "additivity": {
+            "anyOf": [
+              {
+                "enum": [
+                  "additive",
+                  "semi_additive",
+                  "non_additive",
+                  "unknown"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Additivity"
+          },
+          "currency": {
+            "anyOf": [
+              {
+                "enum": [
+                  "known",
+                  "unknown",
+                  "ambiguous"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency"
+          },
+          "currency_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Currency Code"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "monetary": {
+            "default": false,
+            "title": "Monetary",
+            "type": "boolean"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "ordinal": {
+            "minimum": 0.0,
+            "title": "Ordinal",
+            "type": "integer"
+          },
+          "role": {
+            "enum": [
+              "identifier",
+              "dimension",
+              "measure",
+              "time",
+              "text",
+              "empty"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "time_part": {
+            "anyOf": [
+              {
+                "enum": [
+                  "date",
+                  "year",
+                  "month"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Time Part"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "enum": [
+                  "known",
+                  "unknown",
+                  "ambiguous"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "unit_label": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit Label"
+          }
+        },
+        "required": [
+          "ordinal",
+          "name",
+          "role",
+          "evidence"
+        ],
+        "title": "AnalyticalColumn",
+        "type": "object"
+      },
+      "AnalyticalFinding": {
+        "additionalProperties": false,
+        "description": "Hallazgo de automatic-quality-v1: qué problema hay y qué análisis afecta.\n\n`blocking` bloquea sólo los análisis listados, no el resto del dashboard. Una observación\n(`info`) no es un error: nada se corrige automáticamente.",
+        "properties": {
+          "affected_analyses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Analyses",
+            "type": "array"
+          },
+          "affected_rows": {
+            "minimum": 0.0,
+            "title": "Affected Rows",
+            "type": "integer"
+          },
+          "check": {
+            "enum": [
+              "AQ-001",
+              "AQ-002",
+              "AQ-003",
+              "AQ-004",
+              "AQ-005",
+              "AQ-006",
+              "AQ-007",
+              "AQ-008"
+            ],
+            "title": "Check",
+            "type": "string"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "sample_row_numbers": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Sample Row Numbers",
+            "type": "array"
+          },
+          "severity": {
+            "enum": [
+              "info",
+              "warning",
+              "blocking"
+            ],
+            "title": "Severity",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "check",
+          "title",
+          "severity",
+          "columns",
+          "affected_rows",
+          "sample_row_numbers",
+          "evidence",
+          "affected_analyses"
+        ],
+        "title": "AnalyticalFinding",
+        "type": "object"
+      },
+      "AnalyticalInterpretation": {
+        "additionalProperties": false,
+        "description": "Interpretación sustentada por reglas: hipótesis con evidencia, no confirmaciones.",
+        "properties": {
+          "available_analyses": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Available Analyses",
+            "type": "array"
+          },
+          "columns": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticalColumn"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "context": {
+            "enum": [
+              "generic",
+              "sales",
+              "inventory",
+              "ambiguous"
+            ],
+            "title": "Context",
+            "type": "string"
+          },
+          "dependencies": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnDependency"
+            },
+            "title": "Dependencies",
+            "type": "array"
+          },
+          "keys": {
+            "items": {
+              "$ref": "#/components/schemas/KeyCandidate"
+            },
+            "title": "Keys",
+            "type": "array"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "limited_analyses": {
+            "items": {
+              "$ref": "#/components/schemas/LimitedAnalysis"
+            },
+            "title": "Limited Analyses",
+            "type": "array"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/MeasureRelationship"
+            },
+            "title": "Relationships",
+            "type": "array"
+          },
+          "row_meaning": {
+            "title": "Row Meaning",
+            "type": "string"
+          },
+          "rules_version": {
+            "const": "automatic-interpretation-v2",
+            "default": "automatic-interpretation-v2",
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "time": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TimeAxis"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "context",
+          "label",
+          "summary",
+          "row_meaning",
+          "columns",
+          "time",
+          "keys",
+          "relationships",
+          "dependencies",
+          "available_analyses",
+          "limited_analyses",
+          "limitations"
+        ],
+        "title": "AnalyticalInterpretation",
+        "type": "object"
+      },
+      "AnalyticalQuality": {
+        "additionalProperties": false,
+        "properties": {
+          "blocking": {
+            "minimum": 0.0,
+            "title": "Blocking",
+            "type": "integer"
+          },
+          "findings": {
+            "items": {
+              "$ref": "#/components/schemas/AnalyticalFinding"
+            },
+            "title": "Findings",
+            "type": "array"
+          },
+          "interpretation_rules": {
+            "const": "automatic-interpretation-v2",
+            "default": "automatic-interpretation-v2",
+            "title": "Interpretation Rules",
+            "type": "string"
+          },
+          "observations": {
+            "minimum": 0.0,
+            "title": "Observations",
+            "type": "integer"
+          },
+          "rules_version": {
+            "const": "automatic-quality-v1",
+            "default": "automatic-quality-v1",
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "warnings": {
+            "minimum": 0.0,
+            "title": "Warnings",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "findings",
+          "blocking",
+          "warnings",
+          "observations"
+        ],
+        "title": "AnalyticalQuality",
+        "type": "object"
+      },
       "ArchiveProjectRequest": {
         "additionalProperties": false,
         "properties": {
@@ -688,10 +1061,21 @@
             "default": "automatic-overview-v1",
             "enum": [
               "automatic-overview-v1",
-              "automatic-overview-v2"
+              "automatic-overview-v2",
+              "automatic-overview-v3"
             ],
             "title": "Algorithm",
             "type": "string"
+          },
+          "analysis": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyticalInterpretation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "charts": {
             "items": {
@@ -841,6 +1225,57 @@
           "artifact_sha256"
         ],
         "title": "BaseTable",
+        "type": "object"
+      },
+      "ColumnDependency": {
+        "additionalProperties": false,
+        "description": "Cada valor de `determinant` debería tener un único `dependent` (p. ej. código → nombre).",
+        "properties": {
+          "conflicting_rows": {
+            "title": "Conflicting Rows",
+            "type": "integer"
+          },
+          "conflicting_values": {
+            "title": "Conflicting Values",
+            "type": "integer"
+          },
+          "dependent": {
+            "title": "Dependent",
+            "type": "string"
+          },
+          "determinant": {
+            "title": "Determinant",
+            "type": "string"
+          },
+          "determinant_values": {
+            "title": "Determinant Values",
+            "type": "integer"
+          },
+          "examples": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Examples",
+            "type": "array"
+          },
+          "sample_row_numbers": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Sample Row Numbers",
+            "type": "array"
+          }
+        },
+        "required": [
+          "determinant",
+          "dependent",
+          "determinant_values",
+          "conflicting_values",
+          "conflicting_rows",
+          "examples"
+        ],
+        "title": "ColumnDependency",
         "type": "object"
       },
       "ColumnProfile": {
@@ -1958,6 +2393,74 @@
         "title": "IngestionSummary",
         "type": "object"
       },
+      "KeyCandidate": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "duplicate_rows": {
+            "minimum": 0.0,
+            "title": "Duplicate Rows",
+            "type": "integer"
+          },
+          "duplicate_sample_rows": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Duplicate Sample Rows",
+            "type": "array"
+          },
+          "evidence": {
+            "title": "Evidence",
+            "type": "string"
+          },
+          "unique": {
+            "title": "Unique",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "columns",
+          "unique",
+          "duplicate_rows",
+          "evidence"
+        ],
+        "title": "KeyCandidate",
+        "type": "object"
+      },
+      "LimitedAnalysis": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject",
+          "columns",
+          "reason"
+        ],
+        "title": "LimitedAnalysis",
+        "type": "object"
+      },
       "LineageOperation": {
         "additionalProperties": false,
         "properties": {
@@ -2092,6 +2595,58 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "MeasureRelationship": {
+        "additionalProperties": false,
+        "description": "Relación comprobada fila a fila: `target` ≈ producto de `factors` con tolerancia.",
+        "properties": {
+          "compared_rows": {
+            "title": "Compared Rows",
+            "type": "integer"
+          },
+          "exception_sample_rows": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Exception Sample Rows",
+            "type": "array"
+          },
+          "factors": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Factors",
+            "type": "array"
+          },
+          "kind": {
+            "const": "product",
+            "default": "product",
+            "title": "Kind",
+            "type": "string"
+          },
+          "matching_rows": {
+            "title": "Matching Rows",
+            "type": "integer"
+          },
+          "target": {
+            "title": "Target",
+            "type": "string"
+          },
+          "tolerance": {
+            "title": "Tolerance",
+            "type": "string"
+          }
+        },
+        "required": [
+          "target",
+          "factors",
+          "compared_rows",
+          "matching_rows",
+          "tolerance"
+        ],
+        "title": "MeasureRelationship",
         "type": "object"
       },
       "MetricCounts": {
@@ -2884,6 +3439,17 @@
             "title": "Id",
             "type": "string"
           },
+          "measure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measure"
+          },
           "omitted_groups": {
             "default": 0,
             "title": "Omitted Groups",
@@ -3075,6 +3641,17 @@
       },
       "OverviewPoint": {
         "properties": {
+          "amount": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Amount"
+          },
           "label": {
             "title": "Label",
             "type": "string"
@@ -3388,6 +3965,16 @@
       "QualityReport": {
         "additionalProperties": false,
         "properties": {
+          "analytical": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalyticalQuality"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cell_count": {
             "title": "Cell Count",
             "type": "integer"
@@ -4054,6 +4641,110 @@
         "title": "SnapshotCounts",
         "type": "object"
       },
+      "TimeAxis": {
+        "additionalProperties": false,
+        "description": "Eje temporal mensual: una fecha o Año + Mes compuestos. No rellena meses vacíos.",
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "granularity": {
+            "const": "month",
+            "default": "month",
+            "title": "Granularity",
+            "type": "string"
+          },
+          "incomplete": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Incomplete",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "date",
+              "year_month"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Missing",
+            "type": "array"
+          },
+          "missing_count": {
+            "title": "Missing Count",
+            "type": "integer"
+          },
+          "periods": {
+            "title": "Periods",
+            "type": "integer"
+          },
+          "unparsed_rows": {
+            "title": "Unparsed Rows",
+            "type": "integer"
+          },
+          "unparsed_sample_rows": {
+            "default": [],
+            "items": {
+              "type": "integer"
+            },
+            "title": "Unparsed Sample Rows",
+            "type": "array"
+          },
+          "years": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Years",
+            "type": "array"
+          }
+        },
+        "required": [
+          "kind",
+          "columns",
+          "first",
+          "last",
+          "periods",
+          "years",
+          "missing",
+          "missing_count",
+          "incomplete",
+          "unparsed_rows"
+        ],
+        "title": "TimeAxis",
+        "type": "object"
+      },
       "TimeRange": {
         "additionalProperties": false,
         "description": "Rango inclusivo de fechas de negocio (ISO).",
@@ -4576,7 +5267,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.20.0"
+    "version": "0.21.0"
   },
   "openapi": "3.1.0",
   "paths": {

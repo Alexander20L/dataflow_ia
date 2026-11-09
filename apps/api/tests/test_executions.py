@@ -89,7 +89,10 @@ def test_multiple_plans_same_table_preserve_legacy_baseline(
         )
         assert history[0]["environment"]["dependency_lock_sha256"]
         assert "fencing_token" not in history[0]
-        assert client.get(f"/api/v1/executions/{run['id']}/quality").json() == baseline["quality"]
+        # Los análisis de tabla usan quality.evaluate@1: misma calidad técnica que la carga, sin
+        # los hallazgos analíticos de quality.evaluate@3 (Fase 14).
+        technical = {**baseline["quality"], "analytical": None}
+        assert client.get(f"/api/v1/executions/{run['id']}/quality").json() == technical
     first_outputs = client.get(f"/api/v1/executions/{runs[0]['id']}/artifacts").json()
     second_outputs = client.get(f"/api/v1/executions/{runs[1]['id']}/artifacts").json()
     assert {a["kind"] for a in first_outputs} == {"profile", "quality"}

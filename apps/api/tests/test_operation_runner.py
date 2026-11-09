@@ -81,9 +81,12 @@ def test_step_runner_reproduces_single_process_outputs(
     version = import_csv(client, headers, name, golden["requested_separator"])
     assert make_runner(db, objects).run_once()
     actual = published(db, objects, owner, UUID(version["execution_id"]))
-    # El perfil @2 añade un snapshot; el núcleo @1 conserva exactamente las referencias.
+    # El perfil (desde @2) añade un snapshot y quality.evaluate@3 (Fase 14) sus hallazgos
+    # analíticos; el núcleo @1 conserva exactamente las referencias.
     overview = actual["profile"].pop("overview")
-    assert overview["algorithm"] == "automatic-overview-v2"
+    assert overview["algorithm"] == "automatic-overview-v3"
+    analytical = actual["quality"].pop("analytical")
+    assert analytical["rules_version"] == "automatic-quality-v1"
     assert actual == expected(golden["csv_import"])
     table = next(
         a

@@ -4752,3 +4752,60 @@ tbody tr:hover {
   gap: 8px;
   margin-top: 8px;
 }
+
+/* Fase 14: análisis limitados y calidad de los datos, separada de los resultados. */
+.limited-analyses {
+  margin: 12px 0;
+  padding: 12px 14px;
+  border: 1px solid #f5e9c8;
+  border-radius: 10px;
+  background: #fff8e9;
+}
+.dark .limited-analyses {
+  background: #3a2e1c;
+  border-color: #5a4626;
+}
+.data-quality {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  margin: 0 0 20px;
+  overflow-wrap: anywhere;
+}
+.quality-findings {
+  list-style: none;
+  padding: 0;
+  display: grid;
+  gap: 12px;
+}
+.quality-finding {
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.quality-finding > strong {
+  margin-left: 8px;
+}
+.badge.blocking {
+  background: #fdecec;
+  color: #b4413c;
+  border-color: #f6d4d2;
+}
+.badge.warning {
+  background: #fff8e9;
+  color: #ba913b;
+  border-color: #f5e9c8;
+}
+.badge.info {
+  background: var(--surface-secondary);
+  color: var(--muted);
+  border-color: var(--border);
+}
+.dark .badge.blocking {
+  background: #3b1f1e;
+  color: #f0a29e;
+}
+.dark .badge.warning {
+  background: #3a2e1c;
+  color: #e0ba75;
+}

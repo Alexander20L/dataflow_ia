@@ -4,8 +4,12 @@ import re
 from collections import Counter
 from collections.abc import Sequence
 from decimal import Decimal
+from typing import Literal
 
+from dataflow.modules.understanding.analysis import decimal, row_periods, summable_measures
 from dataflow.modules.understanding.contracts import (
+    AnalyticalColumn,
+    AnalyticalInterpretation,
     AutomaticInterpretation,
     AutomaticOverview,
     DatasetProfile,
@@ -197,4 +201,223 @@ def automatic_overview(
         ),
         limitations=limitations,
         interpretation=interpretation,
+    )
+
+
+def text_detail(cells: Sequence[Sequence[str | None]], headers: list[str]) -> OverviewDetail:
+    shown: list[list[str | None]] = []
+    truncated_cells = False
+    for row in cells[:DETAIL_ROWS]:
+        values: list[str | None] = []
+        for text in row:
+            if text is not None and len(text) > DETAIL_CELL_CHARS:
+                truncated_cells = True
+                text = text[:DETAIL_CELL_CHARS] + "…"
+            values.append(text)
+        shown.append(values)
+    return OverviewDetail(
+        columns=headers,
+        rows=shown,
+        total_rows=len(cells),
+        truncated=len(cells) > DETAIL_ROWS,
+        cells_truncated=truncated_cells,
+    )
+
+
+def grouped(
+    keys: Sequence[str | None],
+    cells: Sequence[Sequence[str | None]],
+    measure: AnalyticalColumn | None,
+) -> tuple[dict[str, tuple[int, Decimal]], int]:
+    """Registros y suma exacta de la medida por grupo; filas sin grupo o sin valor excluidas."""
+    groups: dict[str, tuple[int, Decimal]] = {}
+    excluded = 0
+    for key, row in zip(keys, cells, strict=True):
+        value = decimal(row[measure.ordinal]) if measure is not None else Decimal(0)
+        if key is None or value is None:
+            excluded += 1
+            continue
+        count, total = groups.get(key, (0, Decimal(0)))
+        groups[key] = (count + 1, total + value)
+    return groups, excluded
+
+
+def measure_chart(
+    chart_id: str,
+    title: str,
+    kind: Literal["bar", "line"],
+    column: str,
+    measure: AnalyticalColumn | None,
+    groups: dict[str, tuple[int, Decimal]],
+    order: list[str],
+    excluded: int,
+) -> OverviewChart:
+    """Gráfico de una medida (suma exacta por grupo) o, sin medida, de registros."""
+    shown = order[-120:] if kind == "line" else order[:MAX_CATEGORIES]
+    hidden = sum(groups[key][0] for key in order if key not in set(shown))
+    return OverviewChart(
+        id=chart_id,
+        title=title,
+        type=kind,
+        column=column,
+        measure=measure.name if measure else None,
+        points=[
+            OverviewPoint(
+                label=key,
+                value=groups[key][0],
+                amount=format(groups[key][1], "f") if measure else None,
+            )
+            for key in shown
+        ],
+        valid_rows=sum(groups[key][0] for key in shown),
+        excluded_rows=excluded + hidden,
+        omitted_groups=len(order) - len(shown),
+    )
+
+
+def analytical_overview(
+    profile: DatasetProfile,
+    cells: Sequence[Sequence[str | None]],
+    analysis: AnalyticalInterpretation,
+) -> AutomaticOverview:
+    """automatic-overview-v3: indicadores y gráficos elegidos por la interpretación.
+
+    Suma sólo medidas aditivas con moneda no ambigua, ordena los meses cronológicamente,
+    llama «registros» sólo a los conteos y omite los grupos con identidades contradictorias.
+    La calidad de los datos se presenta aparte (quality.evaluate@3)."""
+    headers = [column.name for column in profile.columns]
+    count = len(cells)
+    total_cells = count * len(headers)
+    nulls = sum(column.null_count for column in profile.columns)
+    duplicates = count - len(set(tuple(row) for row in cells))
+    with exact_context():
+        completeness = (
+            str((Decimal(total_cells - nulls) * 100 / total_cells).quantize(Decimal("0.01")))
+            if total_cells
+            else "0.00"
+        )
+    kpis = [
+        OverviewKpi(id="rows", label="Registros", value=str(count), unit="count"),
+        OverviewKpi(id="columns", label="Columnas", value=str(len(headers)), unit="count"),
+        OverviewKpi(
+            id="completeness", label="Completitud de celdas", value=completeness, unit="percent"
+        ),
+        OverviewKpi(
+            id="duplicates",
+            label="Filas idénticas adicionales",
+            value=str(duplicates),
+            unit="count",
+        ),
+    ]
+    measures = [c for c in analysis.columns if c.role == "measure"]
+    summable = summable_measures(analysis.columns)
+    for column in summable[:3]:
+        summary = profile.columns[column.ordinal].numeric
+        assert summary is not None
+        currency = f" ({column.currency_code})" if column.currency_code else ""
+        kpis.append(
+            OverviewKpi(
+                id=f"c{column.ordinal}_total",
+                label=f"Total de {column.name}{currency}",
+                value=format(Decimal(summary.total), "f"),
+                unit="number",
+                column=column.name,
+                valid_rows=summary.count,
+                excluded_rows=count - summary.count,
+            )
+        )
+    for column in [c for c in measures if c.additivity in {"non_additive", "unknown"}][:2]:
+        summary = profile.columns[column.ordinal].numeric
+        assert summary is not None
+        with exact_context():
+            mean = format(Decimal(summary.mean).quantize(Decimal("0.000001")), "f")
+        kpis.append(
+            OverviewKpi(
+                id=f"c{column.ordinal}_mean",
+                label=f"Promedio simple de {column.name} (sin ponderar)",
+                value=mean,
+                unit="number",
+                column=column.name,
+                valid_rows=summary.count,
+                excluded_rows=count - summary.count,
+            )
+        )
+    limitations = [
+        "Análisis automático por reglas: no se modificaron ni eliminaron registros y los "
+        "vacíos no se cuentan como cero.",
+    ]
+    primary = summable[0] if summable else None
+    charts: list[OverviewChart] = []
+    if analysis.time is not None:
+        _, periods = row_periods(analysis.columns, cells)
+        time_columns = " + ".join(analysis.time.columns)
+        groups, excluded = grouped(periods, cells, primary)
+        charts.append(
+            measure_chart(
+                "time_months",
+                f"{primary.name} por mes" if primary else "Registros por mes",
+                "line",
+                time_columns,
+                primary,
+                groups,
+                sorted(groups),
+                excluded,
+            )
+        )
+        if primary and len(analysis.time.years) > 1:
+            years = [period[:4] if period else None for period in periods]
+            groups, excluded = grouped(years, cells, primary)
+            charts.append(
+                measure_chart(
+                    "time_years",
+                    f"{primary.name} por año",
+                    "bar",
+                    time_columns,
+                    primary,
+                    groups,
+                    sorted(groups),
+                    excluded,
+                )
+            )
+    blocked = {name for item in analysis.limited_analyses for name in item.columns}
+    for column in analysis.columns:
+        if column.role != "dimension":
+            continue
+        if column.name in blocked:
+            limitations.append(
+                f"Se omitió el análisis por {column.name}: sus valores no identifican una "
+                "entidad única (ver calidad de los datos)."
+            )
+            continue
+        if len(charts) >= MAX_CHARTS:
+            continue
+        groups, excluded = grouped([row[column.ordinal] for row in cells], cells, primary)
+        order = sorted(
+            groups,
+            key=lambda key: (-groups[key][1] if primary else -groups[key][0], key),
+        )
+        charts.append(
+            measure_chart(
+                f"c{column.ordinal}_groups",
+                f"{primary.name} por {column.name}" if primary else f"Registros por {column.name}",
+                "bar",
+                column.name,
+                primary,
+                groups,
+                order,
+                excluded,
+            )
+        )
+    if primary is not None and primary.monetary and primary.currency == "unknown":
+        limitations.append(f"{primary.name} se muestra sin moneda: no figura en los datos.")
+    if duplicates:
+        limitations.append("Las filas idénticas se conservaron: podrían ser registros legítimos.")
+    return AutomaticOverview(
+        algorithm="automatic-overview-v3",
+        source_sha256=profile.source_sha256,
+        kpis=kpis,
+        charts=charts,
+        table_detail=text_detail(cells, headers),
+        limitations=limitations,
+        analysis=analysis,
     )

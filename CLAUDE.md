@@ -122,13 +122,14 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 13   | 0.18 | `feat/fase-13-solo-automatico` | un solo recorrido automático; manual y política retirados; migración 0019    |
 | 13B  | 0.19 | `feat/fase-13b-excel-ia-auto`  | Excel sin elegir hoja (`xlsx-selection-v1`), `/new` con .xlsx, IA `auto`     |
 | 13C  | 0.20 | `feat/fase-13c-cola`           | las cargas esperan en cola (sin `PROJECT_BUSY`); 3 en marcha por propietario |
+| 14   | 0.21 | `feat/fase-14-comprender`      | `profile@4`, `quality.evaluate@3`, dashboard por medidas, `analysis-v11`     |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
 no regenerar sus referencias para hacer pasar una prueba.
 Integración: `develop` contiene las Fases 4 a 13 y A–C (merge `--no-ff` o PR). Fase 13: ADR-026 sustituye
 al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
-`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
+`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
 (limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
 contradiga el enfoque automático. Fase 7 completa (7A y 7B): ADR-018 y
 ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa
