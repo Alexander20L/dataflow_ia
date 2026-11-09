@@ -127,7 +127,7 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
 no regenerar sus referencias para hacer pasar una prueba.
-Integración: `develop` contiene las Fases 4 a 13 y A–C (merge `--no-ff` o PR). Fase 13: ADR-026 sustituye
+Integración: `develop` contiene las Fases 4 a 14 y A–C (merge `--no-ff` o PR; desde 2026-11-09, siempre PR). Fase 13: ADR-026 sustituye
 al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
 `apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
 (limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
@@ -156,9 +156,9 @@ Ritmo desde la Fase 8 (para avanzar más rápido):
 - **Durante el trabajo**: sólo las pruebas del área que se toca (rápidas).
 - **Al final de cada etapa**: batería completa y resumen breve (qué se hizo, resultados, decisiones tomadas
   por cuenta propia). Sin tablas de detalle salvo que algo falle.
-- **Al terminar la fase**: commits convencionales (puede ser uno por etapa) y merge `--no-ff` en `develop`.
-  Repetir la batería sobre `develop` **sólo si `develop` avanzó** desde que se creó la rama (si no, el
-  árbol resultante es el mismo ya probado). Pedir confirmación **una sola vez**, con el resumen final,
-  antes del commit y el merge. **Nunca push sin preguntar.**
+- **Al terminar la fase**: commits convencionales (puede ser uno por etapa), push de la rama a `origin`
+  y **PR hacia `develop`** (no merge local). Si `develop` avanzó desde que se creó la rama, integrarlo en
+  la rama y repetir la batería antes de abrir el PR. Pedir confirmación **una sola vez**, con el resumen
+  final, antes del commit, el push y el PR. El merge del PR lo decide el usuario.
 - No cambia: migraciones aditivas, OpenAPI y cliente regenerados con scripts (nunca a mano), regresión de
   resultados existentes, reglas de módulos y señalar contradicciones entre el diseño pedido y el código.
