@@ -128,8 +128,8 @@ def test_step_runner_reproduces_single_process_outputs(
     )
     # Adaptador: los planes 0.5 existentes siguen siendo válidos en el catálogo vigente.
     for run in make_executions(db).for_version(owner, UUID(version["id"])):
-        if run.kind in {"investigation", "comprehension"}:
-            continue  # Fases 16 y 19: trabajos internos de fondo, fuera del catálogo de planes.
+        if run.kind in {"investigation", "comprehension", "exploration"}:
+            continue  # Fases 16, 19 y 20: trabajos internos de fondo, fuera del catálogo de planes.
         assert run.state == "succeeded" and run.plan
         content = run.plan.content
         facts = PlanningFacts(input_kind=content["input"]["kind"], column_ids=frozenset())

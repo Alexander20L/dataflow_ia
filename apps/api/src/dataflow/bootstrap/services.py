@@ -12,6 +12,12 @@ from dataflow.bootstrap.comprehension_job import (
     record_comprehension_calls,
 )
 from dataflow.bootstrap.delivery_job import ReportInput, ReportStep, enqueue_report
+from dataflow.bootstrap.exploration_job import (
+    ExplorationInput,
+    ExplorationStep,
+    enqueue_exploration,
+    record_exploration_calls,
+)
 from dataflow.bootstrap.investigation_job import (
     InvestigationInput,
     InvestigationStep,
@@ -193,6 +199,11 @@ class DatasetPublication:
         self.objects = objects
 
     def prepare(self, lease: Lease, outputs: list[ArtifactOutput]) -> None:
+        if lease.execution.kind == "exploration":
+            record_exploration_calls(
+                self.db, lease, next(o for o in outputs if o.kind == "exploration"), self.objects
+            )
+            return
         if lease.execution.kind == "comprehension":
             record_comprehension_calls(
                 self.db, lease, next(o for o in outputs if o.kind == "comprehension"), self.objects
@@ -259,6 +270,14 @@ class DatasetPublication:
                 )
             ):
                 enqueue_audit(self.executions, lease, profile, self.config)
+        elif kind == "comprehension":
+            # Fase 20: la exploración guiada parte de la comprensión publicada.
+            enqueue_exploration(
+                self.executions,
+                lease,
+                next(a for a in artifacts if a.kind == "comprehension"),
+                self.config,
+            )
         elif kind == "investigation":
             # Fase 17: el informe automático se genera al publicarse la investigación.
             enqueue_report(
@@ -313,6 +332,7 @@ class DatasetPublication:
 
 WORKER_KINDS: set[RunKind] = {
     "comprehension",
+    "exploration",
     "overview_audit",
     "investigation",
     "automatic_report",
@@ -396,6 +416,7 @@ def make_runner(
             "overview": OverviewInput(datasets, executions, projects),
             "automatic": InvestigationInput(datasets, executions, projects),
             "comprehension": ComprehensionInput(datasets, executions, projects),
+            "exploration": ExplorationInput(datasets, executions, projects),
             "investigation": ReportInput(datasets, executions, projects),
         },
         WorkerRegistry(
@@ -415,7 +436,10 @@ def make_runner(
                     FollowUpComputer(objects, objects.root),
                     make_copilot(db, provider, ai_config),
                 ),
-                "delivery.report@1": ReportStep(objects),
+                "delivery.report@1": ReportStep(objects, executions),
+                "exploration.explore@1": ExplorationStep(
+                    objects, make_copilot(db, provider, ai_config)
+                ),
                 "comprehension.understand@1": ComprehensionStep(
                     objects, make_copilot(db, provider, ai_config)
                 ),

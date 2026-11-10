@@ -92,6 +92,34 @@ class ComprensionIA(OutputModel):
     preguntas: list[str] = Field(max_length=8)
 
 
+class ConsultaIA(OutputModel):
+    """Consulta del lenguaje cerrado `explore-v1` (Fase 20): sólo nombra columnas y opciones."""
+
+    tipo: str = Field(max_length=40, description="Uno de los tipos del catálogo.")
+    medida: str | None = Field(default=None, max_length=200)
+    medida_b: str | None = Field(default=None, max_length=200)
+    dimensiones: list[str] = Field(default_factory=list, max_length=2)
+    agregacion: str | None = Field(default=None, max_length=20)
+    filtro_columna: str | None = Field(default=None, max_length=200)
+    filtro_valor: str | None = Field(default=None, max_length=200)
+    limite: int | None = None
+    motivo: str = Field(max_length=300, description="Qué pregunta de negocio responde.")
+
+
+class ConsultasIA(OutputModel):
+    consultas: list[ConsultaIA] = Field(max_length=12)
+
+
+class JuicioIA(OutputModel):
+    clave: str = Field(max_length=600)
+    relevante: bool
+    motivo: str = Field(max_length=300, description="Por qué, sin cifras propias.")
+
+
+class JuiciosIA(OutputModel):
+    juicios: list[JuicioIA] = Field(max_length=40)
+
+
 class CopilotModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

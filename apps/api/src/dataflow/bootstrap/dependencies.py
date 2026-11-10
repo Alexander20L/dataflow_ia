@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.comprehension_job import ComprehensionAccess
 from dataflow.bootstrap.delivery_job import DeliveryAccess
+from dataflow.bootstrap.exploration_job import ExplorationAccess
 from dataflow.bootstrap.investigation_job import InvestigationAccess
 from dataflow.bootstrap.overview_audit import OverviewAuditAccess
 from dataflow.bootstrap.services import (
@@ -104,6 +105,16 @@ def comprehension_service(db: Db, objects: Objects) -> ComprehensionAccess:
 
 
 Comprehensions = Annotated[ComprehensionAccess, Depends(comprehension_service)]
+
+
+def exploration_service(db: Db, objects: Objects) -> ExplorationAccess:
+    from dataflow.platform.runtime import require_ready
+
+    require_ready(db)
+    return ExplorationAccess(make_datasets(db), make_executions(db), objects)
+
+
+Explorations = Annotated[ExplorationAccess, Depends(exploration_service)]
 
 
 def delivery_service(db: Db, objects: Objects) -> DeliveryAccess:

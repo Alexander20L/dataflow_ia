@@ -30,6 +30,7 @@ from dataflow.modules.delivery.contracts import (
     StageId,
     StageState,
 )
+from dataflow.modules.exploration.contracts import Exploration
 from dataflow.modules.ingestion.contracts import SourceOrigin, SourceReview
 from dataflow.modules.investigation.contracts import Investigation, Proposal
 from dataflow.modules.quality.contracts import QualityReport
@@ -551,6 +552,65 @@ def comprehension_section(comprehension: Comprehension | None) -> ReportSection 
     )
 
 
+EXPLORATION_ROWS = 10
+
+
+def exploration_section(exploration: Exploration | None) -> ReportSection | None:
+    """Fase 20: resultados relevantes de la exploración guiada (cifras exactas del motor)."""
+    if exploration is None:
+        return None
+    relevant = [r for r in exploration.results if r.relevant]
+    discarded = [r for r in exploration.results if r.relevant is False]
+    blocks = [
+        ReportBlock(
+            title=result.title,
+            badge="Juzgada por la IA" if result.judged_by == "ai" else "Por reglas",
+            paragraphs=[result.reason or "", result.method]
+            + (
+                [f"Se muestran {EXPLORATION_ROWS} de {result.total_groups} grupos."]
+                if result.total_groups > EXPLORATION_ROWS
+                else []
+            ),
+            table=ReportTable(
+                headers=result.columns,
+                rows=[
+                    [
+                        *row.groups,
+                        *[es(f.value) if f.value else "—" for f in row.figures],
+                        str(row.rows),
+                    ]
+                    for row in result.rows[:EXPLORATION_ROWS]
+                ],
+            ),
+        )
+        for result in relevant
+    ] or [ReportBlock(paragraphs=["Ninguna consulta resultó relevante."])]
+    if discarded:
+        blocks.append(
+            ReportBlock(
+                title="Consultas descartadas por poco relevantes",
+                paragraphs=[f"{r.title}: {r.reason}" for r in discarded],
+            )
+        )
+    rejected = [p for p in exploration.proposals if p.status == "rejected"]
+    if rejected:
+        blocks.append(
+            ReportBlock(
+                title="Propuestas rechazadas por la validación",
+                paragraphs=[f"{p.motive} — {p.reason}" for p in rejected[:12]],
+            )
+        )
+    return ReportSection(
+        id="exploration",
+        title="Exploración guiada",
+        intro=(
+            "Consultas propuestas por reglas y por la IA, validadas por Python y calculadas "
+            "sobre todas las filas. La IA sólo juzgó su relevancia."
+        ),
+        blocks=blocks,
+    )
+
+
 def build_report(
     source: ReportSource,
     analysis: AutomaticAnalysis,
@@ -559,12 +619,14 @@ def build_report(
     generated_at: datetime,
     review: SourceReview | None = None,
     comprehension: Comprehension | None = None,
+    exploration: Exploration | None = None,
 ) -> ReportDocument:
     identifiers = evidence_ids(analysis, investigation)
     sections = [
         summary_section(source, analysis, quality),
         explanation_section(investigation),
         comprehension_section(comprehension),
+        exploration_section(exploration),
         ReportSection(
             id="findings",
             title="Hallazgos",
@@ -594,6 +656,7 @@ def build_report(
 STAGES: list[tuple[StageId, str, set[str]]] = [
     ("analysis", "Análisis del archivo", {"csv_import", "table_analysis"}),
     ("comprehension", "Entendimiento del negocio", {"comprehension"}),
+    ("exploration", "Exploración guiada", {"exploration"}),
     ("investigation", "Investigación", {"investigation"}),
     ("report", "Informe", {"automatic_report"}),
 ]

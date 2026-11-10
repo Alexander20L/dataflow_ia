@@ -87,7 +87,7 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
     summary
       .getByRole("list", { name: "Progreso de la carga" })
       .getByRole("listitem"),
-  ).toHaveCount(4);
+  ).toHaveCount(5);
   await expect(summary).not.toContainText("Pendiente");
   await expect(summary.getByText("Hallazgos principales")).toBeVisible();
   const [download] = await Promise.all([
@@ -153,4 +153,14 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
   const notRelevant = relation.getByRole("button", { name: "No relevante" });
   await notRelevant.click();
   await expect(notRelevant).toHaveAttribute("aria-pressed", "true");
+  // Fase 20: exploración guiada (reglas + IA falsa) con cifras calculadas sobre todas las filas.
+  const exploration = page.getByRole("region", { name: "Exploración guiada" });
+  await expect(
+    exploration.getByText("Juzgada por la IA").first(),
+  ).toBeVisible();
+  await exploration
+    .getByText(/Propuestas rechazadas por la validación/)
+    .click();
+  await expect(exploration).toContainText("no es una dimensión");
+  await expect(exploration.getByRole("button")).toHaveCount(0);
 });
