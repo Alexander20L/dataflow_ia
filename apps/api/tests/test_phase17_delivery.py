@@ -153,25 +153,26 @@ def run(kind: str, state: str) -> RunSummary:
 @pytest.mark.parametrize(
     ("runs", "states", "complete"),
     [
-        ([run("csv_import", "running")], ["running"] + ["pending"] * 4, False),
+        ([run("csv_import", "running")], ["running"] + ["pending"] * 5, False),
         (
             [
                 run("investigation", "queued"),
                 run("comprehension", "running"),
                 run("csv_import", "succeeded"),
             ],
-            ["done", "running", "pending", "queued", "pending"],
+            ["done", "running", "pending", "pending", "queued", "pending"],
             False,
         ),
         (
             [
                 run("automatic_report", "succeeded"),
+                run("dashboard", "succeeded"),
                 run("exploration", "succeeded"),
                 run("investigation", "succeeded"),
                 run("comprehension", "succeeded"),
                 run("csv_import", "succeeded"),
             ],
-            ["done"] * 5,
+            ["done"] * 6,
             True,
         ),
         # Versión anterior a la Fase 19: sin comprensión ni exploración, el resto sigue igual.
@@ -181,16 +182,16 @@ def run(kind: str, state: str) -> RunSummary:
                 run("investigation", "succeeded"),
                 run("csv_import", "succeeded"),
             ],
-            ["done", "skipped", "skipped", "done", "done"],
+            ["done", "skipped", "skipped", "skipped", "done", "done"],
             True,
         ),
         (
             [run("investigation", "failed"), run("csv_import", "succeeded")],
-            ["done", "skipped", "skipped", "failed", "skipped"],
+            ["done", "skipped", "skipped", "skipped", "failed", "skipped"],
             True,
         ),
-        ([run("csv_import", "succeeded")], ["done"] + ["skipped"] * 4, True),
-        ([run("csv_import", "failed")], ["failed"] + ["skipped"] * 4, True),
+        ([run("csv_import", "succeeded")], ["done"] + ["skipped"] * 5, True),
+        ([run("csv_import", "failed")], ["failed"] + ["skipped"] * 5, True),
     ],
 )
 def test_progress_by_stage(runs: list[RunSummary], states: list[str], complete: bool) -> None:
@@ -200,6 +201,7 @@ def test_progress_by_stage(runs: list[RunSummary], states: list[str], complete: 
         "analysis",
         "comprehension",
         "exploration",
+        "dashboard",
         "investigation",
         "report",
     ]
@@ -218,7 +220,7 @@ def test_upload_ends_with_a_downloadable_report(
     version = upload(client, headers, pid, reference_csv(), name="ventas_mensuales.csv").json()
     base = f"/api/v1/versions/{version['id']}"
     stages = client.get(f"{base}/progress").json()["stages"]
-    assert [s["state"] for s in stages] == ["queued", "pending", "pending", "pending", "pending"]
+    assert [s["state"] for s in stages] == ["queued"] + ["pending"] * 5
     runner = make_runner(db, objects)
     assert runner.run_once()
     assert client.get(f"{base}/report").json()["code"] == "REPORT_NOT_AVAILABLE"
@@ -226,12 +228,13 @@ def test_upload_ends_with_a_downloadable_report(
     assert runner.run_once()  # investigación
     assert runner.run_once()  # exploración guiada (Fase 20)
     assert client.get(f"{base}/report").json()["state"] == "queued"
+    assert runner.run_once()  # diseño del dashboard (Fase 21): el informe va el último
     assert client.get(f"{base}/report.pdf").json()["code"] == "REPORT_NOT_READY"
     assert runner.run_once()  # informe
     assert not runner.run_once()
     progress_view = client.get(f"{base}/progress").json()
     assert progress_view["complete"] is True
-    assert [s["state"] for s in progress_view["stages"]] == ["done"] * 5
+    assert [s["state"] for s in progress_view["stages"]] == ["done"] * 6
     view = client.get(f"{base}/report").json()
     assert view["state"] == "ready" and view["file_name"] == "informe-ventas_mensuales-v1.pdf"
     assert view["evidence_count"] > 0

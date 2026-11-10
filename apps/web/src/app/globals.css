@@ -5074,3 +5074,97 @@ tbody tr:hover {
 .comprehension details ul {
   padding-left: 1.2rem;
 }
+
+/* Fase 21: dashboard adaptado a los datos. */
+.dashboard-adapted {
+  display: grid;
+  gap: 16px;
+  margin: 0 0 24px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.dashboard-section h3 {
+  margin: 0 0 4px;
+  font-size: 1rem;
+}
+.dashboard-kpis {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px;
+  margin-top: 10px;
+}
+.dashboard-kpis:empty {
+  display: none;
+}
+.dashboard-kpi {
+  display: grid;
+  gap: 4px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.dashboard-kpi span {
+  font-size: 0.8rem;
+  color: var(--text-secondary, #64748b);
+}
+.dashboard-kpi strong {
+  font-size: 1.35rem;
+  font-variant-numeric: tabular-nums;
+}
+.dashboard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+.dashboard-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+  overflow-x: auto;
+}
+.dashboard-card.wide {
+  grid-column: 1 / -1;
+}
+.dashboard-card header,
+.dashboard-card footer,
+.dashboard-hidden li {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+.dashboard-card h4 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.dashboard-card p {
+  margin: 0;
+}
+.dashboard-marks {
+  display: flex;
+  gap: 6px;
+}
+.dashboard-marks button[aria-pressed="true"] {
+  background: var(--surface-secondary);
+  font-weight: 600;
+}
+.dashboard-hidden {
+  display: grid;
+  gap: 8px;
+  padding: 0;
+  list-style: none;
+}
+.delivery-download {
+  display: grid;
+  justify-items: end;
+  gap: 4px;
+}

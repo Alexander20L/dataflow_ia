@@ -708,6 +708,40 @@
         "title": "ArchiveProjectRequest",
         "type": "object"
       },
+      "Arrangement": {
+        "additionalProperties": false,
+        "description": "El dashboard con las valoraciones aplicadas: fijados arriba y descartados aparte.",
+        "properties": {
+          "hidden": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hidden",
+            "type": "array"
+          },
+          "pinned": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Pinned",
+            "type": "array"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "sections",
+          "pinned",
+          "hidden"
+        ],
+        "title": "Arrangement",
+        "type": "object"
+      },
       "ArtifactResponse": {
         "properties": {
           "attempt_id": {
@@ -778,7 +812,8 @@
               "automatic_analysis",
               "investigation",
               "comprehension",
-              "exploration"
+              "exploration",
+              "dashboard"
             ],
             "title": "Kind",
             "type": "string"
@@ -2264,6 +2299,288 @@
         "title": "CreateProjectRequest",
         "type": "object"
       },
+      "Dashboard": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Reason"
+          },
+          "ai_state": {
+            "enum": [
+              "ready",
+              "failed",
+              "unavailable"
+            ],
+            "title": "Ai State",
+            "type": "string"
+          },
+          "calls": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Calls",
+            "type": "array"
+          },
+          "decisions": {
+            "items": {
+              "$ref": "#/components/schemas/DesignDecision"
+            },
+            "title": "Decisions",
+            "type": "array"
+          },
+          "designed_by": {
+            "enum": [
+              "ai",
+              "rules"
+            ],
+            "title": "Designed By",
+            "type": "string"
+          },
+          "operation": {
+            "const": "delivery.dashboard@1",
+            "default": "delivery.dashboard@1",
+            "title": "Operation",
+            "type": "string"
+          },
+          "rules_version": {
+            "const": "dashboard-design-v1",
+            "default": "dashboard-design-v1",
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "schema_version": {
+            "const": 1,
+            "default": 1,
+            "title": "Schema Version",
+            "type": "integer"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/DashboardScope"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scope",
+          "designed_by",
+          "ai_state",
+          "title",
+          "sections"
+        ],
+        "title": "Dashboard",
+        "type": "object"
+      },
+      "DashboardScope": {
+        "additionalProperties": false,
+        "properties": {
+          "analysis_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Analysis Sha256",
+            "type": "string"
+          },
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "exploration_sha256": {
+            "pattern": "^[0-9a-f]{64}$",
+            "title": "Exploration Sha256",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "execution_id",
+          "version_id",
+          "analysis_sha256",
+          "exploration_sha256"
+        ],
+        "title": "DashboardScope",
+        "type": "object"
+      },
+      "DashboardSection": {
+        "additionalProperties": false,
+        "properties": {
+          "intro": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Intro"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "widgets": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardWidget"
+            },
+            "title": "Widgets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "widgets"
+        ],
+        "title": "DashboardSection",
+        "type": "object"
+      },
+      "DashboardView": {
+        "description": "Estado del dashboard de una versión, con las marcas aplicadas y los datos publicados que\ncita (hallazgos y resultados de la exploración); nunca recalcula.",
+        "properties": {
+          "arrangement": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Arrangement"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "dashboard": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Dashboard"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "execution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
+          },
+          "feedback": {
+            "items": {
+              "$ref": "#/components/schemas/FindingFeedback"
+            },
+            "title": "Feedback",
+            "type": "array"
+          },
+          "insights": {
+            "items": {
+              "$ref": "#/components/schemas/AutomaticInsight"
+            },
+            "title": "Insights",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ExploreResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "ready",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state"
+        ],
+        "title": "DashboardView",
+        "type": "object"
+      },
+      "DashboardWidget": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "item": {
+            "title": "Item",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "type": {
+            "enum": [
+              "kpi",
+              "bar",
+              "line",
+              "heatmap",
+              "pie",
+              "table"
+            ],
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "type",
+          "item",
+          "title"
+        ],
+        "title": "DashboardWidget",
+        "type": "object"
+      },
       "DatasetProfile": {
         "additionalProperties": false,
         "properties": {
@@ -2331,6 +2648,46 @@
           "columns"
         ],
         "title": "DatasetProfile",
+        "type": "object"
+      },
+      "DesignDecision": {
+        "additionalProperties": false,
+        "description": "Qué pasó con cada elemento que propuso la IA (aceptado o rechazado con motivo).",
+        "properties": {
+          "item": {
+            "title": "Item",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "type",
+          "status"
+        ],
+        "title": "DesignDecision",
         "type": "object"
       },
       "Diagnostic": {
@@ -2903,7 +3260,8 @@
               "investigation",
               "automatic_report",
               "comprehension",
-              "exploration"
+              "exploration",
+              "dashboard"
             ],
             "title": "Kind",
             "type": "string"
@@ -3077,7 +3435,8 @@
               "investigation",
               "automatic_report",
               "comprehension",
-              "exploration"
+              "exploration",
+              "dashboard"
             ],
             "title": "Kind",
             "type": "string"
@@ -3313,9 +3672,16 @@
         "additionalProperties": false,
         "properties": {
           "execution_id": {
-            "format": "uuid",
-            "title": "Execution Id",
-            "type": "string"
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
           },
           "exploration": {
             "anyOf": [
@@ -3350,8 +3716,7 @@
           }
         },
         "required": [
-          "state",
-          "execution_id"
+          "state"
         ],
         "title": "ExplorationView",
         "type": "object"
@@ -3771,6 +4136,62 @@
           "operator"
         ],
         "title": "Filter",
+        "type": "object"
+      },
+      "FindingFeedback": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "item": {
+            "title": "Item",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "keep",
+              "drop",
+              "none"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "verdict",
+          "created_at"
+        ],
+        "title": "FindingFeedback",
+        "type": "object"
+      },
+      "FindingFeedbackRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "maxLength": 700,
+            "minLength": 1,
+            "title": "Item",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "keep",
+              "drop",
+              "none"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "verdict"
+        ],
+        "title": "FindingFeedbackRequest",
         "type": "object"
       },
       "FollowUpQuery": {
@@ -6703,6 +7124,11 @@
             ],
             "title": "State",
             "type": "string"
+          },
+          "updating": {
+            "default": false,
+            "title": "Updating",
+            "type": "boolean"
           }
         },
         "required": [
@@ -7494,6 +7920,7 @@
               "analysis",
               "comprehension",
               "exploration",
+              "dashboard",
               "investigation",
               "report"
             ],
@@ -8248,7 +8675,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.27.0"
+    "version": "0.28.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -13331,6 +13758,346 @@
         "summary": "Judge",
         "tags": [
           "Comprensión del negocio"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/dashboard": {
+      "get": {
+        "description": "Fase 21: dashboard adaptado a los datos, con las marcas «sí va / no va» aplicadas.",
+        "operationId": "getDashboard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Dashboard",
+        "tags": [
+          "Entrega"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/dashboard/feedback": {
+      "post": {
+        "description": "Marca opcional de un elemento («keep», «drop» o «none»). No recalcula nada: reordena el\ndashboard y encola una versión nueva del informe con ese orden.",
+        "operationId": "judgeFinding",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FindingFeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Judge Finding",
+        "tags": [
+          "Entrega"
         ]
       }
     },

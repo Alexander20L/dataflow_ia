@@ -605,9 +605,14 @@ class SQLExecutionRepository:
                 ),
             )
             # Trabajo de fondo (investigación, Fase 16) después de lo demás: nunca retrasa una
-            # carga, una limpieza o un plan del mismo propietario.
+            # carga, una limpieza o un plan del mismo propietario. Fase 21: el informe, el
+            # último de todos, para incluir el dashboard de su carga.
             .order_by(
-                case((ExecutionRecord.kind.in_(BACKGROUND_KINDS), 1), else_=0),
+                case(
+                    (ExecutionRecord.kind == "automatic_report", 2),
+                    (ExecutionRecord.kind.in_(BACKGROUND_KINDS), 1),
+                    else_=0,
+                ),
                 ExecutionRecord.created_at,
                 ExecutionRecord.id,
             )

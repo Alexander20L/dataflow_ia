@@ -481,7 +481,18 @@ class ExplorationAccess:
         return found
 
     def view(self, owner: UUID, version: UUID) -> ExplorationView:
-        run = self.latest(owner, version)
+        try:
+            run = self.latest(owner, version)
+        except ApplicationError as error:
+            # Fase 21: mientras la comprensión sigue en marcha la exploración aún no tiene
+            # trabajo (se encola al publicarse); no es un 404 y la interfaz sigue preguntando.
+            waiting = any(
+                r.kind == "comprehension" and r.state in {"queued", "running"}
+                for r in self.executions.for_version(owner, version)
+            )
+            if error.code == "EXPLORATION_NOT_AVAILABLE" and waiting:
+                return ExplorationView(state="queued")
+            raise
         if run.state in {"queued", "running"}:
             return ExplorationView(state=run.state, execution_id=run.id)
         found = self.result(owner, run)

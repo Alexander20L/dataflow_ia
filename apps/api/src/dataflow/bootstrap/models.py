@@ -16,6 +16,7 @@ from dataflow.modules.copilot.infrastructure import (
     MessageRecord,
     TextAuditRecord,
 )
+from dataflow.modules.curation.infrastructure import FindingFeedbackRecord
 from dataflow.modules.dashboards.infrastructure import (
     DashboardFamilyRecord,
     DashboardRevisionRecord,
@@ -112,6 +113,7 @@ __all__ = [
     "MessageRecord",
     "TextAuditRecord",
     "FeedbackRecord",
+    "FindingFeedbackRecord",
     "ActionLinkRecord",
     "CopilotRequest",
 ]

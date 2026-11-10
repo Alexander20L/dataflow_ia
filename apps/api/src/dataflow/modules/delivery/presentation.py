@@ -5,8 +5,9 @@ from uuid import UUID
 
 from fastapi import APIRouter, Response
 
-from dataflow.bootstrap.dependencies import CurrentIdentity, Delivery
-from dataflow.modules.delivery.contracts import Progress, ReportView
+from dataflow.bootstrap.dependencies import CurrentIdentity, Dashboards, Delivery
+from dataflow.modules.curation.contracts import FindingFeedbackRequest
+from dataflow.modules.delivery.contracts import DashboardView, Progress, ReportView
 
 router = APIRouter(prefix="/api/v1", tags=["Entrega"])
 
@@ -39,3 +40,27 @@ def report_pdf(version_id: UUID, identity: CurrentIdentity, service: Delivery) -
         media_type="application/pdf",
         headers={"Content-Disposition": "attachment; filename*=UTF-8''" + quote(filename, safe="")},
     )
+
+
+@router.get(
+    "/versions/{version_id}/dashboard", response_model=DashboardView, operation_id="getDashboard"
+)
+def dashboard(version_id: UUID, identity: CurrentIdentity, service: Dashboards) -> DashboardView:
+    """Fase 21: dashboard adaptado a los datos, con las marcas «sí va / no va» aplicadas."""
+    return service.view(identity.user.id, version_id)
+
+
+@router.post(
+    "/versions/{version_id}/dashboard/feedback",
+    response_model=DashboardView,
+    operation_id="judgeFinding",
+)
+def judge_finding(
+    version_id: UUID,
+    request: FindingFeedbackRequest,
+    identity: CurrentIdentity,
+    service: Dashboards,
+) -> DashboardView:
+    """Marca opcional de un elemento («keep», «drop» o «none»). No recalcula nada: reordena el
+    dashboard y encola una versión nueva del informe con ese orden."""
+    return service.judge(identity.user.id, version_id, request)

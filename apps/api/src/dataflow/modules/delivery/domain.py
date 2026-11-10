@@ -18,6 +18,7 @@ from dataflow.modules.analytics.contracts import (
 from dataflow.modules.comprehension.contracts import Comprehension
 from dataflow.modules.copilot.contracts import Segment
 from dataflow.modules.delivery.contracts import (
+    Dashboard,
     Progress,
     ReportBlock,
     ReportChart,
@@ -30,6 +31,7 @@ from dataflow.modules.delivery.contracts import (
     StageId,
     StageState,
 )
+from dataflow.modules.delivery.dashboard import finding_order, insight_key, result_key
 from dataflow.modules.exploration.contracts import Exploration
 from dataflow.modules.ingestion.contracts import SourceOrigin, SourceReview
 from dataflow.modules.investigation.contracts import Investigation, Proposal
@@ -125,7 +127,10 @@ def target(proposal: Proposal) -> str:
 
 
 def summary_section(
-    source: ReportSource, analysis: AutomaticAnalysis, quality: QualityReport | None
+    source: ReportSource,
+    analysis: AutomaticAnalysis,
+    quality: QualityReport | None,
+    pinned: set[str] | None = None,
 ) -> ReportSection:
     intro = (
         f"Informe automático de {source.file_name} (versión v{source.version_number}). "
@@ -134,7 +139,12 @@ def summary_section(
     )
     if quality is not None:
         intro += f" Filas analizadas: {es(str(quality.row_count), 'count')}."
-    key = sorted(analysis.insights, key=lambda item: -item.importance)[:SUMMARY_FINDINGS]
+    # Fase 21: los fijados por el usuario primero; después, por importancia.
+    chosen = pinned or set()
+    key = sorted(
+        analysis.insights,
+        key=lambda item: (insight_key(item) not in chosen, -item.importance),
+    )[:SUMMARY_FINDINGS]
     blocks = [
         ReportBlock(
             title=insight.title,
@@ -555,16 +565,28 @@ def comprehension_section(comprehension: Comprehension | None) -> ReportSection 
 EXPLORATION_ROWS = 10
 
 
-def exploration_section(exploration: Exploration | None) -> ReportSection | None:
-    """Fase 20: resultados relevantes de la exploración guiada (cifras exactas del motor)."""
+def exploration_section(
+    exploration: Exploration | None,
+    order: dict[str, int] | None = None,
+    pinned: set[str] | None = None,
+    hidden: set[str] | None = None,
+) -> ReportSection | None:
+    """Fase 20: resultados relevantes de la exploración guiada (cifras exactas del motor). Fase
+    21: en el orden del dashboard, con los fijados primero y sin los descartados."""
     if exploration is None:
         return None
-    relevant = [r for r in exploration.results if r.relevant]
+    position, chosen, dropped = order or {}, pinned or set(), hidden or set()
+    relevant = sorted(
+        (r for r in exploration.results if r.relevant and result_key(r) not in dropped),
+        key=lambda r: position.get(result_key(r), len(position)),
+    )
     discarded = [r for r in exploration.results if r.relevant is False]
     blocks = [
         ReportBlock(
             title=result.title,
-            badge="Juzgada por la IA" if result.judged_by == "ai" else "Por reglas",
+            badge="Fijado por ti"
+            if result_key(result) in chosen
+            else ("Juzgada por la IA" if result.judged_by == "ai" else "Por reglas"),
             paragraphs=[result.reason or "", result.method]
             + (
                 [f"Se muestran {EXPLORATION_ROWS} de {result.total_groups} grupos."]
@@ -611,6 +633,24 @@ def exploration_section(exploration: Exploration | None) -> ReportSection | None
     )
 
 
+def dropped_section(
+    hidden: set[str], analysis: AutomaticAnalysis, exploration: Exploration | None
+) -> ReportSection | None:
+    """Fase 21: lo que el usuario marcó «No va»; sus evidencias siguen en el anexo."""
+    titles = [i.title for i in analysis.insights if insight_key(i) in hidden] + [
+        r.title for r in (exploration.results if exploration else []) if result_key(r) in hidden
+    ]
+    if not titles:
+        return None
+    return ReportSection(
+        id="dropped",
+        title="Descartados por ti",
+        intro="Elementos que marcaste «No va» en el dashboard. No se borran: siguen publicados "
+        "y sus evidencias están en el anexo.",
+        blocks=[ReportBlock(paragraphs=titles)],
+    )
+
+
 def build_report(
     source: ReportSource,
     analysis: AutomaticAnalysis,
@@ -620,21 +660,38 @@ def build_report(
     review: SourceReview | None = None,
     comprehension: Comprehension | None = None,
     exploration: Exploration | None = None,
+    dashboard: Dashboard | None = None,
+    verdicts: dict[str, str] | None = None,
 ) -> ReportDocument:
     identifiers = evidence_ids(analysis, investigation)
+    # Fase 21: el orden del dashboard y las marcas «sí va / no va» del usuario.
+    order, pinned, hidden = finding_order(dashboard, verdicts or {})
+    position = {item: index for index, item in enumerate(order)}
+    insights = sorted(
+        (i for i in analysis.insights if insight_key(i) not in hidden),
+        key=lambda i: position.get(insight_key(i), len(position)),
+    )
+    visible = analysis.model_copy(update={"insights": insights})
     sections = [
-        summary_section(source, analysis, quality),
+        summary_section(source, visible, quality, pinned),
         explanation_section(investigation),
         comprehension_section(comprehension),
-        exploration_section(exploration),
+        exploration_section(exploration, position, pinned, hidden),
         ReportSection(
             id="findings",
             title="Hallazgos",
-            intro="Hallazgos del análisis automático, en el orden del plan.",
-            blocks=[insight_block(insight) for insight in analysis.insights]
+            intro="Hallazgos del análisis automático, en el orden del dashboard (primero los "
+            "fijados por ti)."
+            if dashboard is not None
+            else "Hallazgos del análisis automático, en el orden del plan.",
+            blocks=[
+                insight_block(i, "Fijado por ti" if insight_key(i) in pinned else None)
+                for i in insights
+            ]
             or [ReportBlock(paragraphs=["Sin hallazgos."])],
         ),
         investigation_section(investigation),
+        dropped_section(hidden, analysis, exploration),
         reading_section(review),
         structure_section(review),
         quality_section(quality),
@@ -657,6 +714,7 @@ STAGES: list[tuple[StageId, str, set[str]]] = [
     ("analysis", "Análisis del archivo", {"csv_import", "table_analysis"}),
     ("comprehension", "Entendimiento del negocio", {"comprehension"}),
     ("exploration", "Exploración guiada", {"exploration"}),
+    ("dashboard", "Diseño del dashboard", {"dashboard"}),
     ("investigation", "Investigación", {"investigation"}),
     ("report", "Informe", {"automatic_report"}),
 ]
@@ -682,12 +740,20 @@ def progress(version: UUID, runs: list[RunSummary]) -> Progress:
     previous: StageState = "done"
     for identifier, title, kinds in STAGES:
         run = next((item for item in runs if item.kind in kinds), None)
+        # Fase 21: una versión nueva del informe (tras una marca) con la anterior disponible.
+        renewing = (
+            run is not None
+            and run.state in {"queued", "running"}
+            and any(item.kind in kinds and item.state == "succeeded" for item in runs)
+        )
         if run is not None:
             stage = Stage(
                 id=identifier,
                 title=title,
                 state=STATES[run.state],
-                detail=DETAILS.get(run.state, f"Falló ({run.error_code or 'error'})."),
+                detail="Generando una versión nueva con tus marcas; la anterior sigue disponible."
+                if renewing
+                else DETAILS.get(run.state, f"Falló ({run.error_code or 'error'})."),
                 execution_id=run.id,
                 finished_at=run.finished_at,
             )

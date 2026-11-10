@@ -11,6 +11,10 @@ from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from dataflow.modules.analytics.contracts import AutomaticInsight
+from dataflow.modules.curation.contracts import FindingFeedback
+from dataflow.modules.exploration.contracts import ExploreResult
+
 OPERATION = "delivery.report@1"
 RULES = "automatic-report-v1"
 
@@ -62,6 +66,9 @@ class ReportSource(DeliveryModel):
     quality_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     # Fase 20: exploración guiada incluida (la terminada cuando se generó el informe).
     exploration_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    # Fase 21: dashboard que fija el orden y valoraciones del usuario aplicadas (hash canónico).
+    dashboard_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    feedback_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class ReportDocument(DeliveryModel):
@@ -86,9 +93,14 @@ class ReportView(BaseModel):
     sha256: str | None = None
     generated_at: datetime | None = None
     evidence_count: int | None = None
+    # Fase 21: hay una versión nueva del informe en cola (tras una valoración); mientras tanto
+    # se sirve la última terminada.
+    updating: bool = False
 
 
-StageId = Literal["analysis", "comprehension", "exploration", "investigation", "report"]
+StageId = Literal[
+    "analysis", "comprehension", "exploration", "dashboard", "investigation", "report"
+]
 StageState = Literal["pending", "queued", "running", "done", "failed", "skipped"]
 
 
@@ -123,3 +135,89 @@ class DeliveryAccess(Protocol):
     def report(self, owner: UUID, version: UUID) -> ReportView: ...
     def pdf(self, owner: UUID, version: UUID) -> tuple[bytes, str]: ...
     def progress(self, owner: UUID, version: UUID) -> Progress: ...
+
+
+# --- Fase 21: dashboard adaptado a los datos (`dashboard-design-v1`, ADR-038) -------------------
+
+DESIGN_RULES = "dashboard-design-v1"
+WidgetType = Literal["kpi", "bar", "line", "heatmap", "pie", "table"]
+MAX_SECTIONS = 6
+MAX_WIDGETS = 24
+MAX_PIE_SLICES = 6
+
+
+class DashboardItem(DeliveryModel):
+    """Elemento publicado que el dashboard puede mostrar (sin cifras: sólo su forma)."""
+
+    id: str  # "insight:<id>" o "exploration:<clave>"
+    origin: Literal["insight", "exploration"]
+    title: str
+    kind: str
+    widgets: list[WidgetType]  # gráficos compatibles con su forma
+    figures: list[str]  # evidencias que pueden ir en un indicador
+
+
+class DashboardWidget(DeliveryModel):
+    type: WidgetType
+    item: str
+    title: str
+    evidence_id: str | None = None  # sólo en indicadores
+
+
+class DashboardSection(DeliveryModel):
+    title: str
+    intro: str | None = None
+    widgets: list[DashboardWidget]
+
+
+class DesignDecision(DeliveryModel):
+    """Qué pasó con cada elemento que propuso la IA (aceptado o rechazado con motivo)."""
+
+    item: str
+    type: str
+    status: Literal["accepted", "rejected"]
+    reason: str | None = None
+
+
+class DashboardScope(DeliveryModel):
+    execution_id: UUID
+    version_id: UUID
+    analysis_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    exploration_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class Dashboard(DeliveryModel):
+    schema_version: Literal[1] = 1
+    operation: Literal["delivery.dashboard@1"] = "delivery.dashboard@1"
+    rules_version: Literal["dashboard-design-v1"] = "dashboard-design-v1"
+    scope: DashboardScope
+    designed_by: Literal["ai", "rules"]
+    ai_state: Literal["ready", "failed", "unavailable"]
+    ai_reason: str | None = None
+    title: str
+    sections: list[DashboardSection]
+    decisions: list[DesignDecision] = Field(default_factory=list)
+    calls: list[dict[str, object]] = Field(default_factory=list)
+
+
+class Arrangement(DeliveryModel):
+    """El dashboard con las valoraciones aplicadas: fijados arriba y descartados aparte."""
+
+    sections: list[DashboardSection]
+    pinned: list[str]
+    hidden: list[str]
+
+
+class DashboardView(BaseModel):
+    """Estado del dashboard de una versión, con las marcas aplicadas y los datos publicados que
+    cita (hallazgos y resultados de la exploración); nunca recalcula."""
+
+    state: Literal["queued", "running", "ready", "failed"]
+    # Sin trabajo todavía (la comprensión o la exploración de la carga siguen en marcha): None.
+    execution_id: UUID | None = None
+    reason: str | None = None
+    dashboard: Dashboard | None = None
+    arrangement: Arrangement | None = None
+    insights: list[AutomaticInsight] = Field(default_factory=list)
+    results: list[ExploreResult] = Field(default_factory=list)
+    feedback: list[FindingFeedback] = Field(default_factory=list)

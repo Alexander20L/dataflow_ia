@@ -122,6 +122,52 @@ def relevance(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def dashboard_design(context: dict[str, Any]) -> dict[str, Any]:
+    """Primero un indicador y la exploración; después los hallazgos en orden inverso. Incluye
+    un gráfico incompatible, un elemento inventado y un título con una cifra propia."""
+    items = context["elementos"]
+
+    def chart(item: dict[str, Any]) -> str:
+        options = [w for w in item["graficos_compatibles"] if w != "kpi"]
+        return "pie" if "pie" in options else options[0]
+
+    essentials: list[dict[str, Any]] = []
+    with_figures = [i for i in items if i["cifras"]]
+    if with_figures:
+        essentials.append(
+            {
+                "elemento": with_figures[0]["id"],
+                "grafico": "kpi",
+                "cifra": with_figures[0]["cifras"][0],
+                "titulo": "Cifra principal",
+            }
+        )
+    essentials += [
+        {"elemento": i["id"], "grafico": chart(i), "titulo": "Top 99 de la exploración"}
+        for i in items
+        if i["origen"] == "exploration"
+    ]
+    detail = [
+        {"elemento": i["id"], "grafico": chart(i)}
+        for i in reversed(items)
+        if i["origen"] == "insight"
+    ]
+    wrong: list[dict[str, Any]] = [{"elemento": "insight:inventado", "grafico": "bar"}]
+    if items and "line" not in items[0]["graficos_compatibles"]:
+        wrong.append({"elemento": items[0]["id"], "grafico": "line"})
+    return {
+        "titulo": "Panorama del negocio",
+        "secciones": [
+            {
+                "titulo": "Lo esencial",
+                "descripcion": "Lo primero que mirar.",
+                "elementos": essentials,
+            },
+            {"titulo": "Detalle", "elementos": (wrong + detail)[:12]},
+        ],
+    }
+
+
 def proposals(context: dict[str, Any]) -> dict[str, Any]:
     dimensions = [plain(name) for name in context["dimensiones"]]
     done = set(context["done"])
@@ -164,4 +210,6 @@ def respond(task: str, context: dict[str, Any], request: str) -> dict[str, Any]:
         return exploration_queries(context)
     if task == "exploration_relevance":
         return relevance(context)
+    if task == "dashboard_design":
+        return dashboard_design(context)
     raise ValueError(f"Tarea de IA no simulada: {task}")

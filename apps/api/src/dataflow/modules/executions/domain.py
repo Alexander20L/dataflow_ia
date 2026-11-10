@@ -12,7 +12,7 @@ RUNNING_LIMIT = 3
 # Fase 16: trabajos de fondo que se reclaman después de cualquier otro en cola (Fase 17: y el
 # informe automático).
 BACKGROUND_KINDS: frozenset[str] = frozenset(
-    {"comprehension", "exploration", "investigation", "automatic_report"}
+    {"comprehension", "exploration", "dashboard", "investigation", "automatic_report"}
 )
 
 
@@ -42,6 +42,8 @@ def plan_input_kind(content: dict[str, Any]) -> InputKind:
         return "comprehension"
     if kind == "exploration":
         return "exploration"
+    if kind == "dashboard":
+        return "dashboard"
     raise ApplicationError("INPUT_MISMATCH", "El plan no declara un input admitido.", 409)
 
 

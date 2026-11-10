@@ -117,7 +117,8 @@ class Exploration(ExplorationModel):
 
 class ExplorationView(ExplorationModel):
     state: Literal["queued", "running", "ready", "failed"]
-    execution_id: UUID
+    # Fase 21: sin trabajo todavía (la comprensión de la carga sigue en marcha): None.
+    execution_id: UUID | None = None
     reason: str | None = None
     exploration: Exploration | None = None
 

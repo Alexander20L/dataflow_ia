@@ -229,6 +229,10 @@ def test_upload_is_explored_with_the_fake_ai(
     pid = project(client, headers)
     version = upload(client, headers, pid, reference_csv(), name="ventas_mensuales.csv").json()
     base = f"/api/v1/versions/{version['id']}/exploration"
+    assert make_runner(db, objects).run_once()  # carga
+    # Fase 21: con la comprensión en cola, la exploración se ve en cola (no 404).
+    pending = client.get(base).json()
+    assert pending["state"] == "queued" and pending["execution_id"] is None
     run_all(db, objects)
     view = client.get(base).json()
     assert view["state"] == "ready", view

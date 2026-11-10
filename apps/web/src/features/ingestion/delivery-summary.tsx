@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   XCircle,
 } from "lucide-react";
+import { useReport } from "./api";
 import type { AutomaticAnalysis, VersionProgress } from "./api";
 
 const TOP = 3;
@@ -39,6 +40,12 @@ export function DeliverySummary({
   analysis?: AutomaticAnalysis;
 }) {
   const report = progress?.stages.find((stage) => stage.id === "report");
+  // Fase 21: el informe anterior sigue disponible mientras se genera otro con tus marcas.
+  const view = useReport(
+    versionId,
+    report !== undefined && report.state !== "pending",
+  ).data;
+  const ready = report?.state === "done" || view?.state === "ready";
   const key = [...(analysis?.insights ?? [])]
     .sort((a, b) => b.importance - a.importance)
     .slice(0, TOP);
@@ -52,14 +59,21 @@ export function DeliverySummary({
             investigación de los hallazgos e informe en PDF.
           </p>
         </div>
-        {report?.state === "done" ? (
-          <a
-            className="btn btn-sm"
-            href={`/api/v1/versions/${versionId}/report.pdf`}
-          >
-            <Download size={14} />
-            Descargar informe (PDF)
-          </a>
+        {ready ? (
+          <div className="delivery-download">
+            <a
+              className="btn btn-sm"
+              href={`/api/v1/versions/${versionId}/report.pdf`}
+            >
+              <Download size={14} />
+              Descargar informe (PDF)
+            </a>
+            {view?.updating && (
+              <small className="muted" role="status">
+                Generando una versión con tus marcas…
+              </small>
+            )}
+          </div>
         ) : null}
       </header>
       {progress && (
@@ -87,7 +101,7 @@ export function DeliverySummary({
           </ul>
         </div>
       )}
-      {report && report.state !== "done" && (
+      {report && !ready && (
         <p className="muted" role="status">
           {report.state === "pending" ||
           report.state === "queued" ||
