@@ -4959,3 +4959,86 @@ tbody tr:hover {
   font-size: 12px;
   margin: 8px 0;
 }
+
+/* Fase 19: entendimiento del negocio y valoración opcional de relaciones. */
+.comprehension {
+  margin: 0 0 24px;
+  padding: 24px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.comprehension h2 {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+.comprehension h3 {
+  font-size: 0.95rem;
+  margin: 18px 0 8px;
+}
+.comprehension-domain p {
+  margin: 6px 0 0;
+}
+.comprehension-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 16px;
+}
+.comprehension-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+.comprehension-table th,
+.comprehension-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+.comprehension-relations ul,
+.comprehension-questions ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.comprehension-questions ul {
+  padding-left: 1.2rem;
+  list-style: disc;
+}
+.relation {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border);
+}
+.relation p {
+  margin: 4px 0;
+}
+.relation small {
+  display: block;
+  color: var(--muted);
+}
+.relation.not_relevant {
+  opacity: 0.6;
+}
+.relation-status {
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+.relation.confirmed .relation-status {
+  color: #16a34a;
+}
+.relation-actions {
+  display: flex;
+  gap: 6px;
+  align-items: flex-start;
+}
+.relation-actions button[aria-pressed="true"] {
+  background: var(--surface-secondary);
+  font-weight: 600;
+}

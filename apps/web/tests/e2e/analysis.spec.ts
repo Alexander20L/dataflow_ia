@@ -87,7 +87,7 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
     summary
       .getByRole("list", { name: "Progreso de la carga" })
       .getByRole("listitem"),
-  ).toHaveCount(3);
+  ).toHaveCount(4);
   await expect(summary).not.toContainText("Pendiente");
   await expect(summary.getByText("Hallazgos principales")).toBeVisible();
   const [download] = await Promise.all([
@@ -133,4 +133,24 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
   await expect(quality).toContainText("Meses sin registros");
   await expect(quality).toContainText("Valores atípicos en Units_Sold");
   await expect(quality.getByRole("button")).toHaveCount(0);
+  // Fase 19: entendimiento del negocio (IA falsa) y valoración opcional de una relación.
+  const comprehension = page.getByRole("region", {
+    name: "Entendimiento del negocio",
+  });
+  await expect(
+    comprehension.getByText("Hipótesis de la IA").first(),
+  ).toBeVisible();
+  await expect(comprehension).toContainText("De razón");
+  await expect(
+    comprehension.getByRole("img", {
+      name: "Mapa de calor de asociaciones entre columnas",
+    }),
+  ).toBeVisible();
+  const relation = comprehension
+    .getByRole("listitem", { name: /Relación Units_Sold – Customer_Name/ })
+    .first();
+  await expect(relation).toContainText("Los datos no la respaldan");
+  const notRelevant = relation.getByRole("button", { name: "No relevante" });
+  await notRelevant.click();
+  await expect(notRelevant).toHaveAttribute("aria-pressed", "true");
 });

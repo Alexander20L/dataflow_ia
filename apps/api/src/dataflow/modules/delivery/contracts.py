@@ -86,7 +86,7 @@ class ReportView(BaseModel):
     evidence_count: int | None = None
 
 
-StageId = Literal["analysis", "investigation", "report"]
+StageId = Literal["analysis", "comprehension", "investigation", "report"]
 StageState = Literal["pending", "queued", "running", "done", "failed", "skipped"]
 
 

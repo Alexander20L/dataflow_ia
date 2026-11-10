@@ -55,6 +55,43 @@ class PropuestasInvestigacion(OutputModel):
     propuestas: list[PropuestaIA] = Field(max_length=10)
 
 
+class ColumnaIA(OutputModel):
+    """Significado de una columna según la IA (Fase 19): hipótesis, sin cifras."""
+
+    columna: str = Field(max_length=200, description="Nombre exacto de una columna recibida.")
+    significado: str = Field(max_length=200)
+    entidad: str | None = Field(default=None, max_length=80)
+
+
+class EntidadIA(OutputModel):
+    nombre: str = Field(max_length=80)
+    columnas: list[str] = Field(max_length=30)
+
+
+class OrdenIA(OutputModel):
+    """Orden de las categorías de una dimensión ordinal (todas las categorías recibidas)."""
+
+    columna: str = Field(max_length=200)
+    orden: list[str] = Field(max_length=50)
+
+
+class RelacionIA(OutputModel):
+    columnas: list[str] = Field(min_length=2, max_length=2)
+    tipo: str = Field(max_length=30, description="asociacion, dependencia o jerarquia")
+    hipotesis: str = Field(max_length=300, description="Qué relación de negocio se espera.")
+
+
+class ComprensionIA(OutputModel):
+    """Comprensión del negocio a partir de nombres y perfil agregado (Fase 19, ADR-036)."""
+
+    dominio: str = Field(max_length=400, description="De qué trata el dataset, sin cifras.")
+    entidades: list[EntidadIA] = Field(max_length=10)
+    columnas: list[ColumnaIA] = Field(max_length=128)
+    ordenes: list[OrdenIA] = Field(default_factory=list, max_length=20)
+    relaciones: list[RelacionIA] = Field(max_length=15)
+    preguntas: list[str] = Field(max_length=8)
+
+
 class CopilotModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

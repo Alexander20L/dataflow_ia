@@ -461,6 +461,7 @@ class IngestionService:
                 database=connection.database,
                 captured_at=captured,
                 excluded_columns=table.excluded_columns,
+                foreign_keys=table.foreign_keys,
                 analyzed_together=[label for label in labels if label != table.label],
                 omitted=snapshot.omitted,
             )

@@ -5,6 +5,7 @@ from fastapi import Depends, Header, Request, Security
 from fastapi.security import APIKeyCookie
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.comprehension_job import ComprehensionAccess
 from dataflow.bootstrap.delivery_job import DeliveryAccess
 from dataflow.bootstrap.investigation_job import InvestigationAccess
 from dataflow.bootstrap.overview_audit import OverviewAuditAccess
@@ -18,6 +19,7 @@ from dataflow.bootstrap.services import (
 )
 from dataflow.modules.analytics.application import MetricService
 from dataflow.modules.cleaning.application import CleaningService
+from dataflow.modules.comprehension.infrastructure import SQLFeedbackRepository
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.datasets.public import Datasets
 from dataflow.modules.executions.public import Executions
@@ -90,6 +92,18 @@ def investigation_service(db: Db, objects: Objects) -> InvestigationAccess:
 
 
 Investigations = Annotated[InvestigationAccess, Depends(investigation_service)]
+
+
+def comprehension_service(db: Db, objects: Objects) -> ComprehensionAccess:
+    from dataflow.platform.runtime import require_ready
+
+    require_ready(db)
+    return ComprehensionAccess(
+        db, make_datasets(db), make_executions(db), objects, SQLFeedbackRepository(db)
+    )
+
+
+Comprehensions = Annotated[ComprehensionAccess, Depends(comprehension_service)]
 
 
 def delivery_service(db: Db, objects: Objects) -> DeliveryAccess:

@@ -189,6 +189,13 @@ class ExcludedColumn(BaseModel):
     reason: str
 
 
+class ForeignKey(BaseModel):
+    """Clave foránea declarada en la base (Fase 19): columna → esquema.tabla.columna."""
+
+    column: str
+    references: str
+
+
 class OmittedSource(BaseModel):
     table: str
     reason: str
@@ -206,6 +213,7 @@ class SourceOrigin(BaseModel):
     captured_at: str | None = None
     pages: list[int] = Field(default_factory=list)
     excluded_columns: list[ExcludedColumn] = Field(default_factory=list)
+    foreign_keys: list[ForeignKey] = Field(default_factory=list)
     analyzed_together: list[str] = Field(default_factory=list)
     omitted: list[OmittedSource] = Field(default_factory=list)
 
@@ -217,6 +225,7 @@ class SnapshotTable(BaseModel):
     headers: list[str]
     csv: str
     excluded_columns: list[ExcludedColumn] = Field(default_factory=list)
+    foreign_keys: list[ForeignKey] = Field(default_factory=list)
 
 
 class SqlSnapshot(BaseModel):

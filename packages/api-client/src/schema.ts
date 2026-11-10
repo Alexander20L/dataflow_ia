@@ -455,6 +455,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/versions/{version_id}/comprehension": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Comprehension
+         * @description Escalas de medida, asociaciones, hipótesis de la IA y relaciones con su evidencia.
+         */
+        get: operations["getComprehension"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/comprehension/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Judge
+         * @description Valoración opcional («Relevante» / «No relevante»): no bloquea ni recalcula; la
+         *     siguiente carga del mismo archivo la tiene en cuenta. Vale la última.
+         */
+        post: operations["judgeRelationship"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/versions/{version_id}/diagnostic": {
         parameters: {
             query?: never;
@@ -1050,7 +1091,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis" | "investigation";
+            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis" | "investigation" | "comprehension";
             /** Logical Content Sha256 */
             logical_content_sha256: string | null;
             /**
@@ -1071,6 +1112,33 @@ export interface components {
              * Format: uuid
              */
             version_id: string;
+        };
+        /**
+         * Association
+         * @description Medida de asociación entre dos columnas, calculada sobre las filas con ambos valores.
+         */
+        Association: {
+            /** Columns */
+            columns: [
+                string,
+                string
+            ];
+            /**
+             * Measure
+             * @enum {string}
+             */
+            measure: "pearson" | "spearman" | "cramers_v" | "eta" | "dependency";
+            /** Method */
+            method: string;
+            /** Rows */
+            rows: number;
+            /**
+             * Strength
+             * @enum {string}
+             */
+            strength: "negligible" | "weak" | "moderate" | "strong";
+            /** Value */
+            value: string;
         };
         /** AttemptResponse */
         AttemptResponse: {
@@ -1392,6 +1460,18 @@ export interface components {
              */
             sample_row_numbers: number[];
         };
+        /**
+         * ColumnMeaning
+         * @description Hipótesis de la IA sobre una columna (no se usa para calcular).
+         */
+        ColumnMeaning: {
+            /** Column */
+            column: string;
+            /** Entity */
+            entity?: string | null;
+            /** Meaning */
+            meaning: string;
+        };
         /** ColumnProfile */
         ColumnProfile: {
             /** Examples */
@@ -1414,6 +1494,25 @@ export interface components {
             technical_type: "string" | "integer" | "decimal" | "date" | "boolean";
             /** Unique Count */
             unique_count: number;
+        };
+        /**
+         * ColumnScale
+         * @description Escala de medida de una columna por reglas (`measurement-scale-v1`).
+         */
+        ColumnScale: {
+            /** Column */
+            column: string;
+            /** Order */
+            order?: string[];
+            /** Order Source */
+            order_source?: ("rules" | "ai") | null;
+            /** Reason */
+            reason: string;
+            /**
+             * Scale
+             * @enum {string}
+             */
+            scale: "nominal" | "ordinal" | "interval" | "ratio" | "identifier" | "text" | "empty";
         };
         /**
          * ComparisonCell
@@ -1451,6 +1550,85 @@ export interface components {
             evidence: {
                 [key: string]: string;
             };
+        };
+        /**
+         * Comprehension
+         * @description Resultado del trabajo `comprehension` (operación `comprehension.understand@1`).
+         */
+        Comprehension: {
+            /** Ai Reason */
+            ai_reason?: string | null;
+            /**
+             * Ai State
+             * @enum {string}
+             */
+            ai_state: "ready" | "unavailable" | "failed";
+            /** Associations */
+            associations: components["schemas"]["Association"][];
+            /** Calls */
+            calls?: {
+                [key: string]: unknown;
+            }[];
+            /** Discarded */
+            discarded?: string[];
+            /** Domain */
+            domain?: string | null;
+            /** Entities */
+            entities?: components["schemas"]["Entity"][];
+            /** Limitations */
+            limitations: string[];
+            /** Matrix Columns */
+            matrix_columns: string[];
+            /** Meanings */
+            meanings?: components["schemas"]["ColumnMeaning"][];
+            /** Questions */
+            questions?: string[];
+            /** Relationships */
+            relationships: components["schemas"]["Relationship"][];
+            /**
+             * Rules Version
+             * @default business-comprehension-v1
+             * @constant
+             */
+            rules_version: "business-comprehension-v1";
+            /** Scales */
+            scales: components["schemas"]["ColumnScale"][];
+            scope: components["schemas"]["ComprehensionScope"];
+        };
+        /** ComprehensionScope */
+        ComprehensionScope: {
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            /** Profile Sha256 */
+            profile_sha256: string;
+            /** Table Sha256 */
+            table_sha256: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
+        /** ComprehensionView */
+        ComprehensionView: {
+            comprehension?: components["schemas"]["Comprehension"] | null;
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            /** Feedback */
+            feedback?: components["schemas"]["FeedbackItem"][];
+            /** Reason */
+            reason?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "ready" | "failed";
         };
         /** Consumption */
         Consumption: {
@@ -1531,6 +1709,13 @@ export interface components {
         Diagnostic: {
             profile: components["schemas"]["DatasetProfile"];
             quality: components["schemas"]["QualityReport"];
+        };
+        /** Entity */
+        Entity: {
+            /** Columns */
+            columns: string[];
+            /** Name */
+            name: string;
         };
         /** ErrorDetail */
         ErrorDetail: {
@@ -1699,7 +1884,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -1754,7 +1939,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -1778,6 +1963,31 @@ export interface components {
              * Format: uuid
              */
             version_id: string;
+        };
+        /** FeedbackItem */
+        FeedbackItem: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Relationship Key */
+            relationship_key: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "relevant" | "not_relevant";
+        };
+        /** FeedbackRequest */
+        FeedbackRequest: {
+            /** Relationship Key */
+            relationship_key: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "relevant" | "not_relevant";
         };
         /**
          * Filter
@@ -1837,6 +2047,16 @@ export interface components {
              * @enum {string}
              */
             status: "computed" | "empty";
+        };
+        /**
+         * ForeignKey
+         * @description Clave foránea declarada en la base (Fase 19): columna → esquema.tabla.columna.
+         */
+        ForeignKey: {
+            /** Column */
+            column: string;
+            /** References */
+            references: string;
         };
         /** IngestionSummary */
         IngestionSummary: {
@@ -2845,6 +3065,44 @@ export interface components {
             password: string;
         };
         /**
+         * Relationship
+         * @description Relación candidata con la evidencia que la respalda o no.
+         *
+         *     `key` es estable entre versiones del mismo archivo (columnas ordenadas y tipo): con ella se
+         *     guarda la valoración del usuario.
+         */
+        Relationship: {
+            /** Columns */
+            columns: [
+                string,
+                string
+            ];
+            /** Detail */
+            detail: string;
+            evidence?: components["schemas"]["Association"] | null;
+            /** Hypothesis */
+            hypothesis?: string | null;
+            /** Key */
+            key: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "association" | "dependency" | "declared";
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "ai" | "data" | "declared";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "confirmed" | "not_supported" | "not_testable";
+            /** Verdict */
+            verdict?: ("relevant" | "not_relevant") | null;
+        };
+        /**
          * ReportView
          * @description Estado del informe de una versión (sólo lectura).
          */
@@ -3064,6 +3322,8 @@ export interface components {
             database?: string | null;
             /** Excluded Columns */
             excluded_columns?: components["schemas"]["ExcludedColumn"][];
+            /** Foreign Keys */
+            foreign_keys?: components["schemas"]["ForeignKey"][];
             /**
              * Kind
              * @enum {string}
@@ -3157,7 +3417,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "analysis" | "investigation" | "report";
+            id: "analysis" | "comprehension" | "investigation" | "report";
             /**
              * State
              * @enum {string}
@@ -6706,6 +6966,256 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AutomaticEvidence"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getComprehension: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComprehensionView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    judgeRelationship: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComprehensionView"];
                 };
             };
             /** @description Bad Request */

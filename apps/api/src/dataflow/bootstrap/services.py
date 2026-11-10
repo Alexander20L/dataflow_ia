@@ -5,6 +5,12 @@ from sqlalchemy.orm import Session
 from dataflow.bootstrap.ai import configured
 from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
 from dataflow.bootstrap.cleaning_access import CleaningPlanAccess, CleaningProposalAccess
+from dataflow.bootstrap.comprehension_job import (
+    ComprehensionInput,
+    ComprehensionStep,
+    enqueue_comprehension,
+    record_comprehension_calls,
+)
 from dataflow.bootstrap.delivery_job import ReportInput, ReportStep, enqueue_report
 from dataflow.bootstrap.investigation_job import (
     InvestigationInput,
@@ -50,6 +56,7 @@ from dataflow.modules.cleaning.steps import (
     PreviewFinalizer,
     TrimWhitespaceStep,
 )
+from dataflow.modules.comprehension.infrastructure import SQLFeedbackRepository
 from dataflow.modules.copilot.application import CopilotConfig, CopilotService
 from dataflow.modules.copilot.infrastructure import SQLCopilotRepository
 from dataflow.modules.datasets.application import Datasets
@@ -186,6 +193,11 @@ class DatasetPublication:
         self.objects = objects
 
     def prepare(self, lease: Lease, outputs: list[ArtifactOutput]) -> None:
+        if lease.execution.kind == "comprehension":
+            record_comprehension_calls(
+                self.db, lease, next(o for o in outputs if o.kind == "comprehension"), self.objects
+            )
+            return
         if lease.execution.kind == "investigation":
             record_investigation_calls(
                 self.db, lease, next(o for o in outputs if o.kind == "investigation"), self.objects
@@ -222,8 +234,19 @@ class DatasetPublication:
             analysis = next((a for a in artifacts if a.kind == "automatic_analysis"), None)
             table = next((a for a in artifacts if a.kind == "table"), None)
             if analysis is not None and table is not None:
-                # Fase 16: la investigación (reglas + IA) sustituye a la explicación del
-                # dashboard; explica los hallazgos y sus seguimientos.
+                # Fase 19: primero la comprensión del negocio (se reclama antes por llegar
+                # antes); después la investigación (Fase 16), que explica los hallazgos.
+                profile = next((a for a in artifacts if a.kind == "profile"), None)
+                if profile is not None:
+                    enqueue_comprehension(
+                        self.executions,
+                        self.datasets,
+                        SQLFeedbackRepository(self.db),
+                        lease,
+                        profile,
+                        table,
+                        self.config,
+                    )
                 enqueue_investigation(self.executions, lease, analysis, table, self.config)
                 return
             profile = next((a for a in artifacts if a.kind == "profile"), None)
@@ -289,6 +312,7 @@ class DatasetPublication:
 
 
 WORKER_KINDS: set[RunKind] = {
+    "comprehension",
     "overview_audit",
     "investigation",
     "automatic_report",
@@ -371,6 +395,7 @@ def make_runner(
             ),
             "overview": OverviewInput(datasets, executions, projects),
             "automatic": InvestigationInput(datasets, executions, projects),
+            "comprehension": ComprehensionInput(datasets, executions, projects),
             "investigation": ReportInput(datasets, executions, projects),
         },
         WorkerRegistry(
@@ -391,6 +416,9 @@ def make_runner(
                     make_copilot(db, provider, ai_config),
                 ),
                 "delivery.report@1": ReportStep(objects),
+                "comprehension.understand@1": ComprehensionStep(
+                    objects, make_copilot(db, provider, ai_config)
+                ),
             },
         ),
         DatasetPublication(db, datasets, executions, approvals, config, objects),

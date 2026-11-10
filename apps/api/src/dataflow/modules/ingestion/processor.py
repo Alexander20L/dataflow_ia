@@ -18,6 +18,7 @@ from dataflow.integrations.sources.xlsx_reader import SELECTION_RULE_V2, Workboo
 from dataflow.modules.ingestion.contracts import (
     ConvertedColumn,
     ExcludedColumn,
+    ForeignKey,
     KeptColumn,
     OmittedSource,
     PdfChoice,
@@ -293,6 +294,10 @@ def snapshot_sqlserver(source: Path, output: Path, max_rows: int, max_columns: i
                 excluded_columns=[
                     ExcludedColumn(column=c.name, type=c.type, reason=f"Tipo {c.type} no admitido.")
                     for c in table.excluded
+                ],
+                foreign_keys=[
+                    ForeignKey(column=column, references=reference)
+                    for column, reference in table.foreign_keys
                 ],
             )
             for table in result.tables
