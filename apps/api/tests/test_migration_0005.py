@@ -89,7 +89,7 @@ def test_0005_is_additive_keeps_05_executions_and_protects_user_plans(
             diagnostic = make_ingestion(db, objects).diagnostic(owner, version.id)
             # La comprensión (Fase 19) y la investigación (Fase 16) siguen en cola: no son
             # trabajos 0.5.
-            background = {"investigation", "comprehension", "exploration"}
+            background = {"investigation", "comprehension", "exploration", "dashboard"}
             assert {run.state for run, _ in before.values() if run.kind not in background} == {
                 "succeeded"
             }

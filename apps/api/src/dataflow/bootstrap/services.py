@@ -11,6 +11,13 @@ from dataflow.bootstrap.comprehension_job import (
     enqueue_comprehension,
     record_comprehension_calls,
 )
+from dataflow.bootstrap.dashboard_job import (
+    DashboardInput,
+    DashboardStep,
+    enqueue_dashboard,
+    record_dashboard_calls,
+    request_report_update,
+)
 from dataflow.bootstrap.delivery_job import ReportInput, ReportStep, enqueue_report
 from dataflow.bootstrap.exploration_job import (
     ExplorationInput,
@@ -65,6 +72,7 @@ from dataflow.modules.cleaning.steps import (
 from dataflow.modules.comprehension.infrastructure import SQLFeedbackRepository
 from dataflow.modules.copilot.application import CopilotConfig, CopilotService
 from dataflow.modules.copilot.infrastructure import SQLCopilotRepository
+from dataflow.modules.curation.public import SQLFindingFeedback
 from dataflow.modules.datasets.application import Datasets
 from dataflow.modules.datasets.infrastructure import SQLDatasetRepository
 from dataflow.modules.datasets.objects import LocalObjects
@@ -199,6 +207,11 @@ class DatasetPublication:
         self.objects = objects
 
     def prepare(self, lease: Lease, outputs: list[ArtifactOutput]) -> None:
+        if lease.execution.kind == "dashboard":
+            record_dashboard_calls(
+                self.db, lease, next(o for o in outputs if o.kind == "dashboard"), self.objects
+            )
+            return
         if lease.execution.kind == "exploration":
             record_exploration_calls(
                 self.db, lease, next(o for o in outputs if o.kind == "exploration"), self.objects
@@ -278,6 +291,23 @@ class DatasetPublication:
                 next(a for a in artifacts if a.kind == "comprehension"),
                 self.config,
             )
+        elif kind == "exploration":
+            # Fase 21: el dashboard adaptado parte de la exploración publicada.
+            enqueue_dashboard(
+                self.executions,
+                lease,
+                next(a for a in artifacts if a.kind == "exploration"),
+                self.config,
+            )
+        elif kind == "dashboard":
+            # Fase 21: si el informe ya se generó sin este dashboard, se genera otra versión.
+            dashboard = next(a for a in artifacts if a.kind == "dashboard")
+            request_report_update(
+                self.executions,
+                lease.owner_id,
+                lease.version_id,
+                f"dashboard:{dashboard.content.sha256}",
+            )
         elif kind == "investigation":
             # Fase 17: el informe automático se genera al publicarse la investigación.
             enqueue_report(
@@ -333,6 +363,7 @@ class DatasetPublication:
 WORKER_KINDS: set[RunKind] = {
     "comprehension",
     "exploration",
+    "dashboard",
     "overview_audit",
     "investigation",
     "automatic_report",
@@ -417,6 +448,7 @@ def make_runner(
             "automatic": InvestigationInput(datasets, executions, projects),
             "comprehension": ComprehensionInput(datasets, executions, projects),
             "exploration": ExplorationInput(datasets, executions, projects),
+            "dashboard": DashboardInput(datasets, executions, projects),
             "investigation": ReportInput(datasets, executions, projects),
         },
         WorkerRegistry(
@@ -436,7 +468,10 @@ def make_runner(
                     FollowUpComputer(objects, objects.root),
                     make_copilot(db, provider, ai_config),
                 ),
-                "delivery.report@1": ReportStep(objects, executions),
+                "delivery.report@1": ReportStep(objects, executions, SQLFindingFeedback(db)),
+                "delivery.dashboard@1": DashboardStep(
+                    objects, make_copilot(db, provider, ai_config)
+                ),
                 "exploration.explore@1": ExplorationStep(
                     objects, make_copilot(db, provider, ai_config)
                 ),

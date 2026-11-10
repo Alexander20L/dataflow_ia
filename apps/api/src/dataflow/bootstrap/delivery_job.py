@@ -10,8 +10,10 @@ from uuid import UUID, uuid4, uuid5
 
 from dataflow.modules.analytics.contracts import AutomaticAnalysis
 from dataflow.modules.comprehension.contracts import Comprehension
+from dataflow.modules.curation.public import SQLFindingFeedback
 from dataflow.modules.datasets.public import Datasets, ObjectStore, StoredObject
 from dataflow.modules.delivery.contracts import (
+    Dashboard,
     Progress,
     ReportSource,
     ReportView,
@@ -198,8 +200,38 @@ class ReportStep:
     output_kind: ArtifactKind = "report_pdf"
     transforms_data = False
 
-    def __init__(self, objects: ObjectStore, executions: Executions) -> None:
-        self.objects, self.executions = objects, executions
+    def __init__(
+        self,
+        objects: ObjectStore,
+        executions: Executions,
+        feedback: SQLFindingFeedback | None = None,
+    ) -> None:
+        self.objects, self.executions, self.feedback = objects, executions, feedback
+
+    def dashboard(self, lease: Lease) -> tuple[Dashboard, str] | None:
+        """Fase 21: el dashboard terminado de la versión (se reclama antes que el informe)."""
+        for run in self.executions.for_version(lease.owner_id, lease.version_id):
+            if run.kind == "dashboard" and run.state == "succeeded":
+                artifact = next(
+                    a
+                    for a in self.executions.artifacts(lease.owner_id, run.id)
+                    if a.kind == "dashboard"
+                )
+                return (
+                    Dashboard.model_validate_json(self.objects.read(artifact.content)),
+                    artifact.content.sha256,
+                )
+        return None
+
+    def marks(self, lease: Lease) -> tuple[dict[str, str], str | None]:
+        """Fase 21: marcas «sí va / no va» vigentes al generar el informe y su hash."""
+        if self.feedback is None:
+            return {}, None
+        found = self.feedback.for_version(lease.owner_id, lease.version_id)
+        if not found:
+            return {}, None
+        marks = sorted([f.item, f.verdict] for f in found)
+        return {f.item: f.verdict for f in found}, digest("finding_feedback", {"marks": marks})
 
     def exploration(self, lease: Lease) -> tuple[Exploration, str] | None:
         """Fase 20: la exploración terminada de la versión (se reclama antes que el informe)."""
@@ -239,6 +271,8 @@ class ReportStep:
             else None
         )
         explored = self.exploration(lease)
+        designed = self.dashboard(lease)
+        verdicts, marks_sha256 = self.marks(lease) if designed else ({}, None)
         document = build_report(
             ReportSource(
                 project_id=lease.execution.project_id,
@@ -251,6 +285,8 @@ class ReportStep:
                 investigation_sha256=source.content.sha256,
                 quality_sha256=str(given["quality"]["sha256"]) if given.get("quality") else None,
                 exploration_sha256=explored[1] if explored else None,
+                dashboard_sha256=designed[1] if designed else None,
+                feedback_sha256=marks_sha256,
             ),
             analysis,
             investigation,
@@ -261,6 +297,8 @@ class ReportStep:
             if given.get("comprehension")
             else None,
             explored[0] if explored else None,
+            designed[0] if designed else None,
+            verdicts,
         )
         prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
         content = self.objects.put(f"{prefix}/report.pdf", render_pdf(document))
@@ -317,7 +355,12 @@ class DeliveryAccess:
                 "su investigación no terminó.",
                 404,
             )
-        run = runs[0]
+        # Fase 21: mientras se genera una versión nueva (tras una marca) se sirve la última
+        # terminada e indica que se está actualizando.
+        newest = runs[0]
+        done = next((r for r in runs if r.state == "succeeded"), None)
+        updating = newest.state in {"queued", "running"} and done is not None
+        run = done if updating and done is not None else newest
         if run.state in {"queued", "running"}:
             return ReportView(state=run.state, execution_id=run.id), None
         if run.state != "succeeded":
@@ -339,6 +382,7 @@ class DeliveryAccess:
                 sha256=artifact.content.sha256,
                 generated_at=run.finished_at,
                 evidence_count=artifact.row_count,
+                updating=updating,
             ),
             artifact,
         )

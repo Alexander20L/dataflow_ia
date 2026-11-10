@@ -370,6 +370,7 @@ def test_import_investigates_with_the_fake_provider_and_explains_findings(
     assert runner.run_once()  # comprensión del negocio (Fase 19)
     assert runner.run_once()
     assert runner.run_once()  # exploración guiada (Fase 20)
+    assert runner.run_once()  # diseño del dashboard (Fase 21)
     assert runner.run_once()  # informe automático (Fase 17)
     assert not runner.run_once()
     view = client.get(path).json()
@@ -396,14 +397,15 @@ def test_import_investigates_with_the_fake_provider_and_explains_findings(
     # Fase 19: la comprensión del negocio hace su propia llamada antes de la investigación.
     assert sorted(set(tasks)) == [
         "business_comprehension",
+        "dashboard_design",
         "exploration_proposal",
         "exploration_relevance",
         "findings_audit",
         "investigation_proposal",
     ]
-    # Las de la investigación más la de la comprensión (Fase 19) y las dos de la exploración
-    # (Fase 20).
-    assert db.scalar(select(func.count()).select_from(AICallRecord)) == len(result["calls"]) + 3
+    # Las de la investigación más la de la comprensión (Fase 19), las dos de la exploración
+    # (Fase 20) y la del diseño del dashboard (Fase 21).
+    assert db.scalar(select(func.count()).select_from(AICallRecord)) == len(result["calls"]) + 4
     account(client)
     assert client.get(path).status_code == 404
 

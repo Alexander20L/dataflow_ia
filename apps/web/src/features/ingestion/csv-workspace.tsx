@@ -19,6 +19,7 @@ import { AutomaticAnalysisView } from "./automatic-analysis";
 import { AutomaticOverview } from "./automatic-overview";
 import { ComprehensionPanel } from "./comprehension";
 import { DeliverySummary } from "./delivery-summary";
+import { DashboardPanel } from "./dashboard";
 import { ExplorationPanel } from "./exploration";
 import { SourceReviewPanel } from "./source-review";
 import { InvestigationPanel } from "./investigation";
@@ -31,6 +32,7 @@ import {
   useProgress,
   useSourceReview,
   useComprehension,
+  useDashboard,
   useExploration,
   useDiagnostic,
   usePreview,
@@ -104,6 +106,7 @@ export function CsvWorkspace({
   const review = useSourceReview(version);
   const comprehension = useComprehension(version);
   const exploration = useExploration(version);
+  const dashboard = useDashboard(version);
   if (versions.isPending || loadingOutside)
     return (
       <div className="loading-screen" aria-label="Cargando versiones">
@@ -326,6 +329,13 @@ export function CsvWorkspace({
                   versionId={version.id}
                   progress={progress.data}
                   analysis={automatic.data}
+                />
+              )}
+              {dashboard.data && (
+                <DashboardPanel
+                  key={`dashboard-${version.id}`}
+                  view={dashboard.data}
+                  versionId={version.id}
                 />
               )}
               {review.data && (

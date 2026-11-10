@@ -253,7 +253,9 @@ def test_two_workers_claim_and_publish_independent_runs(
             barrier.wait(timeout=10)
             # La investigación de la carga (Fase 16) queda en cola: aquí compiten por los análisis.
             return make_runner(
-                db, store, kinds=WORKER_KINDS - {"investigation", "comprehension", "exploration"}
+                db,
+                store,
+                kinds=WORKER_KINDS - {"investigation", "comprehension", "exploration", "dashboard"},
             ).run_once()
 
     with ThreadPoolExecutor(max_workers=2) as pool:

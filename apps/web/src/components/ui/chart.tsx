@@ -106,3 +106,60 @@ export function seriesOption(
     ],
   };
 }
+
+// Fase 21: las etiquetas vienen del archivo; los tooltips nunca se tratan como HTML.
+const SAFE_TOOLTIP = { renderMode: "richText" as const };
+
+export function pieOption(
+  labels: string[],
+  values: number[],
+): EChartsCoreOption {
+  return {
+    color: ["#6366f1", "#06b6d4", "#f59e0b", "#10b981", "#ef4444", "#8b5cf6"],
+    tooltip: { ...SAFE_TOOLTIP, trigger: "item" },
+    legend: { bottom: 0, textStyle: { color: "#94a3b8", fontSize: 11 } },
+    series: [
+      {
+        type: "pie",
+        radius: ["40%", "70%"],
+        center: ["50%", "45%"],
+        data: labels.map((name, index) => ({ name, value: values[index] })),
+        label: { show: false },
+      },
+    ],
+  };
+}
+
+export function heatmapOption(
+  xs: string[],
+  ys: string[],
+  cells: [number, number, number][],
+): EChartsCoreOption {
+  const values = cells.map((cell) => cell[2]);
+  return {
+    tooltip: { ...SAFE_TOOLTIP, trigger: "item" },
+    grid: { left: 80, right: 20, top: 10, bottom: 60 },
+    xAxis: {
+      type: "category",
+      data: xs,
+      axisLabel: { color: "#94a3b8", fontSize: 11 },
+    },
+    yAxis: {
+      type: "category",
+      data: ys,
+      axisLabel: { color: "#94a3b8", fontSize: 11 },
+    },
+    visualMap: {
+      min: Math.min(0, ...values),
+      max: Math.max(1, ...values),
+      calculable: false,
+      orient: "horizontal",
+      left: "center",
+      bottom: 0,
+      itemHeight: 120,
+      inRange: { color: ["#e0e7ff", "#4338ca"] },
+      textStyle: { color: "#94a3b8" },
+    },
+    series: [{ type: "heatmap", data: cells }],
+  };
+}

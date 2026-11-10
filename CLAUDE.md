@@ -33,7 +33,7 @@ de conversión §3, hash canónico §6), `docs/architecture/phase-N.md` y `docs/
 ## Arquitectura y reglas de módulos
 
 Módulos en `apps/api/src/dataflow/modules/`: identity, projects, audit, datasets, ingestion, understanding,
-quality, planning, executions, cleaning, analytics, copilot, investigation, delivery, comprehension, exploration; dashboards y reports sólo conservan sus clases
+quality, planning, executions, cleaning, analytics, copilot, investigation, delivery, comprehension, exploration, curation; dashboards y reports sólo conservan sus clases
 de tabla (Fase 13). Adaptador de IA en `integrations/ai` (puerto `AIProvider`, proveedor falso; sólo
 `anthropic_provider.py` importa el SDK); lectores de fuentes en `integrations/sources` (sólo desde el
 subproceso de ingesta; `pymssql` y `pdfplumber` sólo allí). SQL Server sin credenciales guardadas y
@@ -59,6 +59,11 @@ descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
 - exploration (Fase 20, ADR-037): lenguaje cerrado `explore-v1` (validación pura en `domain.py`,
   cálculo exacto en `engine.py`); la IA (`copilot/exploration.py`) propone y juzga con hasta 100
   filas por resultado. `bootstrap/exploration_job.py` lo une a la cola tras la comprensión.
+- Dashboard adaptado (Fase 21, ADR-038): diseño puro en `delivery/dashboard.py` (catálogo
+  `kpi/bar/line/heatmap/pie/table` según la forma de cada elemento, sin cifras ni código); la IA
+  (`copilot/dashboard.py`) sólo elige secciones, orden y gráficos. `curation` guarda las marcas
+  «sí va / no va» (`finding_feedback`, 0021); `bootstrap/dashboard_job.py` encola el dashboard y
+  una versión nueva del informe tras cada marca. El informe se reclama el último de la cola.
 - delivery (Fase 17): informe automático (`delivery.report@1`, sólo reordena lo publicado; ReportLab
   sólo en `delivery/pdf.py`) y progreso por etapas; `bootstrap/delivery_job.py` lo une a la cola.
 - No volver a crear `automation`, `templates` ni `analysis_sessions` (prueba AST). La detección pura de
@@ -121,7 +126,7 @@ npm run dev --workspace @dataflow/web -- --port 3002
 Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:check + contracts:check +
 `export_openapi.py --check` + test:e2e.
 
-## Estado (2026-11-09)
+## Estado (2026-11-10)
 
 | Fase | API  | Rama                              | Estado                                                                       |
 | ---- | ---- | --------------------------------- | ---------------------------------------------------------------------------- |
@@ -148,13 +153,14 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 18   | 0.25 | `feat/fase-18-fuentes`            | CSV/Excel regionales, varias tablas, estructura, SQL Server y PDF            |
 | 19   | 0.26 | `feat/fase-19-comprender-negocio` | comprensión del negocio (IA + medidas), escalas, valoración opcional; 0020   |
 | 20   | 0.27 | `feat/fase-20-consultas`          | exploración guiada: consultas `explore-v1` de reglas e IA, relevancia        |
+| 21   | 0.28 | `feat/fase-21-dashboard-adaptado` | dashboard adaptado (IA + validación), marcas «sí va / no va», informe; 0021  |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
 no regenerar sus referencias para hacer pasar una prueba.
 Integración: `develop` contiene las Fases 4 a 14 y A–C (merge `--no-ff` o PR; desde 2026-11-09, siempre PR). Fase 13: ADR-026 sustituye
 al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
-`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 18: ADR-035. Fase 19: ADR-036 (valoración opcional del usuario). Fase 20: ADR-037. Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
+`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 18: ADR-035. Fase 19: ADR-036 (valoración opcional del usuario). Fase 20: ADR-037. Fase 21: ADR-038. Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
 (limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
 contradiga el enfoque automático. Fase 7 completa (7A y 7B): ADR-018 y
 ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa

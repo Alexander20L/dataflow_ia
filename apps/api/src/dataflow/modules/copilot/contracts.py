@@ -120,6 +120,28 @@ class JuiciosIA(OutputModel):
     juicios: list[JuicioIA] = Field(max_length=40)
 
 
+class ElementoIA(OutputModel):
+    """Un gráfico del dashboard (Fase 21): señala un elemento publicado; nunca lleva cifras."""
+
+    elemento: str = Field(max_length=700, description="Id exacto del elemento recibido.")
+    grafico: str = Field(max_length=20, description="Uno de los gráficos del catálogo.")
+    cifra: str | None = Field(
+        default=None, max_length=80, description="Sólo en indicadores: id de una de sus cifras."
+    )
+    titulo: str | None = Field(default=None, max_length=200, description="Sin cifras.")
+
+
+class SeccionIA(OutputModel):
+    titulo: str = Field(max_length=200)
+    descripcion: str | None = Field(default=None, max_length=300)
+    elementos: list[ElementoIA] = Field(max_length=12)
+
+
+class DisenoIA(OutputModel):
+    titulo: str = Field(max_length=200)
+    secciones: list[SeccionIA] = Field(max_length=6)
+
+
 class CopilotModel(BaseModel):
     model_config = ConfigDict(extra="forbid")
 

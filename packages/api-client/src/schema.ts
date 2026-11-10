@@ -496,6 +496,47 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/versions/{version_id}/dashboard": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Dashboard
+         * @description Fase 21: dashboard adaptado a los datos, con las marcas «sí va / no va» aplicadas.
+         */
+        get: operations["getDashboard"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/dashboard/feedback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Judge Finding
+         * @description Marca opcional de un elemento («keep», «drop» o «none»). No recalcula nada: reordena el
+         *     dashboard y encola una versión nueva del informe con ese orden.
+         */
+        post: operations["judgeFinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/versions/{version_id}/diagnostic": {
         parameters: {
             query?: never;
@@ -1085,6 +1126,18 @@ export interface components {
             /** Expected Revision */
             expected_revision: number;
         };
+        /**
+         * Arrangement
+         * @description El dashboard con las valoraciones aplicadas: fijados arriba y descartados aparte.
+         */
+        Arrangement: {
+            /** Hidden */
+            hidden: string[];
+            /** Pinned */
+            pinned: string[];
+            /** Sections */
+            sections: components["schemas"]["DashboardSection"][];
+        };
         /** ArtifactResponse */
         ArtifactResponse: {
             /** Attempt Id */
@@ -1111,7 +1164,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis" | "investigation" | "comprehension" | "exploration";
+            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis" | "investigation" | "comprehension" | "exploration" | "dashboard";
             /** Logical Content Sha256 */
             logical_content_sha256: string | null;
             /**
@@ -1695,6 +1748,114 @@ export interface components {
             /** Name */
             name: string;
         };
+        /** Dashboard */
+        Dashboard: {
+            /** Ai Reason */
+            ai_reason?: string | null;
+            /**
+             * Ai State
+             * @enum {string}
+             */
+            ai_state: "ready" | "failed" | "unavailable";
+            /** Calls */
+            calls?: {
+                [key: string]: unknown;
+            }[];
+            /** Decisions */
+            decisions?: components["schemas"]["DesignDecision"][];
+            /**
+             * Designed By
+             * @enum {string}
+             */
+            designed_by: "ai" | "rules";
+            /**
+             * Operation
+             * @default delivery.dashboard@1
+             * @constant
+             */
+            operation: "delivery.dashboard@1";
+            /**
+             * Rules Version
+             * @default dashboard-design-v1
+             * @constant
+             */
+            rules_version: "dashboard-design-v1";
+            /**
+             * Schema Version
+             * @default 1
+             * @constant
+             */
+            schema_version: 1;
+            scope: components["schemas"]["DashboardScope"];
+            /** Sections */
+            sections: components["schemas"]["DashboardSection"][];
+            /** Title */
+            title: string;
+        };
+        /** DashboardScope */
+        DashboardScope: {
+            /** Analysis Sha256 */
+            analysis_sha256: string;
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            /** Exploration Sha256 */
+            exploration_sha256: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
+        /** DashboardSection */
+        DashboardSection: {
+            /** Intro */
+            intro?: string | null;
+            /** Title */
+            title: string;
+            /** Widgets */
+            widgets: components["schemas"]["DashboardWidget"][];
+        };
+        /**
+         * DashboardView
+         * @description Estado del dashboard de una versión, con las marcas aplicadas y los datos publicados que
+         *     cita (hallazgos y resultados de la exploración); nunca recalcula.
+         */
+        DashboardView: {
+            arrangement?: components["schemas"]["Arrangement"] | null;
+            dashboard?: components["schemas"]["Dashboard"] | null;
+            /** Execution Id */
+            execution_id?: string | null;
+            /** Feedback */
+            feedback?: components["schemas"]["FindingFeedback"][];
+            /** Insights */
+            insights?: components["schemas"]["AutomaticInsight"][];
+            /** Reason */
+            reason?: string | null;
+            /** Results */
+            results?: components["schemas"]["ExploreResult"][];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "ready" | "failed";
+        };
+        /** DashboardWidget */
+        DashboardWidget: {
+            /** Evidence Id */
+            evidence_id?: string | null;
+            /** Item */
+            item: string;
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "kpi" | "bar" | "line" | "heatmap" | "pie" | "table";
+        };
         /** DatasetProfile */
         DatasetProfile: {
             /** Column Count */
@@ -1724,6 +1885,23 @@ export interface components {
             separator: string;
             /** Source Sha256 */
             source_sha256: string;
+        };
+        /**
+         * DesignDecision
+         * @description Qué pasó con cada elemento que propuso la IA (aceptado o rechazado con motivo).
+         */
+        DesignDecision: {
+            /** Item */
+            item: string;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "rejected";
+            /** Type */
+            type: string;
         };
         /** Diagnostic */
         Diagnostic: {
@@ -1904,7 +2082,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration" | "dashboard";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -1959,7 +2137,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration" | "dashboard";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -2062,11 +2240,8 @@ export interface components {
         };
         /** ExplorationView */
         ExplorationView: {
-            /**
-             * Execution Id
-             * Format: uuid
-             */
-            execution_id: string;
+            /** Execution Id */
+            execution_id?: string | null;
             exploration?: components["schemas"]["Exploration"] | null;
             /** Reason */
             reason?: string | null;
@@ -2211,6 +2386,31 @@ export interface components {
             operator: "eq" | "neq" | "in" | "not_in" | "gt" | "gte" | "lt" | "lte" | "between" | "is_null" | "is_not_null";
             /** Values */
             values?: string[];
+        };
+        /** FindingFeedback */
+        FindingFeedback: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Item */
+            item: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "keep" | "drop" | "none";
+        };
+        /** FindingFeedbackRequest */
+        FindingFeedbackRequest: {
+            /** Item */
+            item: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "keep" | "drop" | "none";
         };
         /**
          * FollowUpQuery
@@ -3333,6 +3533,11 @@ export interface components {
              * @enum {string}
              */
             state: "queued" | "running" | "ready" | "failed";
+            /**
+             * Updating
+             * @default false
+             */
+            updating: boolean;
         };
         /** ResultColumn */
         ResultColumn: {
@@ -3621,7 +3826,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "analysis" | "comprehension" | "exploration" | "investigation" | "report";
+            id: "analysis" | "comprehension" | "exploration" | "dashboard" | "investigation" | "report";
             /**
              * State
              * @enum {string}
@@ -7420,6 +7625,256 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ComprehensionView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDashboard: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    judgeFinding: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FindingFeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardView"];
                 };
             };
             /** @description Bad Request */

@@ -87,7 +87,7 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
     summary
       .getByRole("list", { name: "Progreso de la carga" })
       .getByRole("listitem"),
-  ).toHaveCount(5);
+  ).toHaveCount(6);
   await expect(summary).not.toContainText("Pendiente");
   await expect(summary.getByText("Hallazgos principales")).toBeVisible();
   const [download] = await Promise.all([
@@ -163,4 +163,29 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
     .click();
   await expect(exploration).toContainText("no es una dimensión");
   await expect(exploration.getByRole("button")).toHaveCount(0);
+  // Fase 21: dashboard diseñado por la IA falsa; «Sí va» fija un hallazgo arriba.
+  const adapted = page.getByRole("region", { name: "Dashboard adaptado" });
+  await expect(adapted.getByText("Diseñado por la IA")).toBeVisible();
+  await expect(
+    adapted.getByRole("group", { name: "Lo esencial", exact: true }),
+  ).toBeVisible();
+  await adapted
+    .getByRole("group", { name: "Detalle", exact: true })
+    .getByRole("button", { name: "Sí va" })
+    .first()
+    .click();
+  const pinned = adapted.getByRole("group", {
+    name: "Fijados por ti",
+    exact: true,
+  });
+  await expect(pinned.getByRole("button", { name: "Sí va" })).toHaveAttribute(
+    "aria-pressed",
+    "true",
+  );
+  await adapted.getByText(/Elecciones de diseño rechazadas/).click();
+  await expect(adapted).toContainText("No es un elemento publicado.");
+  // El informe anterior sigue descargable mientras se genera el nuevo con esa marca.
+  await expect(
+    summary.getByRole("link", { name: /Descargar informe/ }),
+  ).toBeVisible();
 });
