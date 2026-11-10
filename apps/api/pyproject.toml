@@ -13,6 +13,8 @@ dependencies = [
   "psycopg[binary]>=3.2,<4", "argon2-cffi>=23.1,<26",
   "polars>=1.30,<2",
   "reportlab>=5.1,<6",
+  # Fuentes de la Fase 18B (ADR-035); sólo las importa el subproceso de ingesta.
+  "pymssql>=2.3,<3", "pdfplumber>=0.11,<1",
   # Proveedor de IA del copiloto (Fase 10, ADR-022); sólo lo importa integrations/ai.
   "anthropic>=2.6,<3",
 ]

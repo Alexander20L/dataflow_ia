@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 from test_csv_ingestion import account, project
 
+from dataflow.bootstrap import services
 from dataflow.bootstrap.operations import DESCRIPTORS, OperationCatalog, OperationRegistry
 from dataflow.bootstrap.services import (
     make_datasets,
@@ -70,11 +71,23 @@ def expected(golden: dict[str, Any]) -> dict[str, Any]:
 
 @pytest.mark.parametrize("name", CASES)
 def test_step_runner_reproduces_single_process_outputs(
-    name: str, client: TestClient, db: Session, objects: LocalObjects
+    name: str,
+    client: TestClient,
+    db: Session,
+    objects: LocalObjects,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """Regresión Fase 4: un subproceso por paso publica exactamente lo mismo que el proceso
     único anterior (referencias generadas antes del cambio), incluida la procedencia del perfil
-    (separador efectivo y hash del original) tomada del paso de lectura."""
+    (separador efectivo y hash del original) tomada del paso de lectura. Las referencias son de
+    `ingestion.read_csv@1`, que no cambia: se fija `analysis-v12`, el último catálogo con esa
+    lectura (desde `analysis-v13`, read_csv@2 lee además valores regionales; Fase 18)."""
+    current = services.processing_config
+    monkeypatch.setattr(
+        services,
+        "processing_config",
+        lambda: current().model_copy(update={"operation_catalog": "analysis-v12"}),
+    )
     golden = json.loads((FIXTURES / f"{name}.golden.json").read_text(encoding="utf-8"))
     headers = account(client)
     owner = owner_id(client)

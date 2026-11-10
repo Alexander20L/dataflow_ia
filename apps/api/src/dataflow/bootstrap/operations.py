@@ -22,7 +22,13 @@ from dataflow.modules.cleaning.public import (
     trim_column_types,
 )
 from dataflow.modules.executions.public import StepExecutor, StepRegistry
-from dataflow.modules.ingestion.contracts import ReadCsvParameters, ReadXlsxParameters
+from dataflow.modules.ingestion.contracts import (
+    ReadCsvParameters,
+    ReadCsvV2Parameters,
+    ReadPdfParameters,
+    ReadXlsxParameters,
+    ReadXlsxV2Parameters,
+)
 from dataflow.modules.planning.public import (
     CATALOG_VERSION,
     IdentifierConversionGuard,
@@ -44,6 +50,30 @@ DESCRIPTORS: tuple[OperationDescriptor, ...] = (
     OperationDescriptor("ingestion.read_csv", 1, "Leer CSV", "source", "table", ReadCsvParameters),
     OperationDescriptor(
         "ingestion.read_xlsx", 1, "Leer Excel (.xlsx)", "source", "table", ReadXlsxParameters
+    ),
+    OperationDescriptor(
+        "ingestion.read_csv",
+        2,
+        "Leer CSV (codificación y valores regionales)",
+        "source",
+        "table",
+        ReadCsvV2Parameters,
+    ),
+    OperationDescriptor(
+        "ingestion.read_pdf",
+        1,
+        "Leer una tabla de un PDF",
+        "source",
+        "table",
+        ReadPdfParameters,
+    ),
+    OperationDescriptor(
+        "ingestion.read_xlsx",
+        2,
+        "Leer Excel (.xlsx) con valores regionales",
+        "source",
+        "table",
+        ReadXlsxV2Parameters,
     ),
     OperationDescriptor(
         "understanding.profile", 1, "Perfil de columnas", "table", "profile", ProfileParameters

@@ -1520,6 +1520,57 @@
         "title": "BaseTable",
         "type": "object"
       },
+      "ColumnChange": {
+        "properties": {
+          "after": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "After"
+          },
+          "before": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Before"
+          },
+          "change": {
+            "enum": [
+              "added",
+              "removed",
+              "type_changed",
+              "role_changed"
+            ],
+            "title": "Change",
+            "type": "string"
+          },
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "description": {
+            "default": "",
+            "title": "Description",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "change"
+        ],
+        "title": "ColumnChange",
+        "type": "object"
+      },
       "ColumnDependency": {
         "additionalProperties": false,
         "description": "Cada valor de `determinant` debería tener un único `dependent` (p. ej. código → nombre).",
@@ -1761,6 +1812,56 @@
           "elapsed_ms"
         ],
         "title": "Consumption",
+        "type": "object"
+      },
+      "ConvertedColumn": {
+        "description": "Columna leída con un formato regional (Fase 18, `regional-values-v1`).",
+        "properties": {
+          "by_file_convention": {
+            "title": "By File Convention",
+            "type": "boolean"
+          },
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "explanation": {
+            "title": "Explanation",
+            "type": "string"
+          },
+          "format": {
+            "enum": [
+              "decimal_comma",
+              "decimal_point_grouped",
+              "day_month_year",
+              "month_day_year",
+              "year_month_day"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "number",
+              "date"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "values": {
+            "title": "Values",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "column",
+          "kind",
+          "format",
+          "values",
+          "by_file_convention",
+          "explanation"
+        ],
+        "title": "ConvertedColumn",
         "type": "object"
       },
       "CreateProjectRequest": {
@@ -2287,6 +2388,29 @@
           "labels"
         ],
         "title": "EvidenceView",
+        "type": "object"
+      },
+      "ExcludedColumn": {
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "type": {
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "type",
+          "reason"
+        ],
+        "title": "ExcludedColumn",
         "type": "object"
       },
       "ExecutionDetail": {
@@ -3246,6 +3370,34 @@
         "title": "InvestigationView",
         "type": "object"
       },
+      "KeptColumn": {
+        "description": "Columna que parecía regional pero se dejó como texto por ambigua.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "number",
+              "date"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "kind",
+          "reason"
+        ],
+        "title": "KeptColumn",
+        "type": "object"
+      },
       "KeyCandidate": {
         "additionalProperties": false,
         "properties": {
@@ -4151,6 +4303,24 @@
           "maximum"
         ],
         "title": "NumericSummary",
+        "type": "object"
+      },
+      "OmittedSource": {
+        "properties": {
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "table": {
+            "title": "Table",
+            "type": "string"
+          }
+        },
+        "required": [
+          "table",
+          "reason"
+        ],
+        "title": "OmittedSource",
         "type": "object"
       },
       "OverviewAudit": {
@@ -5932,6 +6102,268 @@
         "title": "SnapshotCounts",
         "type": "object"
       },
+      "SourceOrigin": {
+        "description": "De dónde sale una versión que no es un archivo tabular (Fase 18B): una tabla copiada de\nSQL Server o una tabla de un PDF. Decisión del sistema; no hay nada que elegir.",
+        "properties": {
+          "analyzed_together": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Analyzed Together",
+            "type": "array"
+          },
+          "captured_at": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Captured At"
+          },
+          "database": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Database"
+          },
+          "excluded_columns": {
+            "items": {
+              "$ref": "#/components/schemas/ExcludedColumn"
+            },
+            "title": "Excluded Columns",
+            "type": "array"
+          },
+          "kind": {
+            "enum": [
+              "sqlserver",
+              "pdf"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "omitted": {
+            "items": {
+              "$ref": "#/components/schemas/OmittedSource"
+            },
+            "title": "Omitted",
+            "type": "array"
+          },
+          "pages": {
+            "items": {
+              "type": "integer"
+            },
+            "title": "Pages",
+            "type": "array"
+          },
+          "rule": {
+            "enum": [
+              "sqlserver-selection-v1",
+              "pdf-selection-v1"
+            ],
+            "title": "Rule",
+            "type": "string"
+          },
+          "server": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server"
+          },
+          "table": {
+            "title": "Table",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "rule",
+          "table"
+        ],
+        "title": "SourceOrigin",
+        "type": "object"
+      },
+      "SourceReading": {
+        "description": "Cómo se leyó el original: codificación, separador y valores regionales. Se guarda en\nlos metadatos de la tabla leída (no es un artefacto aparte).",
+        "properties": {
+          "convention": {
+            "anyOf": [
+              {
+                "enum": [
+                  "decimal_comma",
+                  "decimal_point_grouped"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Convention"
+          },
+          "converted": {
+            "items": {
+              "$ref": "#/components/schemas/ConvertedColumn"
+            },
+            "title": "Converted",
+            "type": "array"
+          },
+          "encoding": {
+            "anyOf": [
+              {
+                "enum": [
+                  "utf-8-sig",
+                  "cp1252"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Encoding"
+          },
+          "format": {
+            "enum": [
+              "csv",
+              "xlsx",
+              "pdf"
+            ],
+            "title": "Format",
+            "type": "string"
+          },
+          "kept_as_text": {
+            "items": {
+              "$ref": "#/components/schemas/KeptColumn"
+            },
+            "title": "Kept As Text",
+            "type": "array"
+          },
+          "rule": {
+            "const": "regional-values-v1",
+            "default": "regional-values-v1",
+            "title": "Rule",
+            "type": "string"
+          },
+          "separator": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Separator"
+          }
+        },
+        "required": [
+          "format"
+        ],
+        "title": "SourceReading",
+        "type": "object"
+      },
+      "SourceReview": {
+        "description": "Lectura del archivo y cambios de estructura de una versión (GET /versions/{id}/reading).\n`reading` es None en versiones leídas antes de la Fase 18; `structure`, si no hay una\nversión anterior comparable.",
+        "properties": {
+          "origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reading": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceReading"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "structure": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StructureComparison"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "reading",
+          "structure"
+        ],
+        "title": "SourceReview",
+        "type": "object"
+      },
+      "SqlServerConnection": {
+        "additionalProperties": false,
+        "description": "Datos de conexión de un solo uso (Fase 18B). La contraseña se usa para copiar las tablas\ny se descarta: no se guarda, no entra en el plan ni en la huella de idempotencia.",
+        "properties": {
+          "database": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "Database",
+            "type": "string"
+          },
+          "password": {
+            "format": "password",
+            "maxLength": 256,
+            "minLength": 1,
+            "title": "Password",
+            "type": "string",
+            "writeOnly": true
+          },
+          "port": {
+            "default": 1433,
+            "maximum": 65535.0,
+            "minimum": 1.0,
+            "title": "Port",
+            "type": "integer"
+          },
+          "server": {
+            "maxLength": 253,
+            "minLength": 1,
+            "pattern": "^[A-Za-z0-9.\\-]+$",
+            "title": "Server",
+            "type": "string"
+          },
+          "user": {
+            "maxLength": 128,
+            "minLength": 1,
+            "title": "User",
+            "type": "string"
+          }
+        },
+        "required": [
+          "server",
+          "database",
+          "user",
+          "password"
+        ],
+        "title": "SqlServerConnection",
+        "type": "object"
+      },
       "Stage": {
         "properties": {
           "detail": {
@@ -5995,6 +6427,44 @@
           "detail"
         ],
         "title": "Stage",
+        "type": "object"
+      },
+      "StructureComparison": {
+        "description": "Cambios de columnas respecto de la versión anterior del mismo archivo (Fase 18).\nSólo se informa: no se renombra ni se mapea nada.",
+        "properties": {
+          "changes": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnChange"
+            },
+            "title": "Changes",
+            "type": "array"
+          },
+          "previous_version_id": {
+            "title": "Previous Version Id",
+            "type": "string"
+          },
+          "previous_version_number": {
+            "title": "Previous Version Number",
+            "type": "integer"
+          },
+          "rule": {
+            "const": "structure-comparison-v1",
+            "default": "structure-comparison-v1",
+            "title": "Rule",
+            "type": "string"
+          },
+          "unchanged": {
+            "title": "Unchanged",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "previous_version_id",
+          "previous_version_number",
+          "changes",
+          "unchanged"
+        ],
+        "title": "StructureComparison",
         "type": "object"
       },
       "TimeAxis": {
@@ -6327,6 +6797,16 @@
             "title": "Sha256",
             "type": "string"
           },
+          "source_origin": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/SourceOrigin"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "source_selection": {
             "anyOf": [
               {
@@ -6396,9 +6876,47 @@
         "title": "XlsxCandidate",
         "type": "object"
       },
+      "XlsxChoice": {
+        "description": "Una tabla del libro que `xlsx-selection-v2` analiza (con su fila de cabecera).",
+        "properties": {
+          "header_row": {
+            "title": "Header Row",
+            "type": "integer"
+          },
+          "sheet": {
+            "title": "Sheet",
+            "type": "string"
+          },
+          "table": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Table"
+          }
+        },
+        "required": [
+          "sheet",
+          "table",
+          "header_row"
+        ],
+        "title": "XlsxChoice",
+        "type": "object"
+      },
       "XlsxInspection": {
         "description": "Hojas y tablas del libro y vista previa de la selección, antes de importar.",
         "properties": {
+          "additional": {
+            "items": {
+              "$ref": "#/components/schemas/XlsxChoice"
+            },
+            "title": "Additional",
+            "type": "array"
+          },
           "columns": {
             "items": {
               "type": "string"
@@ -6518,8 +7036,15 @@
         "type": "object"
       },
       "XlsxSelection": {
-        "description": "Decisión automática del sistema (Fase 13B, regla `xlsx-selection-v1`): hoja o tabla\nimportada, fila de cabecera y lo que quedó fuera.",
+        "description": "Decisión automática del sistema (Fase 13B, regla `xlsx-selection-v1`): hoja o tabla\nimportada, fila de cabecera y lo que quedó fuera. Desde la Fase 18 (`xlsx-selection-v2`)\nlas demás tablas con datos del libro se analizan como versiones propias de la misma carga\n(`analyzed_together`); `omitted` sólo lista lo que no se analiza.",
         "properties": {
+          "analyzed_together": {
+            "items": {
+              "$ref": "#/components/schemas/XlsxCandidate"
+            },
+            "title": "Analyzed Together",
+            "type": "array"
+          },
           "header_row": {
             "title": "Header Row",
             "type": "integer"
@@ -6532,7 +7057,10 @@
             "type": "array"
           },
           "rule": {
-            "const": "xlsx-selection-v1",
+            "enum": [
+              "xlsx-selection-v1",
+              "xlsx-selection-v2"
+            ],
             "title": "Rule",
             "type": "string"
           },
@@ -6623,7 +7151,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.24.0"
+    "version": "0.25.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -9816,6 +10344,388 @@
         ]
       }
     },
+    "/api/v1/projects/{project_id}/imports/pdf": {
+      "post": {
+        "description": "Fase 18B: importa las tablas de un PDF con texto (`pdf-selection-v1`). Devuelve la\nversión de la tabla principal; las demás tablas se registran como versiones propias y se\nindican en `source_origin`. PDF escaneado: 422 `PDF_NO_TEXT`; sin tablas: `PDF_NO_TABLES`.",
+        "operationId": "uploadPdf",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "file_name",
+            "required": true,
+            "schema": {
+              "maxLength": 255,
+              "minLength": 1,
+              "title": "File Name",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/pdf": {
+              "schema": {
+                "format": "binary",
+                "type": "string"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Upload Pdf",
+        "tags": [
+          "Datasets"
+        ]
+      }
+    },
+    "/api/v1/projects/{project_id}/imports/sqlserver": {
+      "post": {
+        "description": "Fase 18B: copia de un solo uso de las tablas de una base de SQL Server\n(`sqlserver-selection-v1`); cada tabla es una versión con su CSV original. La contraseña se\nusa para la copia y se descarta. Sólo servidores de `DATAFLOW_SQLSERVER_ALLOWED_HOSTS`.",
+        "operationId": "importSqlServer",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "project_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Project Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "Idempotency-Key",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Idempotency-Key",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SqlServerConnection"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "202": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/VersionResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Import Sqlserver",
+        "tags": [
+          "Datasets"
+        ]
+      }
+    },
     "/api/v1/projects/{project_id}/imports/xlsx": {
       "post": {
         "description": "Importa un libro con ingestion.read_xlsx@1. Sin `sheet` ni `table` (Fase 13B), el\nsistema elige la hoja o tabla y la cabecera (`xlsx-selection-v1`) y lo informa en\n`source_selection`; con `table` hay que indicar también su `sheet`.",
@@ -12871,6 +13781,171 @@
         "summary": "Version Progress",
         "tags": [
           "Entrega"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/reading": {
+      "get": {
+        "description": "Cómo se leyó el archivo (codificación, separador, valores regionales) y qué columnas\ncambiaron respecto de la versión anterior del mismo archivo (Fase 18). Sólo lectura.",
+        "operationId": "getSourceReview",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SourceReview"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Source Review",
+        "tags": [
+          "Datasets"
         ]
       }
     },

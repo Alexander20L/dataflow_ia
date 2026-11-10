@@ -21,6 +21,7 @@ import { useApp } from "@/lib/providers";
 import { useCreateProject } from "@/features/projects/api";
 import { errorMessage } from "@/lib/api";
 import { useUploadFile } from "./api";
+import { SqlServerImport } from "./sqlserver-import";
 import { FILE_ACCEPT, fileProblem } from "./csv-workspace";
 
 const schema = z.object({
@@ -62,7 +63,7 @@ export function ImportProject() {
     }
     setFile(selected);
     if (!getValues("name").trim()) {
-      const base = selected.name.replace(/\.(csv|xlsx)$/i, "").trim();
+      const base = selected.name.replace(/\.(csv|xlsx|pdf)$/i, "").trim();
       setValue(
         "name",
         (base.length >= 3 ? base : `Análisis de ${base}`).slice(0, 80),
@@ -189,7 +190,7 @@ export function ImportProject() {
             >
               Seleccionar archivo
             </Button>
-            <small>CSV UTF-8 o Excel (.xlsx) · hasta 5 MB</small>
+            <small>CSV, Excel (.xlsx) o PDF con tablas · hasta 5 MB</small>
           </div>
           {file && (
             <div className="selected-file">
@@ -285,17 +286,7 @@ export function ImportProject() {
               El original siempre permanece intacto.
             </p>
           </section>
-          <section className="panel connections-panel">
-            <h3>¿Tus datos están en una base?</h3>
-            <p>Conecta una fuente con permisos de lectura.</p>
-            {["PostgreSQL", "MySQL"].map((name) => (
-              <div className="connection" key={name}>
-                <Database size={18} />
-                <strong>{name}</strong>
-                <span className="badge neutral">Próximamente</span>
-              </div>
-            ))}
-          </section>
+          <SqlServerImport projectName={() => getValues("name")} />
         </aside>
       </div>
     </>

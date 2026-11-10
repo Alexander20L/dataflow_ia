@@ -18,8 +18,12 @@ Documentación y UI en español.
   investigaciones en un esquema cerrado que Python valida y el motor calcula; ninguna cifra sale del modelo
   (sólo `{{evidence:id}}`).
   `DATAFLOW_AI_PROVIDER=auto` por defecto: activa sólo si hay clave (Fase 13B, ADR-027).
-- **Excel sin elegir hoja**: la regla `xlsx-selection-v1` decide hoja/tabla y cabecera al subir y
-  la decisión queda en el plan (`source_selection`); la interfaz no ofrece opciones de lectura.
+- **Excel sin elegir hoja**: la regla `xlsx-selection-v2` (Fase 18) decide la hoja/tabla principal y
+  su cabecera al subir y analiza las demás tablas con datos como versiones propias; la decisión queda en
+  el plan (`source_selection`); la interfaz no ofrece opciones de lectura.
+- **Valores regionales** (Fase 18, `regional-values-v1` en `platform/regional.py`): una columna se
+  reescribe a la celda canónica sólo si todos sus valores admiten una única lectura; si no, texto con
+  motivo. La decisión va en los metadatos del Parquet leído (`dataflow:source_reading`).
 - El original y las versiones publicadas son inmutables: limpiar crea una versión derivada con linaje y el
   efecto exacto (`effect_sha256`) queda registrado como decisión del sistema.
 
@@ -32,7 +36,8 @@ Módulos en `apps/api/src/dataflow/modules/`: identity, projects, audit, dataset
 quality, planning, executions, cleaning, analytics, copilot, investigation, delivery; dashboards y reports sólo conservan sus clases
 de tabla (Fase 13). Adaptador de IA en `integrations/ai` (puerto `AIProvider`, proveedor falso; sólo
 `anthropic_provider.py` importa el SDK); lectores de fuentes en `integrations/sources` (sólo desde el
-subproceso de ingesta).
+subproceso de ingesta; `pymssql` y `pdfplumber` sólo allí). SQL Server sin credenciales guardadas y
+sólo a servidores de `DATAFLOW_SQLSERVER_ALLOWED_HOSTS`.
 Composición en `bootstrap/` (`bootstrap/operations.py` une
 descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
 
@@ -133,13 +138,14 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 15   | 0.22 | `feat/fase-15-criterio`        | plan automático, `analytics.automatic@1` (hallazgos), `analysis-v12`         |
 | 16   | 0.23 | `feat/fase-16-investigar`      | módulo `investigation`, reglas + propuestas IA validadas, límites duros      |
 | 17   | 0.24 | `feat/fase-17-entrega`         | módulo `delivery`: informe PDF automático, progreso por etapas, resumen      |
+| 18   | 0.25 | `feat/fase-18-fuentes`         | CSV/Excel regionales, varias tablas, estructura, SQL Server y PDF            |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
 no regenerar sus referencias para hacer pasar una prueba.
 Integración: `develop` contiene las Fases 4 a 14 y A–C (merge `--no-ff` o PR; desde 2026-11-09, siempre PR). Fase 13: ADR-026 sustituye
 al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
-`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
+`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 18: ADR-035. Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
 (limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
 contradiga el enfoque automático. Fase 7 completa (7A y 7B): ADR-018 y
 ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa

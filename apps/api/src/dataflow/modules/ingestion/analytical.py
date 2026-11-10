@@ -8,15 +8,21 @@ import polars as pl
 from dataflow.modules.executions.public import ProcessingConfig
 from dataflow.modules.ingestion.application import AnalysisOutput, ReadOutput
 from dataflow.modules.ingestion.contracts import (
+    PdfSelection,
     PreviewPage,
     PreviewRow,
+    ReadPdfParameters,
     ReadXlsxParameters,
+    SourceReading,
+    SqlServerConnection,
+    SqlSnapshot,
     XlsxInspection,
 )
 from dataflow.modules.quality.contracts import WHITESPACE_CHARS, QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.isolation import run_isolated
+from dataflow.platform.parquet_metadata import READING_KEY
 from dataflow.platform.tabular import display_cell, frame_types
 
 
@@ -64,7 +70,12 @@ class IsolatedAnalyzer:
         )
 
     def read(
-        self, content: bytes, separator: str, config: ProcessingConfig, timeout: float
+        self,
+        content: bytes,
+        separator: str,
+        config: ProcessingConfig,
+        timeout: float,
+        encoding: str | None = None,
     ) -> ReadOutput:
         files = self.run(
             "read",
@@ -72,7 +83,7 @@ class IsolatedAnalyzer:
             config,
             timeout,
             ["data.parquet", "read.json"],
-            ["--separator", separator],
+            ["--separator", separator, *(["--encoding", encoding] if encoding else [])],
         )
         meta = json.loads(files["read.json"])
         return ReadOutput(
@@ -106,6 +117,54 @@ class IsolatedAnalyzer:
             int(meta["row_count"]),
             int(meta["column_count"]),
         )
+
+    def read_pdf(
+        self,
+        content: bytes,
+        parameters: ReadPdfParameters,
+        config: ProcessingConfig,
+        timeout: float,
+    ) -> ReadOutput:
+        files = self.run(
+            "read_pdf",
+            content,
+            config,
+            timeout,
+            ["data.parquet", "read.json"],
+            ["--pdf-json", parameters.model_dump_json()],
+        )
+        meta = json.loads(files["read.json"])
+        return ReadOutput(
+            files["data.parquet"],
+            str(meta["separator"]),
+            str(meta["source_sha256"]),
+            int(meta["row_count"]),
+            int(meta["column_count"]),
+        )
+
+    def select_pdf(self, content: bytes, config: ProcessingConfig) -> PdfSelection:
+        files = self.run("select_pdf", content, config, config.timeout_seconds, ["selection.json"])
+        return PdfSelection.model_validate_json(files["selection.json"])
+
+    def snapshot_sqlserver(
+        self, connection: SqlServerConnection, config: ProcessingConfig
+    ) -> SqlSnapshot:
+        """La contraseña sólo viaja al directorio temporal privado del subproceso, que se borra
+        al terminar; nunca a argumentos de línea de órdenes ni a registros."""
+        payload = json.dumps(
+            {
+                "server": connection.server,
+                "port": connection.port,
+                "database": connection.database,
+                "user": connection.user,
+                "password": connection.password.get_secret_value(),
+                "timeout": config.timeout_seconds,
+            }
+        ).encode()
+        files = self.run(
+            "snapshot_sqlserver", payload, config, config.timeout_seconds, ["snapshot.json"]
+        )
+        return SqlSnapshot.model_validate_json(files["snapshot.json"])
 
     def inspect_xlsx(
         self,
@@ -205,6 +264,13 @@ class PolarsPreview:
     """Páginas de la tabla publicada. Las columnas se toman como Series por nombre exacto y se
     operan con alias neutros: un encabezado como «^id$» nunca se interpreta como expresión
     regular ni selector. Las celdas tipadas se muestran con su cadena canónica."""
+
+    def source_reading(self, content: bytes) -> SourceReading | None:
+        """Decisión de lectura guardada en los metadatos de la tabla (Fase 18); None en tablas
+        leídas antes. Sólo lee el pie del Parquet."""
+        metadata = pl.read_parquet_metadata(io.BytesIO(content))
+        raw = metadata.get(READING_KEY)
+        return SourceReading.model_validate_json(raw) if raw else None
 
     def read(
         self,

@@ -34,3 +34,5 @@ class Version:
     parent_version_id: UUID | None = None
     # Fase 13B: decisión automática de hoja o tabla de un .xlsx (`xlsx-selection-v1`).
     source_selection: dict[str, Any] | None = None
+    # Fase 18B: tabla copiada de SQL Server o tabla de un PDF (`SourceOrigin`).
+    source_origin: dict[str, Any] | None = None

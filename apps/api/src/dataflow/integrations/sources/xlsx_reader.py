@@ -31,6 +31,8 @@ MAX_PART_BYTES = 64 * 1024 * 1024  # XML descomprimido de una parte
 MAX_PACKAGE_BYTES = 160 * 1024 * 1024  # paquete completo descomprimido
 MAX_WARNINGS = 20
 SELECTION_RULE = "xlsx-selection-v1"  # Fase 13B: elección automática de hoja o tabla
+SELECTION_RULE_V2 = "xlsx-selection-v2"  # Fase 18: además, las demás tablas con datos
+MAX_TABLES = 5  # tablas analizadas por libro (la principal y hasta cuatro más)
 HEADER_SCAN_ROWS = 50
 REL_TYPES = "/officeDocument/2006/relationships/"
 DATE_FORMAT_IDS = {*range(14, 23), *range(27, 37), 45, 46, 47, *range(50, 59)}
@@ -70,6 +72,8 @@ class Selection:
     table: str | None
     header_row: int
     omitted: list[tuple[str, str | None]]
+    # xlsx-selection-v2: otras tablas analizables (hoja, tabla, fila de cabecera).
+    additional: list[tuple[str, str | None, int]] = field(default_factory=list)
 
 
 @dataclass
@@ -366,32 +370,81 @@ class Workbook:
            filas con datos (salta títulos de una sola celda).
         Empates: el orden del libro. Lo no elegido se informa en `omitted`.
         """
-        visible = [s for s in self.sheets if not s.hidden] or self.sheets
-        names = {s.name for s in visible}
-        tables = [t for t in self.tables if t.sheet in names and t.header_rows == 1]
-        candidates: list[tuple[tuple[int, int], str, str | None, int]] = []
-        for sheet in visible:
-            for table in tables:
-                if table.sheet == sheet.name:
-                    area = (table.last_row - table.first_row - table.totals_rows) * (
-                        table.last_col - table.first_col + 1
-                    )
-                    candidates.append(((2, area), sheet.name, table.name, table.first_row))
-            if sheet.tables:
-                continue
-            try:
-                rows, _, protected, _ = self.cells(sheet, max_cells)
-            except ApplicationError:
-                candidates.append(((0, 0), sheet.name, None, 1))
-                continue
-            filled = sum(1 for row in rows.values() for v in row.values() if v and v.strip())
-            if filled:
-                candidates.append(((0 if protected else 1, filled), sheet.name, None, header(rows)))
+        candidates, visible = self.candidates(max_cells)
         if not candidates:
             return Selection(visible[0].name, None, 1, [])
         best = max(candidates, key=lambda c: c[0])
         omitted = [(c[1], c[2]) for c in candidates if c is not best]
         return Selection(best[1], best[2], best[3], omitted)
+
+    def automatic_tables(self, max_cells: int) -> Selection:
+        """Regla `xlsx-selection-v2` (Fase 18): la tabla principal es la de `xlsx-selection-v1`
+        y, además, se analizan como versiones propias hasta `MAX_TABLES - 1` tablas más que
+        tengan al menos dos columnas con cabecera y dos registros (tablas con nombre primero,
+        luego por tamaño; empates, el orden del libro). Las hojas protegidas o ilegibles y las
+        de una sola columna (notas, portadas) quedan en `omitted`. No se cruzan tablas."""
+        candidates, visible = self.candidates(max_cells)
+        if not candidates:
+            return Selection(visible[0].name, None, 1, [])
+        best = max(candidates, key=lambda c: c[0])
+        ranked = sorted(
+            (c for c in candidates if c is not best and c[4]),
+            key=lambda c: c[0],
+            reverse=True,
+        )[: MAX_TABLES - 1]
+        chosen = {(c[1], c[2]) for c in ranked}
+        omitted = [(c[1], c[2]) for c in candidates if c is not best and (c[1], c[2]) not in chosen]
+        additional = [(c[1], c[2], c[3]) for c in ranked]
+        return Selection(best[1], best[2], best[3], omitted, additional)
+
+    def candidates(
+        self, max_cells: int
+    ) -> tuple[list[tuple[tuple[int, int], str, str | None, int, bool]], list[SheetInfo]]:
+        """(prioridad, hoja, tabla, cabecera, analizable aparte) en el orden del libro."""
+        visible = [s for s in self.sheets if not s.hidden] or self.sheets
+        names = {s.name for s in visible}
+        tables = [t for t in self.tables if t.sheet in names and t.header_rows == 1]
+        candidates: list[tuple[tuple[int, int], str, str | None, int, bool]] = []
+        for sheet in visible:
+            for table in tables:
+                if table.sheet == sheet.name:
+                    records = table.last_row - table.first_row - table.totals_rows
+                    width = table.last_col - table.first_col + 1
+                    candidates.append(
+                        (
+                            (2, records * width),
+                            sheet.name,
+                            table.name,
+                            table.first_row,
+                            records >= 2 and width >= 2,
+                        )
+                    )
+            if sheet.tables:
+                continue
+            try:
+                rows, _, protected, _ = self.cells(sheet, max_cells)
+            except ApplicationError:
+                candidates.append(((0, 0), sheet.name, None, 1, False))
+                continue
+            filled = sum(1 for row in rows.values() for v in row.values() if v and v.strip())
+            if filled:
+                top = header(rows)
+                width = sum(1 for v in rows.get(top, {}).values() if v and v.strip())
+                records = sum(
+                    1
+                    for number, row in rows.items()
+                    if number > top and any(v and v.strip() for v in row.values())
+                )
+                candidates.append(
+                    (
+                        (0 if protected else 1, filled),
+                        sheet.name,
+                        None,
+                        top,
+                        not protected and width >= 2 and records >= 2,
+                    )
+                )
+        return candidates, visible
 
     def cells(
         self, sheet: SheetInfo, max_cells: int

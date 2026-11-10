@@ -294,6 +294,50 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/projects/{project_id}/imports/pdf": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload Pdf
+         * @description Fase 18B: importa las tablas de un PDF con texto (`pdf-selection-v1`). Devuelve la
+         *     versión de la tabla principal; las demás tablas se registran como versiones propias y se
+         *     indican en `source_origin`. PDF escaneado: 422 `PDF_NO_TEXT`; sin tablas: `PDF_NO_TABLES`.
+         */
+        post: operations["uploadPdf"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/projects/{project_id}/imports/sqlserver": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Import Sqlserver
+         * @description Fase 18B: copia de un solo uso de las tablas de una base de SQL Server
+         *     (`sqlserver-selection-v1`); cada tabla es una versión con su CSV original. La contraseña se
+         *     usa para la copia y se descarta. Sólo servidores de `DATAFLOW_SQLSERVER_ALLOWED_HOSTS`.
+         */
+        post: operations["importSqlServer"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/projects/{project_id}/imports/xlsx": {
         parameters: {
             query?: never;
@@ -602,6 +646,27 @@ export interface paths {
          * @description Etapas de la carga (análisis, investigación e informe) con su estado.
          */
         get: operations["getVersionProgress"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/reading": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Source Review
+         * @description Cómo se leyó el archivo (codificación, separador, valores regionales) y qué columnas
+         *     cambiaron respecto de la versión anterior del mismo archivo (Fase 18). Sólo lectura.
+         */
+        get: operations["getSourceReview"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1285,6 +1350,25 @@ export interface components {
              */
             version_id: string;
         };
+        /** ColumnChange */
+        ColumnChange: {
+            /** After */
+            after?: string | null;
+            /** Before */
+            before?: string | null;
+            /**
+             * Change
+             * @enum {string}
+             */
+            change: "added" | "removed" | "type_changed" | "role_changed";
+            /** Column */
+            column: string;
+            /**
+             * Description
+             * @default
+             */
+            description: string;
+        };
         /**
          * ColumnDependency
          * @description Cada valor de `determinant` debería tener un único `dependent` (p. ej. código → nombre).
@@ -1376,6 +1460,30 @@ export interface components {
             cost_usd: string;
             /** Elapsed Ms */
             elapsed_ms: number;
+        };
+        /**
+         * ConvertedColumn
+         * @description Columna leída con un formato regional (Fase 18, `regional-values-v1`).
+         */
+        ConvertedColumn: {
+            /** By File Convention */
+            by_file_convention: boolean;
+            /** Column */
+            column: string;
+            /** Explanation */
+            explanation: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "decimal_comma" | "decimal_point_grouped" | "day_month_year" | "month_day_year" | "year_month_day";
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "number" | "date";
+            /** Values */
+            values: number;
         };
         /** CreateProjectRequest */
         CreateProjectRequest: {
@@ -1549,6 +1657,15 @@ export interface components {
             snapshot?: string | null;
             /** Value */
             value: string | null;
+        };
+        /** ExcludedColumn */
+        ExcludedColumn: {
+            /** Column */
+            column: string;
+            /** Reason */
+            reason: string;
+            /** Type */
+            type: string;
         };
         /** ExecutionDetail */
         ExecutionDetail: {
@@ -1910,6 +2027,21 @@ export interface components {
              */
             state: "queued" | "running" | "ready" | "failed";
         };
+        /**
+         * KeptColumn
+         * @description Columna que parecía regional pero se dejó como texto por ambigua.
+         */
+        KeptColumn: {
+            /** Column */
+            column: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "number" | "date";
+            /** Reason */
+            reason: string;
+        };
         /** KeyCandidate */
         KeyCandidate: {
             /** Columns */
@@ -2244,6 +2376,13 @@ export interface components {
             minimum: string;
             /** Total */
             total: string;
+        };
+        /** OmittedSource */
+        OmittedSource: {
+            /** Reason */
+            reason: string;
+            /** Table */
+            table: string;
         };
         /** OverviewAudit */
         OverviewAudit: {
@@ -2911,6 +3050,101 @@ export interface components {
             /** Superseded Rows */
             superseded_rows: number;
         };
+        /**
+         * SourceOrigin
+         * @description De dónde sale una versión que no es un archivo tabular (Fase 18B): una tabla copiada de
+         *     SQL Server o una tabla de un PDF. Decisión del sistema; no hay nada que elegir.
+         */
+        SourceOrigin: {
+            /** Analyzed Together */
+            analyzed_together?: string[];
+            /** Captured At */
+            captured_at?: string | null;
+            /** Database */
+            database?: string | null;
+            /** Excluded Columns */
+            excluded_columns?: components["schemas"]["ExcludedColumn"][];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "sqlserver" | "pdf";
+            /** Omitted */
+            omitted?: components["schemas"]["OmittedSource"][];
+            /** Pages */
+            pages?: number[];
+            /**
+             * Rule
+             * @enum {string}
+             */
+            rule: "sqlserver-selection-v1" | "pdf-selection-v1";
+            /** Server */
+            server?: string | null;
+            /** Table */
+            table: string;
+        };
+        /**
+         * SourceReading
+         * @description Cómo se leyó el original: codificación, separador y valores regionales. Se guarda en
+         *     los metadatos de la tabla leída (no es un artefacto aparte).
+         */
+        SourceReading: {
+            /** Convention */
+            convention?: ("decimal_comma" | "decimal_point_grouped") | null;
+            /** Converted */
+            converted?: components["schemas"]["ConvertedColumn"][];
+            /** Encoding */
+            encoding?: ("utf-8-sig" | "cp1252") | null;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "csv" | "xlsx" | "pdf";
+            /** Kept As Text */
+            kept_as_text?: components["schemas"]["KeptColumn"][];
+            /**
+             * Rule
+             * @default regional-values-v1
+             * @constant
+             */
+            rule: "regional-values-v1";
+            /** Separator */
+            separator?: string | null;
+        };
+        /**
+         * SourceReview
+         * @description Lectura del archivo y cambios de estructura de una versión (GET /versions/{id}/reading).
+         *     `reading` es None en versiones leídas antes de la Fase 18; `structure`, si no hay una
+         *     versión anterior comparable.
+         */
+        SourceReview: {
+            origin?: components["schemas"]["SourceOrigin"] | null;
+            reading: components["schemas"]["SourceReading"] | null;
+            structure: components["schemas"]["StructureComparison"] | null;
+        };
+        /**
+         * SqlServerConnection
+         * @description Datos de conexión de un solo uso (Fase 18B). La contraseña se usa para copiar las tablas
+         *     y se descarta: no se guarda, no entra en el plan ni en la huella de idempotencia.
+         */
+        SqlServerConnection: {
+            /** Database */
+            database: string;
+            /**
+             * Password
+             * Format: password
+             */
+            password: string;
+            /**
+             * Port
+             * @default 1433
+             */
+            port: number;
+            /** Server */
+            server: string;
+            /** User */
+            user: string;
+        };
         /** Stage */
         Stage: {
             /** Detail */
@@ -2931,6 +3165,27 @@ export interface components {
             state: "pending" | "queued" | "running" | "done" | "failed" | "skipped";
             /** Title */
             title: string;
+        };
+        /**
+         * StructureComparison
+         * @description Cambios de columnas respecto de la versión anterior del mismo archivo (Fase 18).
+         *     Sólo se informa: no se renombra ni se mapea nada.
+         */
+        StructureComparison: {
+            /** Changes */
+            changes: components["schemas"]["ColumnChange"][];
+            /** Previous Version Id */
+            previous_version_id: string;
+            /** Previous Version Number */
+            previous_version_number: number;
+            /**
+             * Rule
+             * @default structure-comparison-v1
+             * @constant
+             */
+            rule: "structure-comparison-v1";
+            /** Unchanged */
+            unchanged: number;
         };
         /**
          * TimeAxis
@@ -3069,6 +3324,7 @@ export interface components {
             row_count: number | null;
             /** Sha256 */
             sha256: string;
+            source_origin?: components["schemas"]["SourceOrigin"] | null;
             source_selection?: components["schemas"]["XlsxSelection"] | null;
             /**
              * State
@@ -3084,10 +3340,24 @@ export interface components {
             table: string | null;
         };
         /**
+         * XlsxChoice
+         * @description Una tabla del libro que `xlsx-selection-v2` analiza (con su fila de cabecera).
+         */
+        XlsxChoice: {
+            /** Header Row */
+            header_row: number;
+            /** Sheet */
+            sheet: string;
+            /** Table */
+            table: string | null;
+        };
+        /**
          * XlsxInspection
          * @description Hojas y tablas del libro y vista previa de la selección, antes de importar.
          */
         XlsxInspection: {
+            /** Additional */
+            additional?: components["schemas"]["XlsxChoice"][];
             /** Columns */
             columns: string[];
             /** Header Row */
@@ -3119,18 +3389,22 @@ export interface components {
         /**
          * XlsxSelection
          * @description Decisión automática del sistema (Fase 13B, regla `xlsx-selection-v1`): hoja o tabla
-         *     importada, fila de cabecera y lo que quedó fuera.
+         *     importada, fila de cabecera y lo que quedó fuera. Desde la Fase 18 (`xlsx-selection-v2`)
+         *     las demás tablas con datos del libro se analizan como versiones propias de la misma carga
+         *     (`analyzed_together`); `omitted` sólo lista lo que no se analiza.
          */
         XlsxSelection: {
+            /** Analyzed Together */
+            analyzed_together?: components["schemas"]["XlsxCandidate"][];
             /** Header Row */
             header_row: number;
             /** Omitted */
             omitted: components["schemas"]["XlsxCandidate"][];
             /**
              * Rule
-             * @constant
+             * @enum {string}
              */
-            rule: "xlsx-selection-v1";
+            rule: "xlsx-selection-v1" | "xlsx-selection-v2";
             /** Sheet */
             sheet: string;
             /** Table */
@@ -5516,6 +5790,264 @@ export interface operations {
             };
         };
     };
+    uploadPdf: {
+        parameters: {
+            query: {
+                file_name: string;
+            };
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/pdf": Blob;
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    importSqlServer: {
+        parameters: {
+            query?: never;
+            header: {
+                "Idempotency-Key": string;
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                project_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SqlServerConnection"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VersionResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     uploadXlsx: {
         parameters: {
             query: {
@@ -7535,6 +8067,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Progress"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getSourceReview: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SourceReview"];
                 };
             };
             /** @description Bad Request */
