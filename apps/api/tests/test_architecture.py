@@ -237,6 +237,7 @@ def test_delivery_only_reorders_published_results() -> None:
         "dataflow.modules.analytics.contracts",
         "dataflow.modules.comprehension.contracts",  # Fase 19: entendimiento del negocio
         "dataflow.modules.copilot.contracts",
+        "dataflow.modules.exploration.contracts",  # Fase 20: exploración guiada
         "dataflow.modules.ingestion.contracts",  # Fase 18: lectura y cambios de estructura
         "dataflow.modules.investigation.contracts",
         "dataflow.modules.quality.contracts",

@@ -530,6 +530,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/versions/{version_id}/exploration": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Exploration
+         * @description Consultas propuestas (reglas e IA), su validación, resultados exactos y relevancia.
+         */
+        get: operations["getExploration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/versions/{version_id}/export.csv": {
         parameters: {
             query?: never;
@@ -1091,7 +1111,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis" | "investigation" | "comprehension";
+            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis" | "investigation" | "comprehension" | "exploration";
             /** Logical Content Sha256 */
             logical_content_sha256: string | null;
             /**
@@ -1884,7 +1904,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -1939,7 +1959,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -1963,6 +1983,190 @@ export interface components {
              * Format: uuid
              */
             version_id: string;
+        };
+        /** Exploration */
+        Exploration: {
+            /** Ai Reason */
+            ai_reason?: string | null;
+            /**
+             * Ai State
+             * @enum {string}
+             */
+            ai_state: "ready" | "unavailable" | "failed";
+            /** Calls */
+            calls?: {
+                [key: string]: unknown;
+            }[];
+            /** Excluded */
+            excluded?: string[];
+            /** Limitations */
+            limitations: string[];
+            limits: components["schemas"]["ExplorationLimits"];
+            /**
+             * Operation
+             * @default exploration.explore@1
+             * @constant
+             */
+            operation: "exploration.explore@1";
+            /** Proposals */
+            proposals: components["schemas"]["ExploreProposal"][];
+            /** Results */
+            results: components["schemas"]["ExploreResult"][];
+            /**
+             * Rules Version
+             * @default explore-v1
+             * @constant
+             */
+            rules_version: "explore-v1";
+            scope: components["schemas"]["ExplorationScope"];
+        };
+        /** ExplorationLimits */
+        ExplorationLimits: {
+            /**
+             * Ai Rows
+             * @default 100
+             */
+            ai_rows: number;
+            /**
+             * Max Ai Calls
+             * @default 2
+             */
+            max_ai_calls: number;
+            /**
+             * Max Ai Proposals
+             * @default 12
+             */
+            max_ai_proposals: number;
+            /**
+             * Max Queries
+             * @default 20
+             */
+            max_queries: number;
+        };
+        /** ExplorationScope */
+        ExplorationScope: {
+            /** Comprehension Sha256 */
+            comprehension_sha256: string;
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            /** Table Sha256 */
+            table_sha256: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
+        /** ExplorationView */
+        ExplorationView: {
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            exploration?: components["schemas"]["Exploration"] | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "ready" | "failed";
+        };
+        /** ExploreFigure */
+        ExploreFigure: {
+            /** Evidence Id */
+            evidence_id: string;
+            /** Label */
+            label: string;
+            /** Value */
+            value: string | null;
+        };
+        /** ExploreProposal */
+        ExploreProposal: {
+            /** Key */
+            key?: string | null;
+            /** Motive */
+            motive: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "rule" | "ai";
+            /** Query */
+            query: {
+                [key: string]: unknown;
+            };
+            /** Reason */
+            reason?: string | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "accepted" | "rejected";
+        };
+        /**
+         * ExploreQuery
+         * @description Una consulta del lenguaje cerrado. Columnas por nombre exacto de la tabla publicada.
+         */
+        ExploreQuery: {
+            /** Aggregation */
+            aggregation?: ("sum" | "mean" | "median" | "count") | null;
+            /** Dimensions */
+            dimensions?: string[];
+            /** Filter Column */
+            filter_column?: string | null;
+            /** Filter Value */
+            filter_value?: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "aggregate" | "crosstab" | "ratio" | "top" | "correlation_by_group";
+            /** Limit */
+            limit?: number | null;
+            /** Measure */
+            measure?: string | null;
+            /** Measure B */
+            measure_b?: string | null;
+        };
+        /** ExploreResult */
+        ExploreResult: {
+            /** Columns */
+            columns: string[];
+            /** Covered Rows */
+            covered_rows: number;
+            /** Judged By */
+            judged_by?: ("rules" | "ai") | null;
+            /** Key */
+            key: string;
+            /** Method */
+            method: string;
+            query: components["schemas"]["ExploreQuery"];
+            /** Reason */
+            reason?: string | null;
+            /** Relevant */
+            relevant?: boolean | null;
+            /** Rows */
+            rows: components["schemas"]["ExploreRow"][];
+            /** Title */
+            title: string;
+            /** Total Groups */
+            total_groups: number;
+            /** Truncated */
+            truncated: boolean;
+        };
+        /** ExploreRow */
+        ExploreRow: {
+            /** Figures */
+            figures: components["schemas"]["ExploreFigure"][];
+            /** Groups */
+            groups: string[];
+            /** Rows */
+            rows: number;
         };
         /** FeedbackItem */
         FeedbackItem: {
@@ -3417,7 +3621,7 @@ export interface components {
              * Id
              * @enum {string}
              */
-            id: "analysis" | "comprehension" | "investigation" | "report";
+            id: "analysis" | "comprehension" | "exploration" | "investigation" | "report";
             /**
              * State
              * @enum {string}
@@ -7462,6 +7666,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExecutionResponse"][];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getExploration: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplorationView"];
                 };
             };
             /** @description Bad Request */

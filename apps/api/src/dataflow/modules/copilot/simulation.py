@@ -66,6 +66,62 @@ def comprehension(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def exploration_queries(context: dict[str, Any]) -> dict[str, Any]:
+    """Una consulta válida (promedio de la primera medida por la primera dimensión), una suma de
+    una medida no aditiva si la hay (para mostrar el rechazo) y una columna inventada."""
+    columns = context["columnas"]
+    measures = [plain(c["columna"]) for c in columns if c["tipo"] == "medida"]
+    additive = {plain(c["columna"]) for c in columns if c.get("aditiva")}
+    dimensions = [plain(c["columna"]) for c in columns if c["tipo"] == "dimension"]
+    found: list[dict[str, Any]] = []
+    if measures and dimensions:
+        found.append(
+            {
+                "tipo": "aggregate",
+                "medida": measures[0],
+                "dimensiones": [dimensions[-1]],
+                "agregacion": "mean",
+                "motivo": f"Cómo varía el promedio de {measures[0]} según {dimensions[-1]}.",
+            }
+        )
+        flat = [m for m in measures if m not in additive]
+        if flat:
+            found.append(
+                {
+                    "tipo": "aggregate",
+                    "medida": flat[0],
+                    "dimensiones": [dimensions[0]],
+                    "agregacion": "sum",
+                    "motivo": "Sumar una medida que no es aditiva.",
+                }
+            )
+    found.append(
+        {
+            "tipo": "aggregate",
+            "dimensiones": ["Columna inventada"],
+            "agregacion": "count",
+            "motivo": "Una columna que no existe.",
+        }
+    )
+    return {"consultas": found}
+
+
+def relevance(context: dict[str, Any]) -> dict[str, Any]:
+    """El primer resultado es relevante; los demás no."""
+    return {
+        "juicios": [
+            {
+                "clave": item["clave"],
+                "relevante": index == 0,
+                "motivo": "El reparto entre grupos es desigual."
+                if index == 0
+                else "Sin diferencias destacables entre grupos.",
+            }
+            for index, item in enumerate(context["resultados"])
+        ]
+    }
+
+
 def proposals(context: dict[str, Any]) -> dict[str, Any]:
     dimensions = [plain(name) for name in context["dimensiones"]]
     done = set(context["done"])
@@ -104,4 +160,8 @@ def respond(task: str, context: dict[str, Any], request: str) -> dict[str, Any]:
         return proposals(context)
     if task == "business_comprehension":
         return comprehension(context)
+    if task == "exploration_proposal":
+        return exploration_queries(context)
+    if task == "exploration_relevance":
+        return relevance(context)
     raise ValueError(f"Tarea de IA no simulada: {task}")

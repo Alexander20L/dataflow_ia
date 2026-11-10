@@ -322,3 +322,26 @@ export function useJudgeRelationship(versionId: string) {
       client.setQueryData(["comprehension", versionId], view),
   });
 }
+
+export type ExplorationView = components["schemas"]["ExplorationView"];
+
+// Fase 20: exploración guiada (consultas de reglas e IA, calculadas sobre todas las filas).
+export function useExploration(version?: DatasetVersion) {
+  return useQuery({
+    queryKey: ["exploration", version?.id],
+    enabled: version?.state === "succeeded",
+    queryFn: async ({ signal }) => {
+      const result = await api.GET(
+        "/api/v1/versions/{version_id}/exploration",
+        {
+          signal,
+          params: { path: { version_id: version!.id } },
+        },
+      );
+      if (result.response.status === 404) return null;
+      return requireData(result);
+    },
+    refetchInterval: (q) =>
+      ["queued", "running"].includes(q.state.data?.state ?? "") ? 1000 : false,
+  });
+}

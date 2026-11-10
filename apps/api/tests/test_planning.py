@@ -197,6 +197,7 @@ def test_save_reload_and_execute_exact_table_after_default_changes(
     assert replay.status_code == 202 and replay.json()["id"] == run["id"]
     # Encolar referencia la revisión guardada: 2 planes de importación + 2 revisiones de usuario
     # + 2 planes internos de investigación (Fase 16) y 2 de comprensión (Fase 19), uno por carga.
+    # La exploración (Fase 20) se encola al publicarse la comprensión: aquí no ha corrido.
     assert db.scalar(select(func.count()).select_from(PlanRecord)) == 8
     assert db.scalar(select(func.count()).select_from(PlanBindingRecord)) == 2
     assert make_runner(db, objects).run_once()

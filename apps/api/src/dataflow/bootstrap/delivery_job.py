@@ -30,6 +30,7 @@ from dataflow.modules.executions.public import (
     StepInput,
     StepResult,
 )
+from dataflow.modules.exploration.contracts import Exploration
 from dataflow.modules.ingestion.contracts import SourceReview
 from dataflow.modules.investigation.contracts import Investigation
 from dataflow.modules.projects.public import ProjectPermissions
@@ -197,8 +198,23 @@ class ReportStep:
     output_kind: ArtifactKind = "report_pdf"
     transforms_data = False
 
-    def __init__(self, objects: ObjectStore) -> None:
-        self.objects = objects
+    def __init__(self, objects: ObjectStore, executions: Executions) -> None:
+        self.objects, self.executions = objects, executions
+
+    def exploration(self, lease: Lease) -> tuple[Exploration, str] | None:
+        """Fase 20: la exploración terminada de la versión (se reclama antes que el informe)."""
+        for run in self.executions.for_version(lease.owner_id, lease.version_id):
+            if run.kind == "exploration" and run.state == "succeeded":
+                artifact = next(
+                    a
+                    for a in self.executions.artifacts(lease.owner_id, run.id)
+                    if a.kind == "exploration"
+                )
+                return (
+                    Exploration.model_validate_json(self.objects.read(artifact.content)),
+                    artifact.content.sha256,
+                )
+        return None
 
     def compute(
         self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
@@ -222,6 +238,7 @@ class ReportStep:
             if given.get("quality")
             else None
         )
+        explored = self.exploration(lease)
         document = build_report(
             ReportSource(
                 project_id=lease.execution.project_id,
@@ -233,6 +250,7 @@ class ReportStep:
                 investigation_execution_id=investigation.scope.execution_id,
                 investigation_sha256=source.content.sha256,
                 quality_sha256=str(given["quality"]["sha256"]) if given.get("quality") else None,
+                exploration_sha256=explored[1] if explored else None,
             ),
             analysis,
             investigation,
@@ -242,6 +260,7 @@ class ReportStep:
             Comprehension.model_validate_json(self.objects.read(reference(given["comprehension"])))
             if given.get("comprehension")
             else None,
+            explored[0] if explored else None,
         )
         prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
         content = self.objects.put(f"{prefix}/report.pdf", render_pdf(document))

@@ -777,7 +777,8 @@
               "overview_audit",
               "automatic_analysis",
               "investigation",
-              "comprehension"
+              "comprehension",
+              "exploration"
             ],
             "title": "Kind",
             "type": "string"
@@ -2901,7 +2902,8 @@
               "overview_audit",
               "investigation",
               "automatic_report",
-              "comprehension"
+              "comprehension",
+              "exploration"
             ],
             "title": "Kind",
             "type": "string"
@@ -3074,7 +3076,8 @@
               "overview_audit",
               "investigation",
               "automatic_report",
-              "comprehension"
+              "comprehension",
+              "exploration"
             ],
             "title": "Kind",
             "type": "string"
@@ -3149,6 +3152,529 @@
           "finished_at"
         ],
         "title": "ExecutionResponse",
+        "type": "object"
+      },
+      "Exploration": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Reason"
+          },
+          "ai_state": {
+            "enum": [
+              "ready",
+              "unavailable",
+              "failed"
+            ],
+            "title": "Ai State",
+            "type": "string"
+          },
+          "calls": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Calls",
+            "type": "array"
+          },
+          "excluded": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Excluded",
+            "type": "array"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "limits": {
+            "$ref": "#/components/schemas/ExplorationLimits"
+          },
+          "operation": {
+            "const": "exploration.explore@1",
+            "default": "exploration.explore@1",
+            "title": "Operation",
+            "type": "string"
+          },
+          "proposals": {
+            "items": {
+              "$ref": "#/components/schemas/ExploreProposal"
+            },
+            "title": "Proposals",
+            "type": "array"
+          },
+          "results": {
+            "items": {
+              "$ref": "#/components/schemas/ExploreResult"
+            },
+            "title": "Results",
+            "type": "array"
+          },
+          "rules_version": {
+            "const": "explore-v1",
+            "default": "explore-v1",
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ExplorationScope"
+          }
+        },
+        "required": [
+          "scope",
+          "limits",
+          "ai_state",
+          "proposals",
+          "results",
+          "limitations"
+        ],
+        "title": "Exploration",
+        "type": "object"
+      },
+      "ExplorationLimits": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_rows": {
+            "default": 100,
+            "maximum": 100.0,
+            "minimum": 1.0,
+            "title": "Ai Rows",
+            "type": "integer"
+          },
+          "max_ai_calls": {
+            "default": 2,
+            "maximum": 4.0,
+            "minimum": 0.0,
+            "title": "Max Ai Calls",
+            "type": "integer"
+          },
+          "max_ai_proposals": {
+            "default": 12,
+            "maximum": 20.0,
+            "minimum": 0.0,
+            "title": "Max Ai Proposals",
+            "type": "integer"
+          },
+          "max_queries": {
+            "default": 20,
+            "maximum": 40.0,
+            "minimum": 1.0,
+            "title": "Max Queries",
+            "type": "integer"
+          }
+        },
+        "title": "ExplorationLimits",
+        "type": "object"
+      },
+      "ExplorationScope": {
+        "additionalProperties": false,
+        "properties": {
+          "comprehension_sha256": {
+            "title": "Comprehension Sha256",
+            "type": "string"
+          },
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "table_sha256": {
+            "title": "Table Sha256",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "execution_id",
+          "version_id",
+          "comprehension_sha256",
+          "table_sha256"
+        ],
+        "title": "ExplorationScope",
+        "type": "object"
+      },
+      "ExplorationView": {
+        "additionalProperties": false,
+        "properties": {
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "exploration": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Exploration"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "ready",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "execution_id"
+        ],
+        "title": "ExplorationView",
+        "type": "object"
+      },
+      "ExploreFigure": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "label",
+          "value",
+          "evidence_id"
+        ],
+        "title": "ExploreFigure",
+        "type": "object"
+      },
+      "ExploreProposal": {
+        "additionalProperties": false,
+        "properties": {
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "motive": {
+            "title": "Motive",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "rule",
+              "ai"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "query": {
+            "additionalProperties": true,
+            "title": "Query",
+            "type": "object"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "status": {
+            "enum": [
+              "accepted",
+              "rejected"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "origin",
+          "query",
+          "motive",
+          "status"
+        ],
+        "title": "ExploreProposal",
+        "type": "object"
+      },
+      "ExploreQuery": {
+        "additionalProperties": false,
+        "description": "Una consulta del lenguaje cerrado. Columnas por nombre exacto de la tabla publicada.",
+        "properties": {
+          "aggregation": {
+            "anyOf": [
+              {
+                "enum": [
+                  "sum",
+                  "mean",
+                  "median",
+                  "count"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aggregation"
+          },
+          "dimensions": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 2,
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "filter_column": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter Column"
+          },
+          "filter_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Filter Value"
+          },
+          "kind": {
+            "enum": [
+              "aggregate",
+              "crosstab",
+              "ratio",
+              "top",
+              "correlation_by_group"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "limit": {
+            "anyOf": [
+              {
+                "maximum": 20.0,
+                "minimum": 1.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Limit"
+          },
+          "measure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measure"
+          },
+          "measure_b": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measure B"
+          }
+        },
+        "required": [
+          "kind"
+        ],
+        "title": "ExploreQuery",
+        "type": "object"
+      },
+      "ExploreResult": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "covered_rows": {
+            "title": "Covered Rows",
+            "type": "integer"
+          },
+          "judged_by": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rules",
+                  "ai"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Judged By"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "query": {
+            "$ref": "#/components/schemas/ExploreQuery"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "relevant": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevant"
+          },
+          "rows": {
+            "items": {
+              "$ref": "#/components/schemas/ExploreRow"
+            },
+            "title": "Rows",
+            "type": "array"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "total_groups": {
+            "title": "Total Groups",
+            "type": "integer"
+          },
+          "truncated": {
+            "title": "Truncated",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "key",
+          "query",
+          "title",
+          "method",
+          "columns",
+          "rows",
+          "total_groups",
+          "truncated",
+          "covered_rows"
+        ],
+        "title": "ExploreResult",
+        "type": "object"
+      },
+      "ExploreRow": {
+        "additionalProperties": false,
+        "properties": {
+          "figures": {
+            "items": {
+              "$ref": "#/components/schemas/ExploreFigure"
+            },
+            "title": "Figures",
+            "type": "array"
+          },
+          "groups": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Groups",
+            "type": "array"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "groups",
+          "rows",
+          "figures"
+        ],
+        "title": "ExploreRow",
         "type": "object"
       },
       "FeedbackItem": {
@@ -6967,6 +7493,7 @@
             "enum": [
               "analysis",
               "comprehension",
+              "exploration",
               "investigation",
               "report"
             ],
@@ -7721,7 +8248,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.26.0"
+    "version": "0.27.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -13136,6 +13663,171 @@
         "summary": "List Executions",
         "tags": [
           "Executions"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/exploration": {
+      "get": {
+        "description": "Consultas propuestas (reglas e IA), su validación, resultados exactos y relevancia.",
+        "operationId": "getExploration",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplorationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Exploration",
+        "tags": [
+          "Exploración guiada"
         ]
       }
     },

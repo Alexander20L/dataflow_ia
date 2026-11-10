@@ -60,6 +60,8 @@ class ReportSource(DeliveryModel):
     investigation_execution_id: UUID
     investigation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
     quality_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    # Fase 20: exploración guiada incluida (la terminada cuando se generó el informe).
+    exploration_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class ReportDocument(DeliveryModel):
@@ -86,7 +88,7 @@ class ReportView(BaseModel):
     evidence_count: int | None = None
 
 
-StageId = Literal["analysis", "comprehension", "investigation", "report"]
+StageId = Literal["analysis", "comprehension", "exploration", "investigation", "report"]
 StageState = Literal["pending", "queued", "running", "done", "failed", "skipped"]
 
 

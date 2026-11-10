@@ -5042,3 +5042,35 @@ tbody tr:hover {
   background: var(--surface-secondary);
   font-weight: 600;
 }
+
+/* Fase 20: exploración guiada. */
+.exploration-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 360px), 1fr));
+  gap: 14px;
+  margin-top: 12px;
+}
+.exploration-result {
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  min-width: 0;
+  overflow-x: auto;
+}
+.exploration-result header {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: flex-start;
+}
+.exploration-result h3 {
+  margin: 0;
+  font-size: 0.95rem;
+}
+.comprehension details {
+  margin-top: 12px;
+}
+.comprehension details ul {
+  padding-left: 1.2rem;
+}
