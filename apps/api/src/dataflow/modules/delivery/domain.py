@@ -29,6 +29,7 @@ from dataflow.modules.delivery.contracts import (
     StageId,
     StageState,
 )
+from dataflow.modules.ingestion.contracts import SourceOrigin, SourceReview
 from dataflow.modules.investigation.contracts import Investigation, Proposal
 from dataflow.modules.quality.contracts import QualityReport
 
@@ -368,12 +369,94 @@ def evidence_section(
     )
 
 
+ENCODINGS = {"utf-8-sig": "UTF-8", "cp1252": "Windows-1252 (ANSI)"}
+SEPARATORS = {",": "coma", ";": "punto y coma", "	": "tabulador"}
+
+
+def origin_facts(origin: SourceOrigin | None) -> list[str]:
+    """Fase 18B: de qué tabla de SQL Server o de qué PDF sale la versión."""
+    if origin is None:
+        return []
+    if origin.kind == "sqlserver":
+        facts = [
+            f"Copia de la tabla {origin.table} de la base {origin.database} en {origin.server}, "
+            f"hecha el {origin.captured_at} (la contraseña no se guardó)."
+        ]
+        facts.extend(f"Columna {c.column} no copiada: {c.reason}" for c in origin.excluded_columns)
+    else:
+        facts = [f"{origin.table} del PDF."]
+    if origin.analyzed_together:
+        facts.append("Analizadas aparte: " + ", ".join(origin.analyzed_together) + ".")
+    return facts
+
+
+def reading_section(review: SourceReview | None) -> ReportSection | None:
+    """Fase 18: cómo se leyó el archivo (sólo si hay decisión de lectura guardada)."""
+    reading = review.reading if review else None
+    if reading is None:
+        return None
+    facts: list[str] = origin_facts(review.origin if review else None)
+    if reading.encoding:
+        facts.append(f"Codificación: {ENCODINGS.get(reading.encoding, reading.encoding)}.")
+    if reading.separator:
+        facts.append(f"Separador: {SEPARATORS.get(reading.separator, reading.separator)}.")
+    blocks = [ReportBlock(paragraphs=facts)] if facts else []
+    if reading.converted:
+        blocks.append(
+            ReportBlock(
+                title="Valores regionales leídos",
+                table=ReportTable(
+                    headers=["Columna", "Lectura", "Valores"],
+                    rows=[[c.column, c.explanation, str(c.values)] for c in reading.converted],
+                ),
+            )
+        )
+    if reading.kept_as_text:
+        blocks.append(
+            ReportBlock(
+                title="Columnas que se dejaron como texto",
+                paragraphs=[f"{c.column}: {c.reason}" for c in reading.kept_as_text],
+            )
+        )
+    if not reading.converted and not reading.kept_as_text:
+        blocks.append(ReportBlock(paragraphs=["No hubo valores regionales que interpretar."]))
+    return ReportSection(
+        id="reading",
+        title="Lectura del archivo",
+        intro=(
+            "Regla regional-values-v1: sólo se reescriben columnas cuyos valores admiten una "
+            "única lectura; el original no cambia."
+        ),
+        blocks=blocks,
+    )
+
+
+def structure_section(review: SourceReview | None) -> ReportSection | None:
+    """Fase 18: columnas que cambiaron respecto de la versión anterior del mismo archivo."""
+    structure = review.structure if review else None
+    if structure is None:
+        return None
+    lines = [change.description for change in structure.changes] or [
+        "Mismas columnas, tipos y papeles que la versión anterior."
+    ]
+    return ReportSection(
+        id="structure",
+        title=f"Cambios respecto de la versión {structure.previous_version_number}",
+        intro=(
+            f"{structure.unchanged} columnas sin cambios. Sólo se informa: no se renombra ni "
+            "se emparejan columnas."
+        ),
+        blocks=[ReportBlock(paragraphs=lines)],
+    )
+
+
 def build_report(
     source: ReportSource,
     analysis: AutomaticAnalysis,
     investigation: Investigation,
     quality: QualityReport | None,
     generated_at: datetime,
+    review: SourceReview | None = None,
 ) -> ReportDocument:
     identifiers = evidence_ids(analysis, investigation)
     sections = [
@@ -387,6 +470,8 @@ def build_report(
             or [ReportBlock(paragraphs=["Sin hallazgos."])],
         ),
         investigation_section(investigation),
+        reading_section(review),
+        structure_section(review),
         quality_section(quality),
         omitted_section(analysis),
         limitations_section(analysis, investigation),

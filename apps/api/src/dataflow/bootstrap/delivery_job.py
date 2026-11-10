@@ -29,6 +29,7 @@ from dataflow.modules.executions.public import (
     StepInput,
     StepResult,
 )
+from dataflow.modules.ingestion.contracts import SourceReview
 from dataflow.modules.investigation.contracts import Investigation
 from dataflow.modules.projects.public import ProjectPermissions
 from dataflow.modules.quality.contracts import QualityReport
@@ -53,8 +54,10 @@ def enqueue_report(
     lease: Lease,
     investigation: Artifact,
     config: ProcessingConfig,
+    review: SourceReview | None = None,
 ) -> None:
-    """Encola el informe de una investigación recién publicada (misma transacción)."""
+    """Encola el informe de una investigación recién publicada (misma transacción). `review`
+    (Fase 18): lectura del archivo y cambios de estructura, fijados en el plan."""
     run = lease.execution
     assert run.plan and run.input_artifact_id
     analysis = executions.artifact(lease.owner_id, run.input_artifact_id)
@@ -76,6 +79,7 @@ def enqueue_report(
             "analysis_sha256": analysis.content.sha256,
             "quality_sha256": quality.content.sha256 if quality else None,
             "operation": f"{STEP}@1",
+            **({"review": review.model_dump(mode="json")} if review else {}),
         },
     )
     if executions.find_request(
@@ -97,6 +101,7 @@ def enqueue_report(
             "analysis": stored(analysis),
             "analysis_execution_id": str(analysis.execution_id),
             "quality": stored(quality) if quality else None,
+            **({"review": review.model_dump(mode="json")} if review else {}),
         },
         "steps": [
             {
@@ -219,6 +224,7 @@ class ReportStep:
             investigation,
             quality,
             datetime.now(UTC).replace(microsecond=0),
+            SourceReview.model_validate(given["review"]) if given.get("review") else None,
         )
         prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
         content = self.objects.put(f"{prefix}/report.pdf", render_pdf(document))

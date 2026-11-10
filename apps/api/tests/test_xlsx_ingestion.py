@@ -276,7 +276,7 @@ def test_failed_workbook_never_publishes_a_table(
     assert version["state"] == "failed" and version["error_code"] == "XLSX_MERGED_CELLS"
 
 
-# --- Fase 13B: elección automática (xlsx-selection-v1) ------------------------------------
+# --- Fase 13B: elección automática (xlsx-selection-v1; v2 desde la Fase 18) ------------------
 
 
 def automatic(sheets: list[Sheet]) -> tuple[str, str | None, int, list[tuple[str, str | None]]]:
@@ -343,12 +343,15 @@ def test_xlsx_upload_without_sheet_lets_the_system_choose_and_records_it(
         content=book,
         headers=xlsx_headers(headers),
     ).json()
+    # Desde la Fase 18 decide xlsx-selection-v2 (la principal es la misma que en v1; la
+    # portada de una sola celda no se analiza aparte).
     expected = {
-        "rule": "xlsx-selection-v1",
+        "rule": "xlsx-selection-v2",
         "sheet": "Ventas",
         "table": None,
         "header_row": 2,
         "omitted": [{"sheet": "Portada", "table": None}],
+        "analyzed_together": [],
     }
     assert preview["selection"] == expected and preview["columns"] == ["id", "importe"]
     key = str(uuid4())

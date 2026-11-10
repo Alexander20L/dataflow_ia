@@ -123,7 +123,8 @@ def test_end_to_end_csv_integrity_quality_versions_and_reproducibility(
         (b"id,id\n1,2\n", "CSV_DUPLICATE_HEADERS"),
         (b"id,nombre\n1\n", "CSV_SHAPE"),
         (b'id,nombre\n1,"sin cierre\n', "CSV_MALFORMED"),
-        (b"id,nombre\n1,\xff\n", "CSV_ENCODING"),
+        # Ni UTF-8 ni Windows-1252 (0x81 no está definido en Windows-1252; Fase 18).
+        (b"id,nombre\n1,\xff\x81\n", "CSV_ENCODING"),
         (b"id,nombre\n", "CSV_NO_ROWS"),
         (b"id\n\x00\n", "CSV_BINARY"),
     ],

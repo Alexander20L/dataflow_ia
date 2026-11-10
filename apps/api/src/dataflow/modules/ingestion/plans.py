@@ -5,7 +5,13 @@ from uuid import UUID, uuid4
 
 from dataflow.modules.datasets.contracts import DatasetVersion
 from dataflow.modules.executions.public import Artifact, PlanRevision, ProcessingConfig
-from dataflow.modules.ingestion.contracts import ReadXlsxParameters, XlsxSelection
+from dataflow.modules.ingestion.contracts import (
+    ReadPdfParameters,
+    ReadXlsxParameters,
+    ReadXlsxV2Parameters,
+    SourceOrigin,
+    XlsxSelection,
+)
 from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.canonical import digest
 
@@ -41,7 +47,18 @@ def analysis_fingerprint(
     return digest("analysis_request", payload)
 
 
-def resolve_separator(content: bytes, requested: str) -> str:
+def resolve_encoding(content: bytes) -> Literal["utf-8-sig", "cp1252"]:
+    """Fase 18: UTF-8 (con o sin BOM) y, si no lo es, Windows-1252 (el «ANSI» con que Excel
+    guarda CSV en Windows). Determinista sobre los bytes; queda fijada en el plan. Si tampoco
+    es Windows-1252, el worker falla con CSV_ENCODING."""
+    try:
+        content.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        return "cp1252"
+    return "utf-8-sig"
+
+
+def resolve_separator(content: bytes, requested: str, encoding: str = "utf-8-sig") -> str:
     if requested == "tab":
         return "\t"
     if requested != "auto":
@@ -49,7 +66,7 @@ def resolve_separator(content: bytes, requested: str) -> str:
     try:
         return (
             csv.Sniffer()
-            .sniff(content.decode("utf-8-sig", errors="replace")[:65536], delimiters=",;\t")
+            .sniff(content.decode(encoding, errors="replace")[:65536], delimiters=",;\t")
             .delimiter
         )
     except csv.Error:
@@ -67,7 +84,12 @@ def build_plan(
     semantic_ref: SemanticReference | None = None,
     xlsx: ReadXlsxParameters | None = None,
     source_selection: XlsxSelection | None = None,
+    encoding: Literal["utf-8-sig", "cp1252"] = "utf-8-sig",
+    pdf: ReadPdfParameters | None = None,
+    source_origin: SourceOrigin | None = None,
 ) -> PlanRevision:
+    # analysis-v13 (Fase 18): lecturas @2 con codificación y valores regionales.
+    regional = config.operation_catalog == "analysis-v13"
     if table:
         input_ref: dict[str, Any] = {
             "kind": "table",
@@ -89,23 +111,34 @@ def build_plan(
         steps = [
             {
                 "id": "read",
-                "operation": "ingestion.read_xlsx",
+                "operation": "ingestion.read_pdf",
                 "version": 1,
                 "input": {"kind": "input", "alias": "source"},
-                "parameters": xlsx.model_dump(mode="json"),
+                "parameters": pdf.model_dump(mode="json"),
+            }
+            if pdf
+            else {
+                "id": "read",
+                "operation": "ingestion.read_xlsx",
+                "version": 2 if regional else 1,
+                "input": {"kind": "input", "alias": "source"},
+                "parameters": (
+                    ReadXlsxV2Parameters(**xlsx.model_dump()) if regional else xlsx
+                ).model_dump(mode="json"),
             }
             if xlsx
             else {
                 "id": "read",
                 "operation": "ingestion.read_csv",
-                "version": 1,
+                "version": 2 if regional else 1,
                 "input": {"kind": "input", "alias": "source"},
                 "parameters": {
                     "requested_separator": "\t"
                     if requested_separator == "tab"
                     else requested_separator,
                     "separator": separator,
-                    "encoding": "utf-8-sig",
+                    "encoding": encoding if regional else "utf-8-sig",
+                    **({"values": "regional-values-v1"} if regional else {}),
                     "strict": True,
                     "empty_cells": "null",
                     "blank_lines": "skip",
@@ -115,7 +148,11 @@ def build_plan(
         step_input = {"kind": "step", "step_id": "read"}
     # analysis-v11 (Fase 14): las cargas nuevas usan la interpretación analítica y la calidad
     # que indica los análisis afectados. Las tablas derivadas conservan profile@1/quality@1.
-    analytical = table is None and config.operation_catalog in {"analysis-v11", "analysis-v12"}
+    analytical = table is None and config.operation_catalog in {
+        "analysis-v11",
+        "analysis-v12",
+        "analysis-v13",
+    }
     if analysis_kind == "profile_quality":
         profile_version = 1
         if table is None:
@@ -155,7 +192,7 @@ def build_plan(
             },
         }
     )
-    if table is None and config.operation_catalog == "analysis-v12":
+    if table is None and config.operation_catalog in {"analysis-v12", "analysis-v13"}:
         # Fase 15: plan analítico automático y hallazgos sobre la misma tabla importada.
         steps.append(
             {
@@ -175,6 +212,8 @@ def build_plan(
     }
     if source_selection is not None:
         content["source_selection"] = source_selection.model_dump(mode="json")
+    if source_origin is not None:
+        content["source_origin"] = source_origin.model_dump(mode="json")
     return PlanRevision(
         uuid4(), uuid4(), 1, content, digest("plan", content), owner, datetime.now(UTC)
     )

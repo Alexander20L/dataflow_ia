@@ -18,6 +18,7 @@ import { useApp } from "@/lib/providers";
 import { AutomaticAnalysisView } from "./automatic-analysis";
 import { AutomaticOverview } from "./automatic-overview";
 import { DeliverySummary } from "./delivery-summary";
+import { SourceReviewPanel } from "./source-review";
 import { InvestigationPanel } from "./investigation";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
@@ -26,6 +27,7 @@ import {
   useAutomaticAnalysis,
   useInvestigation,
   useProgress,
+  useSourceReview,
   useDiagnostic,
   usePreview,
   useUploadFile,
@@ -89,12 +91,13 @@ export function CsvWorkspace({
       : undefined;
     return v.kind === "derived"
       ? `v${v.number} · derivada de ${origin ? `v${origin.number}` : "otra versión"}`
-      : `v${v.number} · ${v.file_name}`;
+      : `v${v.number} · ${v.file_name}${sheetLabel(v)}`;
   };
   const diagnostic = useDiagnostic(version);
   const automatic = useAutomaticAnalysis(version);
   const investigation = useInvestigation(version);
   const progress = useProgress(version);
+  const review = useSourceReview(version);
   if (versions.isPending || loadingOutside)
     return (
       <div className="loading-screen" aria-label="Cargando versiones">
@@ -133,8 +136,8 @@ export function CsvWorkspace({
           <FileSpreadsheet size={40} />
           <h3>Tu primer dataset empieza aquí</h3>
           <p>
-            Sube un CSV en UTF-8 o un libro de Excel (.xlsx) de hasta 5 MB. El
-            sistema comprobará su estructura y preparará tu dashboard
+            Sube un CSV, un libro de Excel (.xlsx) o un PDF con tablas de hasta
+            5 MB. El sistema comprobará su estructura y preparará tu dashboard
             automáticamente.
           </p>
           {!archived && (
@@ -257,6 +260,7 @@ export function CsvWorkspace({
             )}
           </div>
           <SourceSelection version={version} />
+          <SourceOriginNote version={version} />
           {["queued", "processing"].includes(version.state) ? (
             <div className="processing-state" role="status">
               <LoaderCircle className="spin" size={30} />
@@ -316,6 +320,12 @@ export function CsvWorkspace({
                   versionId={version.id}
                   progress={progress.data}
                   analysis={automatic.data}
+                />
+              )}
+              {review.data && (
+                <SourceReviewPanel
+                  key={`review-${version.id}`}
+                  review={review.data}
                 />
               )}
               {automatic.data && (
@@ -448,9 +458,10 @@ export function CsvUpload({
         }}
       >
         <UploadCloud size={25} />
-        <h3>{file?.name ?? "Arrastra tu CSV o Excel aquí"}</h3>
+        <h3>{file?.name ?? "Arrastra tu CSV, Excel o PDF aquí"}</h3>
         <p>
-          CSV UTF-8 o .xlsx · hasta 5 MB · el original se conserva sin cambios
+          CSV, .xlsx o PDF con tablas · hasta 5 MB · el original se conserva sin
+          cambios
         </p>
         <Button
           variant="outline"
@@ -500,33 +511,82 @@ export function CsvUpload({
   );
 }
 
-export const FILE_ACCEPT = `.csv,text/csv,.xlsx,${XLSX_MIME}`;
+export const FILE_ACCEPT = `.csv,text/csv,.xlsx,${XLSX_MIME},.pdf,application/pdf`;
 
 /** Comprobaciones previas comunes al asistente y al espacio de trabajo. */
 export function fileProblem(file: File): string | null {
   const name = file.name.toLowerCase();
   if (/\.(xls|xlsm|xlsb)$/.test(name))
     return "Sólo se admiten libros .xlsx: guarda el archivo como «Libro de Excel (.xlsx)».";
-  if (!name.endsWith(".csv") && !name.endsWith(".xlsx"))
-    return "Selecciona un archivo CSV o un libro de Excel (.xlsx).";
+  if (!/\.(csv|xlsx|pdf)$/.test(name))
+    return "Selecciona un archivo CSV, un libro de Excel (.xlsx) o un PDF con tablas.";
   if (!file.size) return "El archivo está vacío.";
   if (file.size > 5 * 1024 * 1024)
     return "El archivo debe tener como máximo 5 MB.";
   return null;
 }
 
-/** Fase 13B: qué hoja o tabla eligió el sistema en un .xlsx y qué quedó fuera. */
+/** Hoja o tabla de un libro en la lista de versiones (Fase 18: un libro puede dar varias). */
+function sheetLabel(v: DatasetVersion) {
+  if (v.source_origin?.kind === "pdf") return ` · ${v.source_origin.table}`;
+  const selection = v.source_selection;
+  if (!selection || selection.rule !== "xlsx-selection-v2") return "";
+  return selection.table
+    ? ` · tabla ${selection.table}`
+    : ` · hoja ${selection.sheet}`;
+}
+
+/** Fase 18B: tabla copiada de SQL Server o tabla de un PDF, y qué quedó fuera. */
+function SourceOriginNote({ version }: { version: DatasetVersion }) {
+  const origin = version.source_origin;
+  if (!origin) return null;
+  const together = origin.analyzed_together ?? [];
+  const omitted = origin.omitted ?? [];
+  return (
+    <div className="info-banner" role="note" aria-label="Origen de los datos">
+      {origin.kind === "pdf" ? (
+        <FileSpreadsheet size={16} />
+      ) : (
+        <Database size={16} />
+      )}
+      <span>
+        {origin.kind === "sqlserver"
+          ? `Copia de la tabla ${origin.table} de la base ${origin.database} (${origin.server}). La contraseña no se guardó.`
+          : `${origin.table} del PDF.`}
+        {together.length > 0 &&
+          ` También se analizan, como versiones propias: ${together.join(", ")}.`}
+        {omitted.length > 0 &&
+          ` No se importaron: ${omitted.map((o) => `${o.table} (${o.reason})`).join("; ")}`}
+      </span>
+    </div>
+  );
+}
+
+/** Fase 13B: qué hoja o tabla eligió el sistema en un .xlsx y qué quedó fuera. Desde la
+ * Fase 18 las demás tablas con datos se analizan como versiones propias de la misma carga. */
 function SourceSelection({ version }: { version: DatasetVersion }) {
   const selection = version.source_selection;
   if (!selection) return null;
   const describe = (sheet: string, table?: string | null) =>
     table ? `la tabla «${table}» (hoja «${sheet}»)` : `la hoja «${sheet}»`;
+  const together = selection.analyzed_together ?? [];
+  const v2 = selection.rule === "xlsx-selection-v2";
   return (
     <div className="info-banner" role="note" aria-label="Hoja importada">
       <FileSpreadsheet size={16} />
       <span>
         Se importó {describe(selection.sheet, selection.table)}, con la cabecera
         en la fila {selection.header_row}.
+        {together.length > 0 && (
+          <>
+            {" "}
+            Del mismo libro también se analizan, como versiones propias:{" "}
+            {together
+              .map((item) => describe(item.sheet, item.table))
+              .join(", ")}
+            .
+          </>
+        )}
         {selection.omitted.length > 0 && (
           <>
             {" "}
@@ -534,7 +594,9 @@ function SourceSelection({ version }: { version: DatasetVersion }) {
             {selection.omitted
               .map((item) => describe(item.sheet, item.table))
               .join(", ")}
-            . Para analizarlas, guárdalas como un libro aparte.
+            {v2
+              ? " (sin al menos dos columnas con cabecera y dos registros, o protegidas)."
+              : ". Para analizarlas, guárdalas como un libro aparte."}
           </>
         )}
       </span>

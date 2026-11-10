@@ -66,11 +66,14 @@ from dataflow.modules.executions.contracts import (
 from dataflow.modules.executions.infrastructure import SQLExecutionRepository
 from dataflow.modules.ingestion.analytical import IsolatedAnalyzer, PolarsPreview
 from dataflow.modules.ingestion.application import AnalysisService, Analyzer, IngestionService
+from dataflow.modules.ingestion.contracts import SourceReview
 from dataflow.modules.ingestion.executor import (
     ProfileStep,
     QualityRulesStep,
     QualityStep,
     ReadCsvStep,
+    ReadCsvV2Step,
+    ReadPdfStep,
     ReadXlsxStep,
     RulesetSource,
     SourceInputResolver,
@@ -241,6 +244,7 @@ class DatasetPublication:
                 lease,
                 next(a for a in artifacts if a.kind == "investigation"),
                 self.config,
+                self.review(lease),
             )
         elif kind == "table_analysis":
             self.datasets.materialize_derived(
@@ -250,6 +254,14 @@ class DatasetPublication:
             )
         elif kind == "cleaning_apply":
             self.derived(lease, next(a for a in artifacts if a.kind == "table"))
+
+    def review(self, lease: Lease) -> SourceReview | None:
+        """Fase 18: lectura y cambios de estructura de la versión, para el informe. Si no se
+        puede obtener, el informe sale sin esas secciones."""
+        try:
+            return make_ingestion(self.db, self.objects).review(lease.owner_id, lease.version_id)
+        except ApplicationError:
+            return None
 
     def derived(self, lease: Lease, table: Artifact) -> None:
         """Encola perfil y calidad de la versión derivada y la vincula a ese análisis."""
@@ -298,7 +310,10 @@ def make_operations(
     return OperationRegistry(
         {
             "ingestion.read_csv@1": ReadCsvStep(objects, analyzer),
+            "ingestion.read_csv@2": ReadCsvV2Step(objects, analyzer),
             "ingestion.read_xlsx@1": ReadXlsxStep(objects, analyzer),
+            "ingestion.read_xlsx@2": ReadXlsxStep(objects, analyzer),
+            "ingestion.read_pdf@1": ReadPdfStep(objects, analyzer),
             "understanding.profile@1": ProfileStep(objects, analyzer),
             "understanding.profile@2": ProfileStep(objects, analyzer),
             "understanding.profile@3": ProfileStep(objects, analyzer),

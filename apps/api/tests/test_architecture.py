@@ -236,6 +236,7 @@ def test_delivery_only_reorders_published_results() -> None:
     allowed = {
         "dataflow.modules.analytics.contracts",
         "dataflow.modules.copilot.contracts",
+        "dataflow.modules.ingestion.contracts",  # Fase 18: lectura y cambios de estructura
         "dataflow.modules.investigation.contracts",
         "dataflow.modules.quality.contracts",
     }

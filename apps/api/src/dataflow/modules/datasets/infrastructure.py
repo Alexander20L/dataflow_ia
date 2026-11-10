@@ -139,13 +139,16 @@ class SQLDatasetRepository:
         self.db.execute(select(func.pg_advisory_xact_lock(int.from_bytes(key[:8], signed=True))))
 
     def used_bytes(self, owner_id: UUID) -> int:
+        """Bytes de originales; un original compartido por varias versiones (tablas del mismo
+        libro, Fase 18) cuenta una vez."""
+        originals = (
+            select(VersionRecord.content_object_id)
+            .join(DatasetRecord)
+            .where(DatasetRecord.owner_id == owner_id, VersionRecord.kind == "imported")
+        )
         return int(
             self.db.scalar(
-                select(func.sum(ObjectRecord.byte_size))
-                .select_from(VersionRecord)
-                .join(DatasetRecord)
-                .join(ObjectRecord, ObjectRecord.id == VersionRecord.content_object_id)
-                .where(DatasetRecord.owner_id == owner_id, VersionRecord.kind == "imported")
+                select(func.sum(ObjectRecord.byte_size)).where(ObjectRecord.id.in_(originals))
             )
             or 0
         )

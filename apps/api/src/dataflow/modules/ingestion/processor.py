@@ -11,7 +11,22 @@ from typing import Any
 import polars as pl
 from pydantic import TypeAdapter
 
-from dataflow.integrations.sources.xlsx_reader import SELECTION_RULE, Workbook, read_xlsx
+from dataflow.integrations.sources.pdf_reader import read_table as pdf_read_table
+from dataflow.integrations.sources.pdf_reader import select as pdf_select
+from dataflow.integrations.sources.sqlserver_reader import connect, read_database
+from dataflow.integrations.sources.xlsx_reader import SELECTION_RULE_V2, Workbook, read_xlsx
+from dataflow.modules.ingestion.contracts import (
+    ConvertedColumn,
+    ExcludedColumn,
+    KeptColumn,
+    OmittedSource,
+    PdfChoice,
+    PdfSelection,
+    ReadPdfParameters,
+    SnapshotTable,
+    SourceReading,
+    SqlSnapshot,
+)
 from dataflow.modules.ingestion.domain import ENGINE_VERSION
 from dataflow.modules.quality.public import (
     Rule,
@@ -28,8 +43,12 @@ from dataflow.modules.understanding.public import (
     interpret,
     profile_rows,
 )
+from dataflow.platform.csv_export import write_csv
 from dataflow.platform.data_types import DataType
 from dataflow.platform.errors import ApplicationError
+from dataflow.platform.parquet_metadata import READING_KEY
+from dataflow.platform.regional import LABELS as VALUE_LABELS
+from dataflow.platform.regional import read_values
 from dataflow.platform.tabular import Cell, display_cell, frame_types
 
 PREVIEW_ROWS = 20
@@ -37,13 +56,19 @@ RULES: TypeAdapter[list[Rule]] = TypeAdapter(list[Rule])
 
 
 def parse_csv(
-    content: bytes, separator: str, max_rows: int, max_columns: int
+    content: bytes,
+    separator: str,
+    max_rows: int,
+    max_columns: int,
+    encoding: str = "utf-8-sig",
 ) -> tuple[list[str], list[list[str | None]], str]:
     try:
-        text = content.decode("utf-8-sig")
+        text = content.decode(encoding)
     except UnicodeDecodeError as exc:
         raise ApplicationError(
-            "CSV_ENCODING", "Guarda el CSV en UTF-8 antes de volver a subirlo.", 422
+            "CSV_ENCODING",
+            "El CSV no está en UTF-8 ni en Windows-1252; guárdalo en UTF-8 y vuelve a subirlo.",
+            422,
         ) from exc
     if "\x00" in text:
         raise ApplicationError(
@@ -120,11 +145,27 @@ def load_table(
     return frame.columns, [list(row) for row in frame.iter_rows()], types
 
 
-def read(source: Path, output: Path, separator: str, max_rows: int, max_columns: int) -> None:
-    """ingestion.read_csv@1: CSV original → Parquet de texto nullable."""
+def read(
+    source: Path,
+    output: Path,
+    separator: str,
+    max_rows: int,
+    max_columns: int,
+    encoding: str | None = None,
+) -> None:
+    """ingestion.read_csv@1: CSV original → Parquet de texto nullable. Con `encoding`
+    (read_csv@2, Fase 18) se lee con esa codificación y con `regional-values-v1`."""
     content = source.read_bytes()
-    headers, rows, actual_separator = parse_csv(content, separator, max_rows, max_columns)
-    write_table(output, headers, rows)
+    headers, rows, actual_separator = parse_csv(
+        content, separator, max_rows, max_columns, encoding or "utf-8-sig"
+    )
+    if encoding is None:
+        write_table(output, headers, rows)
+    else:
+        reading = regional(headers, rows, "csv", file_convention=True)
+        reading.encoding = encoding  # type: ignore[assignment]
+        reading.separator = actual_separator
+        write_table(output, headers, rows, reading)
     (output / "read.json").write_text(
         json.dumps(
             {
@@ -138,15 +179,62 @@ def read(source: Path, output: Path, separator: str, max_rows: int, max_columns:
     )
 
 
-def write_table(output: Path, headers: list[str], rows: list[list[str | None]]) -> None:
+def regional(
+    headers: list[str], rows: list[list[str | None]], kind: str, file_convention: bool
+) -> SourceReading:
+    """Aplica `regional-values-v1` en su sitio y devuelve la decisión para los metadatos."""
+    result = read_values(rows, file_convention)
+    rows[:] = result.rows
+    return SourceReading(
+        format=kind,
+        convention=result.convention,
+        converted=[
+            ConvertedColumn(
+                column=headers[item.column],
+                kind=item.kind,
+                format=item.format,
+                values=item.values,
+                by_file_convention=item.by_file_convention,
+                explanation=(
+                    f"Leída como {VALUE_LABELS[item.format]}"
+                    + (
+                        " por la convención del resto del archivo"
+                        if item.by_file_convention
+                        else ""
+                    )
+                    + f"; {item.values} valores reescritos en formato canónico."
+                ),
+            )
+            for item in result.converted
+        ],
+        kept_as_text=[
+            KeptColumn(column=headers[item.column], kind=item.kind, reason=item.reason)
+            for item in result.kept
+        ],
+    )
+
+
+def write_table(
+    output: Path,
+    headers: list[str],
+    rows: list[list[str | None]],
+    reading: SourceReading | None = None,
+) -> None:
     frame = pl.DataFrame(rows, schema={name: pl.String for name in headers}, orient="row")
-    frame.write_parquet(output / "data.parquet", compression="zstd", statistics=True)
+    frame.write_parquet(
+        output / "data.parquet",
+        compression="zstd",
+        statistics=True,
+        metadata={READING_KEY: reading.model_dump_json()} if reading else None,
+    )
 
 
 def read_xlsx_table(
     source: Path, output: Path, selection: dict[str, Any], max_rows: int, max_columns: int
 ) -> None:
-    """ingestion.read_xlsx@1: libro original → Parquet de texto nullable (una hoja/tabla)."""
+    """ingestion.read_xlsx@1: libro original → Parquet de texto nullable (una hoja/tabla).
+    Con `values` (read_xlsx@2, Fase 18), los textos regionales se leen con
+    `regional-values-v1` sin convención de archivo (los números nativos ya son canónicos)."""
     content = source.read_bytes()
     result = read_xlsx(
         content,
@@ -156,7 +244,12 @@ def read_xlsx_table(
         max_rows,
         max_columns,
     )
-    write_table(output, result.headers, result.rows)
+    reading = (
+        regional(result.headers, result.rows, "xlsx", file_convention=False)
+        if selection.get("values")
+        else None
+    )
+    write_table(output, result.headers, result.rows, reading)
     (output / "read.json").write_text(
         json.dumps(
             {
@@ -175,6 +268,75 @@ def read_xlsx_table(
     )
 
 
+def snapshot_sqlserver(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
+    """Fase 18B: copia las tablas elegidas por `sqlserver-selection-v1` como CSV estándar. La
+    contraseña sólo existe en el directorio temporal de este proceso."""
+    params = json.loads(source.read_text(encoding="utf-8"))
+    result = read_database(
+        lambda: connect(
+            str(params["server"]),
+            int(params["port"]),
+            str(params["database"]),
+            str(params["user"]),
+            str(params["password"]),
+            int(params["timeout"]),
+        ),
+        max_rows,
+        max_columns,
+    )
+    snapshot = SqlSnapshot(
+        tables=[
+            SnapshotTable(
+                label=table.label,
+                headers=table.headers,
+                csv=write_csv(table.headers, table.rows, "standard").decode("utf-8"),
+                excluded_columns=[
+                    ExcludedColumn(column=c.name, type=c.type, reason=f"Tipo {c.type} no admitido.")
+                    for c in table.excluded
+                ],
+            )
+            for table in result.tables
+        ],
+        omitted=[OmittedSource(table=t, reason=r) for t, r in result.omitted],
+    )
+    (output / "snapshot.json").write_text(snapshot.model_dump_json(), encoding="utf-8")
+
+
+def select_pdf(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
+    """Fase 18B: tablas del PDF elegidas por `pdf-selection-v1`."""
+    chosen = pdf_select(source.read_bytes(), max_rows, max_columns)
+    selection = PdfSelection(
+        main=PdfChoice(label=chosen.main.label, segments=chosen.main.segments),
+        additional=[PdfChoice(label=t.label, segments=t.segments) for t in chosen.additional],
+        omitted=[OmittedSource(table=t, reason=r) for t, r in chosen.omitted],
+    )
+    (output / "selection.json").write_text(selection.model_dump_json(), encoding="utf-8")
+
+
+def read_pdf(
+    source: Path, output: Path, parameters: dict[str, Any], max_rows: int, max_columns: int
+) -> None:
+    """ingestion.read_pdf@1: la tabla fijada en el plan → Parquet de texto nullable, con
+    `regional-values-v1` y convención de archivo (el PDF es texto, como un CSV)."""
+    content = source.read_bytes()
+    chosen = ReadPdfParameters.model_validate(parameters)
+    table = pdf_read_table(content, list(chosen.segments), max_rows, max_columns)
+    rows = [list(row) for row in table.rows]
+    reading = regional(table.headers, rows, "pdf", file_convention=True)
+    write_table(output, table.headers, rows, reading)
+    (output / "read.json").write_text(
+        json.dumps(
+            {
+                "separator": ",",
+                "source_sha256": hashlib.sha256(content).hexdigest(),
+                "row_count": len(rows),
+                "column_count": len(table.headers),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
 def inspect_xlsx(
     source: Path, output: Path, selection: dict[str, Any], max_rows: int, max_columns: int
 ) -> None:
@@ -182,21 +344,26 @@ def inspect_xlsx(
     impide listar el libro (se devuelve en `problem`)."""
     book = Workbook(source.read_bytes())
     automatic: dict[str, Any] | None = None
+    additional: list[dict[str, Any]] = []
     if selection.get("sheet") is None and selection.get("table") is None:
-        # Fase 13B: sin hoja ni tabla pedidas, decide la regla xlsx-selection-v1.
-        chosen = book.automatic(max(1, max_rows + 1) * max_columns)
+        # Sin hoja ni tabla pedidas decide la regla: xlsx-selection-v2 desde la Fase 18 (la
+        # principal es la de v1; las demás tablas con datos se analizan aparte).
+        chosen = book.automatic_tables(max(1, max_rows + 1) * max_columns)
         selection = {"sheet": chosen.sheet, "table": chosen.table, "header_row": chosen.header_row}
         automatic = {
-            "rule": SELECTION_RULE,
+            "rule": SELECTION_RULE_V2,
             "sheet": chosen.sheet,
             "table": chosen.table,
             "header_row": chosen.header_row,
             "omitted": [{"sheet": s, "table": t} for s, t in chosen.omitted],
+            "analyzed_together": [{"sheet": s, "table": t} for s, t, _ in chosen.additional],
         }
+        additional = [{"sheet": s, "table": t, "header_row": h} for s, t, h in chosen.additional]
     sheet, table = book.select(selection.get("sheet"), selection.get("table"))
     header_row = int(selection.get("header_row") or 1)
     inspection: dict[str, Any] = {
         "selection": automatic,
+        "additional": additional,
         "sheets": [{"name": s.name, "hidden": s.hidden, "tables": s.tables} for s in book.sheets],
         "sheet": sheet.name,
         "table": table.name if table else None,
@@ -327,6 +494,9 @@ def main() -> None:
             "quality",
             "analytical_quality",
             "quality_rules",
+            "snapshot_sqlserver",
+            "select_pdf",
+            "read_pdf",
         ],
         required=True,
     )
@@ -335,15 +505,36 @@ def main() -> None:
     parser.add_argument("--max-rows", type=int, required=True)
     parser.add_argument("--max-columns", type=int, required=True)
     parser.add_argument("--separator", default=",")
+    parser.add_argument("--encoding")
     parser.add_argument("--source-sha256")
     parser.add_argument("--columns-json")
     parser.add_argument("--rules-json")
     parser.add_argument("--reference-json")
     parser.add_argument("--xlsx-json")
+    parser.add_argument("--pdf-json")
     args = parser.parse_args()
     try:
         if args.mode == "read":
-            read(args.input, args.output, args.separator, args.max_rows, args.max_columns)
+            read(
+                args.input,
+                args.output,
+                args.separator,
+                args.max_rows,
+                args.max_columns,
+                args.encoding,
+            )
+        elif args.mode == "snapshot_sqlserver":
+            snapshot_sqlserver(args.input, args.output, args.max_rows, args.max_columns)
+        elif args.mode == "select_pdf":
+            select_pdf(args.input, args.output, args.max_rows, args.max_columns)
+        elif args.mode == "read_pdf":
+            read_pdf(
+                args.input,
+                args.output,
+                json.loads(args.pdf_json),
+                args.max_rows,
+                args.max_columns,
+            )
         elif args.mode in {"read_xlsx", "inspect_xlsx"}:
             handler = read_xlsx_table if args.mode == "read_xlsx" else inspect_xlsx
             handler(

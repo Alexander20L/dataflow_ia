@@ -55,6 +55,7 @@ export function useVersion(versionId?: string) {
 export const XLSX_MIME =
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 export const isXlsx = (file: File) => /\.xlsx$/i.test(file.name);
+export const isPdf = (file: File) => /\.pdf$/i.test(file.name);
 
 /** Sube un CSV o un .xlsx sin opciones: el sistema detecta el separador o elige la hoja,
  * la tabla y la cabecera (Fase 13B) y lo informa en la versión. */
@@ -76,27 +77,38 @@ export function useUploadFile(projectId = "") {
         keys.current.set(file, key);
       }
       const version = requireData(
-        isXlsx(file)
-          ? await api.POST("/api/v1/projects/{project_id}/imports/xlsx", {
+        isPdf(file)
+          ? await api.POST("/api/v1/projects/{project_id}/imports/pdf", {
               params: {
                 path: { project_id: target },
                 query: { file_name: file.name },
                 header: { "Idempotency-Key": key },
               },
-              headers: { "Content-Type": XLSX_MIME },
+              headers: { "Content-Type": "application/pdf" },
               body: file,
               bodySerializer: (body) => body,
             })
-          : await api.POST("/api/v1/projects/{project_id}/imports", {
-              params: {
-                path: { project_id: target },
-                query: { file_name: file.name, separator: "auto" },
-                header: { "Idempotency-Key": key },
-              },
-              headers: { "Content-Type": "text/csv" },
-              body: file,
-              bodySerializer: (body) => body,
-            }),
+          : isXlsx(file)
+            ? await api.POST("/api/v1/projects/{project_id}/imports/xlsx", {
+                params: {
+                  path: { project_id: target },
+                  query: { file_name: file.name },
+                  header: { "Idempotency-Key": key },
+                },
+                headers: { "Content-Type": XLSX_MIME },
+                body: file,
+                bodySerializer: (body) => body,
+              })
+            : await api.POST("/api/v1/projects/{project_id}/imports", {
+                params: {
+                  path: { project_id: target },
+                  query: { file_name: file.name, separator: "auto" },
+                  header: { "Idempotency-Key": key },
+                },
+                headers: { "Content-Type": "text/csv" },
+                body: file,
+                bodySerializer: (body) => body,
+              }),
       );
       keys.current.delete(file);
       return version;
@@ -217,5 +229,55 @@ export function useProgress(version?: DatasetVersion) {
         }),
       ),
     refetchInterval: (q) => (q.state.data?.complete === false ? 1500 : false),
+  });
+}
+
+export type SourceReview = components["schemas"]["SourceReview"];
+
+// Fase 18: cómo se leyó el archivo (codificación, separador, valores regionales) y qué
+// columnas cambiaron respecto de la versión anterior del mismo archivo.
+export function useSourceReview(version?: DatasetVersion) {
+  return useQuery({
+    queryKey: ["source-review", version?.id],
+    enabled: version?.state === "succeeded",
+    queryFn: async ({ signal }) =>
+      requireData(
+        await api.GET("/api/v1/versions/{version_id}/reading", {
+          signal,
+          params: { path: { version_id: version!.id } },
+        }),
+      ),
+    staleTime: Infinity,
+  });
+}
+
+export type SqlServerConnection = components["schemas"]["SqlServerConnection"];
+
+// Fase 18B: copia de un solo uso de las tablas de una base de SQL Server. La contraseña viaja
+// sólo en esta petición; el servidor no la guarda.
+export function useImportSqlServer() {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async ({
+      projectId,
+      connection,
+    }: {
+      projectId: string;
+      connection: SqlServerConnection;
+    }) =>
+      requireData(
+        await api.POST("/api/v1/projects/{project_id}/imports/sqlserver", {
+          params: {
+            path: { project_id: projectId },
+            header: { "Idempotency-Key": crypto.randomUUID() },
+          },
+          body: connection,
+        }),
+      ),
+    onSuccess: async (version) => {
+      await client.invalidateQueries({
+        queryKey: ["versions", version.project_id],
+      });
+    },
   });
 }

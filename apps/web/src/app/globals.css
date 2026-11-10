@@ -4911,3 +4911,51 @@ tbody tr:hover {
 .delivery-findings li {
   margin-bottom: 6px;
 }
+
+/* Fase 18: lectura del archivo (valores regionales) y cambios de estructura. */
+.source-review {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
+  gap: 12px;
+  margin: 0 0 24px;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.source-review-block {
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.source-review-block h3 {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+}
+.source-review-block ul {
+  margin: 6px 0 0;
+  padding-left: 1.2rem;
+}
+.source-review-block li {
+  margin-bottom: 4px;
+}
+
+/* Fase 18B: conexión de un solo uso a SQL Server. */
+.sqlserver-form {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  min-width: 0;
+}
+.sqlserver-form input {
+  width: 100%;
+  min-width: 0;
+}
+.sqlserver-form .security-note {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  font-size: 12px;
+  margin: 8px 0;
+}

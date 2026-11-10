@@ -16,7 +16,13 @@ from dataflow.modules.executions.public import (
     StepResult,
 )
 from dataflow.modules.ingestion.application import Analyzer, ProjectAccess, ReadOutput
-from dataflow.modules.ingestion.contracts import ReadCsvParameters, ReadXlsxParameters
+from dataflow.modules.ingestion.contracts import (
+    ReadCsvParameters,
+    ReadCsvV2Parameters,
+    ReadPdfParameters,
+    ReadXlsxParameters,
+    ReadXlsxV2Parameters,
+)
 from dataflow.modules.quality.contracts import AnalyticalQualityParameters, QualityParameters
 from dataflow.modules.quality.public import (
     QualityRulesParameters,
@@ -148,8 +154,30 @@ class ReadCsvStep(AnalyzerStep):
         return publish_read(self, lease, step, source, result)
 
 
+class ReadCsvV2Step(AnalyzerStep):
+    """ingestion.read_csv@2 (Fase 18): codificación fijada en el plan y valores regionales."""
+
+    output_kind: ArtifactKind = "table"
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        self.require(source, "source")
+        assert lease.execution.plan
+        parameters = ReadCsvV2Parameters.model_validate(step.parameters)
+        result = self.analyzer.read(
+            self.objects.read(source.content),
+            parameters.separator,
+            lease.execution.plan.config,
+            timeout,
+            parameters.encoding,
+        )
+        return publish_read(self, lease, step, source, result)
+
+
 class ReadXlsxStep(AnalyzerStep):
-    """ingestion.read_xlsx@1 (Fase 12A): libro original → tabla de la hoja o tabla elegida."""
+    """ingestion.read_xlsx@1 (Fase 12A) y @2 (Fase 18, valores regionales): libro original →
+    tabla de la hoja o tabla elegida."""
 
     output_kind: ArtifactKind = "table"
 
@@ -160,7 +188,28 @@ class ReadXlsxStep(AnalyzerStep):
         assert lease.execution.plan
         result = self.analyzer.read_xlsx(
             self.objects.read(source.content),
-            ReadXlsxParameters.model_validate(step.parameters),
+            (ReadXlsxV2Parameters if step.version == 2 else ReadXlsxParameters).model_validate(
+                step.parameters
+            ),
+            lease.execution.plan.config,
+            timeout,
+        )
+        return publish_read(self, lease, step, source, result)
+
+
+class ReadPdfStep(AnalyzerStep):
+    """ingestion.read_pdf@1 (Fase 18B): PDF original → tabla fijada en el plan."""
+
+    output_kind: ArtifactKind = "table"
+
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult:
+        self.require(source, "source")
+        assert lease.execution.plan
+        result = self.analyzer.read_pdf(
+            self.objects.read(source.content),
+            ReadPdfParameters.model_validate(step.parameters),
             lease.execution.plan.config,
             timeout,
         )

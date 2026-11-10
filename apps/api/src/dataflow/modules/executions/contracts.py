@@ -52,6 +52,8 @@ class ProcessingConfig(BaseModel):
     # analysis-v11: understanding.profile@4 y quality.evaluate@3 (Fase 14: interpretación
     # analítica, dashboard por medidas y calidad que indica los análisis afectados).
     # analysis-v12: analytics.automatic@1 (Fase 15: plan analítico automático y hallazgos).
+    # analysis-v13: ingestion.read_csv@2 y read_xlsx@2 (Fase 18: codificación Windows-1252 y
+    # valores regionales con `regional-values-v1`).
     # Los planes guardados conservan el valor con el que se crearon (y su hash).
     operation_catalog: Literal[
         "analysis-v1",
@@ -66,7 +68,8 @@ class ProcessingConfig(BaseModel):
         "analysis-v10",
         "analysis-v11",
         "analysis-v12",
-    ] = "analysis-v12"
+        "analysis-v13",
+    ] = "analysis-v13"
     rule_catalog: Literal["csv-quality-v1"] = "csv-quality-v1"
     max_rows: int = Field(ge=1, le=100000)
     max_columns: int = Field(ge=1, le=128)

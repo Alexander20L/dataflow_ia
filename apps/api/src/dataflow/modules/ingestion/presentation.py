@@ -14,6 +14,9 @@ from dataflow.modules.ingestion.contracts import (
     IngestionSummary,
     PreviewPage,
     ReadXlsxParameters,
+    SourceOrigin,
+    SourceReview,
+    SqlServerConnection,
     XlsxInspection,
     XlsxSelection,
 )
@@ -47,6 +50,7 @@ class VersionResponse(BaseModel):
     kind: Literal["imported", "derived"]
     parent_version_id: UUID | None
     source_selection: XlsxSelection | None = None
+    source_origin: SourceOrigin | None = None
 
 
 class VersionPage(BaseModel):
@@ -118,11 +122,24 @@ XLSX_BODY = {
 }
 
 
+PDF_MIME = "application/pdf"
+PDF_BODY = {
+    "requestBody": {
+        "required": True,
+        "content": {PDF_MIME: {"schema": {"type": "string", "format": "binary"}}},
+    }
+}
+
+
 async def xlsx_body(request: Request) -> bytes:
     if request.headers.get("content-type", "").split(";")[0].strip() != XLSX_MIME:
         raise ApplicationError(
             "XLSX_CONTENT_TYPE", f"Envía el libro con Content-Type {XLSX_MIME}.", 415
         )
+    return await limited_body(request)
+
+
+async def limited_body(request: Request) -> bytes:
     maximum = get_settings().max_upload_bytes
     chunks: list[bytes] = []
     size = 0
@@ -204,6 +221,70 @@ async def upload_xlsx(
     return VersionResponse.model_validate(version)
 
 
+@router.post(
+    "/projects/{project_id}/imports/pdf",
+    status_code=202,
+    response_model=VersionResponse,
+    operation_id="uploadPdf",
+    openapi_extra=PDF_BODY,
+)
+async def upload_pdf(
+    project_id: UUID,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    file_name: Annotated[str, Query(min_length=1, max_length=255)],
+    request_key: Annotated[UUID, Header(alias="Idempotency-Key")],
+) -> VersionResponse:
+    """Fase 18B: importa las tablas de un PDF con texto (`pdf-selection-v1`). Devuelve la
+    versión de la tabla principal; las demás tablas se registran como versiones propias y se
+    indican en `source_origin`. PDF escaneado: 422 `PDF_NO_TEXT`; sin tablas: `PDF_NO_TABLES`."""
+    if request.headers.get("content-type", "").split(";")[0].strip() != PDF_MIME:
+        raise ApplicationError(
+            "PDF_CONTENT_TYPE", f"Envía el PDF con Content-Type {PDF_MIME}.", 415
+        )
+    content = await limited_body(request)
+    version = await run_in_threadpool(
+        service.submit_pdf,
+        identity.user.id,
+        project_id,
+        file_name,
+        content,
+        request_key,
+        request.state.correlation_id,
+    )
+    return VersionResponse.model_validate(version)
+
+
+@router.post(
+    "/projects/{project_id}/imports/sqlserver",
+    status_code=202,
+    response_model=VersionResponse,
+    operation_id="importSqlServer",
+)
+async def import_sqlserver(
+    project_id: UUID,
+    body: SqlServerConnection,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    request_key: Annotated[UUID, Header(alias="Idempotency-Key")],
+) -> VersionResponse:
+    """Fase 18B: copia de un solo uso de las tablas de una base de SQL Server
+    (`sqlserver-selection-v1`); cada tabla es una versión con su CSV original. La contraseña se
+    usa para la copia y se descarta. Sólo servidores de `DATAFLOW_SQLSERVER_ALLOWED_HOSTS`."""
+    version = await run_in_threadpool(
+        service.submit_sqlserver,
+        identity.user.id,
+        project_id,
+        body,
+        get_settings().sqlserver_allowed_hosts,
+        request_key,
+        request.state.correlation_id,
+    )
+    return VersionResponse.model_validate(version)
+
+
 @router.get(
     "/projects/{project_id}/versions", response_model=VersionPage, operation_id="listVersions"
 )
@@ -233,6 +314,15 @@ def get_version(version_id: UUID, identity: CurrentIdentity, service: Ingestion)
 )
 def diagnostic(version_id: UUID, identity: CurrentIdentity, service: Ingestion) -> Diagnostic:
     return service.diagnostic(identity.user.id, version_id)
+
+
+@router.get(
+    "/versions/{version_id}/reading", response_model=SourceReview, operation_id="getSourceReview"
+)
+def source_review(version_id: UUID, identity: CurrentIdentity, service: Ingestion) -> SourceReview:
+    """Cómo se leyó el archivo (codificación, separador, valores regionales) y qué columnas
+    cambiaron respecto de la versión anterior del mismo archivo (Fase 18). Sólo lectura."""
+    return service.review(identity.user.id, version_id)
 
 
 @router.get(
