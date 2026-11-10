@@ -30,6 +30,42 @@ def explanation(context: dict[str, Any], summary: str) -> dict[str, Any]:
     }
 
 
+def comprehension(context: dict[str, Any]) -> dict[str, Any]:
+    """Hipótesis deterministas: describe cada columna por su rol y relaciona la primera medida
+    con la primera dimensión (y, para mostrar la validación, con una columna inexistente)."""
+    columns = [(plain(item["nombre"]), item["rol"]) for item in context["columnas"]]
+    measures = [name for name, role in columns if role == "measure"]
+    dimensions = [name for name, role in columns if role == "dimension"]
+    relations = []
+    if measures and dimensions:
+        relations.append(
+            {
+                "columnas": [measures[0], dimensions[0]],
+                "tipo": "asociacion",
+                "hipotesis": f"{measures[0]} podría variar según {dimensions[0]}.",
+            }
+        )
+    if measures:
+        relations.append(
+            {
+                "columnas": [measures[0], "Columna inventada"],
+                "tipo": "asociacion",
+                "hipotesis": "Relación con una columna que no existe.",
+            }
+        )
+    return {
+        "dominio": "Registros de actividad con medidas y dimensiones para agrupar.",
+        "entidades": [{"nombre": "Registro", "columnas": [name for name, _ in columns][:5]}],
+        "columnas": [
+            {"columna": name, "significado": f"Columna con rol {role}.", "entidad": "Registro"}
+            for name, role in columns
+        ],
+        "ordenes": [],
+        "relaciones": relations,
+        "preguntas": [f"¿Qué grupo concentra más {measures[0]}?"] if measures else [],
+    }
+
+
 def proposals(context: dict[str, Any]) -> dict[str, Any]:
     dimensions = [plain(name) for name in context["dimensiones"]]
     done = set(context["done"])
@@ -66,4 +102,6 @@ def respond(task: str, context: dict[str, Any], request: str) -> dict[str, Any]:
         return explanation(context, "Los hallazgos se calcularon sobre todas las filas.")
     if task == "investigation_proposal":
         return proposals(context)
+    if task == "business_comprehension":
+        return comprehension(context)
     raise ValueError(f"Tarea de IA no simulada: {task}")

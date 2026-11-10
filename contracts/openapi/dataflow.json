@@ -776,7 +776,8 @@
               "report_pdf",
               "overview_audit",
               "automatic_analysis",
-              "investigation"
+              "investigation",
+              "comprehension"
             ],
             "title": "Kind",
             "type": "string"
@@ -843,6 +844,69 @@
           "logical_content_sha256"
         ],
         "title": "ArtifactResponse",
+        "type": "object"
+      },
+      "Association": {
+        "additionalProperties": false,
+        "description": "Medida de asociación entre dos columnas, calculada sobre las filas con ambos valores.",
+        "properties": {
+          "columns": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Columns",
+            "type": "array"
+          },
+          "measure": {
+            "enum": [
+              "pearson",
+              "spearman",
+              "cramers_v",
+              "eta",
+              "dependency"
+            ],
+            "title": "Measure",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "strength": {
+            "enum": [
+              "negligible",
+              "weak",
+              "moderate",
+              "strong"
+            ],
+            "title": "Strength",
+            "type": "string"
+          },
+          "value": {
+            "title": "Value",
+            "type": "string"
+          }
+        },
+        "required": [
+          "columns",
+          "measure",
+          "value",
+          "strength",
+          "rows",
+          "method"
+        ],
+        "title": "Association",
         "type": "object"
       },
       "AttemptResponse": {
@@ -1622,6 +1686,37 @@
         "title": "ColumnDependency",
         "type": "object"
       },
+      "ColumnMeaning": {
+        "additionalProperties": false,
+        "description": "Hipótesis de la IA sobre una columna (no se usa para calcular).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "entity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity"
+          },
+          "meaning": {
+            "title": "Meaning",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "meaning"
+        ],
+        "title": "ColumnMeaning",
+        "type": "object"
+      },
       "ColumnProfile": {
         "properties": {
           "examples": {
@@ -1685,6 +1780,62 @@
           "examples"
         ],
         "title": "ColumnProfile",
+        "type": "object"
+      },
+      "ColumnScale": {
+        "additionalProperties": false,
+        "description": "Escala de medida de una columna por reglas (`measurement-scale-v1`).",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "order": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Order",
+            "type": "array"
+          },
+          "order_source": {
+            "anyOf": [
+              {
+                "enum": [
+                  "rules",
+                  "ai"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Order Source"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "scale": {
+            "enum": [
+              "nominal",
+              "ordinal",
+              "interval",
+              "ratio",
+              "identifier",
+              "text",
+              "empty"
+            ],
+            "title": "Scale",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "scale",
+          "reason"
+        ],
+        "title": "ColumnScale",
         "type": "object"
       },
       "ComparisonCell": {
@@ -1788,6 +1939,219 @@
           "evidence"
         ],
         "title": "ComparisonCell",
+        "type": "object"
+      },
+      "Comprehension": {
+        "additionalProperties": false,
+        "description": "Resultado del trabajo `comprehension` (operación `comprehension.understand@1`).",
+        "properties": {
+          "ai_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ai Reason"
+          },
+          "ai_state": {
+            "enum": [
+              "ready",
+              "unavailable",
+              "failed"
+            ],
+            "title": "Ai State",
+            "type": "string"
+          },
+          "associations": {
+            "items": {
+              "$ref": "#/components/schemas/Association"
+            },
+            "title": "Associations",
+            "type": "array"
+          },
+          "calls": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Calls",
+            "type": "array"
+          },
+          "discarded": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Discarded",
+            "type": "array"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Domain"
+          },
+          "entities": {
+            "items": {
+              "$ref": "#/components/schemas/Entity"
+            },
+            "title": "Entities",
+            "type": "array"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "matrix_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Matrix Columns",
+            "type": "array"
+          },
+          "meanings": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnMeaning"
+            },
+            "title": "Meanings",
+            "type": "array"
+          },
+          "questions": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Questions",
+            "type": "array"
+          },
+          "relationships": {
+            "items": {
+              "$ref": "#/components/schemas/Relationship"
+            },
+            "title": "Relationships",
+            "type": "array"
+          },
+          "rules_version": {
+            "const": "business-comprehension-v1",
+            "default": "business-comprehension-v1",
+            "title": "Rules Version",
+            "type": "string"
+          },
+          "scales": {
+            "items": {
+              "$ref": "#/components/schemas/ColumnScale"
+            },
+            "title": "Scales",
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/components/schemas/ComprehensionScope"
+          }
+        },
+        "required": [
+          "scope",
+          "ai_state",
+          "scales",
+          "associations",
+          "matrix_columns",
+          "relationships",
+          "limitations"
+        ],
+        "title": "Comprehension",
+        "type": "object"
+      },
+      "ComprehensionScope": {
+        "additionalProperties": false,
+        "properties": {
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "profile_sha256": {
+            "title": "Profile Sha256",
+            "type": "string"
+          },
+          "table_sha256": {
+            "title": "Table Sha256",
+            "type": "string"
+          },
+          "version_id": {
+            "format": "uuid",
+            "title": "Version Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "execution_id",
+          "version_id",
+          "profile_sha256",
+          "table_sha256"
+        ],
+        "title": "ComprehensionScope",
+        "type": "object"
+      },
+      "ComprehensionView": {
+        "additionalProperties": false,
+        "properties": {
+          "comprehension": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Comprehension"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "feedback": {
+            "items": {
+              "$ref": "#/components/schemas/FeedbackItem"
+            },
+            "title": "Feedback",
+            "type": "array"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "ready",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "execution_id"
+        ],
+        "title": "ComprehensionView",
         "type": "object"
       },
       "Consumption": {
@@ -1983,6 +2347,28 @@
           "quality"
         ],
         "title": "Diagnostic",
+        "type": "object"
+      },
+      "Entity": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "columns"
+        ],
+        "title": "Entity",
         "type": "object"
       },
       "ErrorDetail": {
@@ -2514,7 +2900,8 @@
               "report_render",
               "overview_audit",
               "investigation",
-              "automatic_report"
+              "automatic_report",
+              "comprehension"
             ],
             "title": "Kind",
             "type": "string"
@@ -2686,7 +3073,8 @@
               "report_render",
               "overview_audit",
               "investigation",
-              "automatic_report"
+              "automatic_report",
+              "comprehension"
             ],
             "title": "Kind",
             "type": "string"
@@ -2761,6 +3149,60 @@
           "finished_at"
         ],
         "title": "ExecutionResponse",
+        "type": "object"
+      },
+      "FeedbackItem": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "relationship_key": {
+            "title": "Relationship Key",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "relevant",
+              "not_relevant"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relationship_key",
+          "verdict",
+          "created_at"
+        ],
+        "title": "FeedbackItem",
+        "type": "object"
+      },
+      "FeedbackRequest": {
+        "additionalProperties": false,
+        "properties": {
+          "relationship_key": {
+            "maxLength": 400,
+            "minLength": 1,
+            "title": "Relationship Key",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "relevant",
+              "not_relevant"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "relationship_key",
+          "verdict"
+        ],
+        "title": "FeedbackRequest",
         "type": "object"
       },
       "Filter": {
@@ -2930,6 +3372,25 @@
           "status"
         ],
         "title": "FollowUpResult",
+        "type": "object"
+      },
+      "ForeignKey": {
+        "description": "Clave foránea declarada en la base (Fase 19): columna → esquema.tabla.columna.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "references": {
+            "title": "References",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "references"
+        ],
+        "title": "ForeignKey",
         "type": "object"
       },
       "IngestionSummary": {
@@ -5531,6 +5992,107 @@
         "title": "RegisterRequest",
         "type": "object"
       },
+      "Relationship": {
+        "additionalProperties": false,
+        "description": "Relación candidata con la evidencia que la respalda o no.\n\n`key` es estable entre versiones del mismo archivo (columnas ordenadas y tipo): con ella se\nguarda la valoración del usuario.",
+        "properties": {
+          "columns": {
+            "maxItems": 2,
+            "minItems": 2,
+            "prefixItems": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "string"
+              }
+            ],
+            "title": "Columns",
+            "type": "array"
+          },
+          "detail": {
+            "title": "Detail",
+            "type": "string"
+          },
+          "evidence": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Association"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "hypothesis": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Hypothesis"
+          },
+          "key": {
+            "title": "Key",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "association",
+              "dependency",
+              "declared"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "ai",
+              "data",
+              "declared"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "confirmed",
+              "not_supported",
+              "not_testable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "verdict": {
+            "anyOf": [
+              {
+                "enum": [
+                  "relevant",
+                  "not_relevant"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Verdict"
+          }
+        },
+        "required": [
+          "key",
+          "columns",
+          "kind",
+          "origin",
+          "status",
+          "detail"
+        ],
+        "title": "Relationship",
+        "type": "object"
+      },
       "ReportView": {
         "description": "Estado del informe de una versión (sólo lectura).",
         "properties": {
@@ -6141,6 +6703,13 @@
             "title": "Excluded Columns",
             "type": "array"
           },
+          "foreign_keys": {
+            "items": {
+              "$ref": "#/components/schemas/ForeignKey"
+            },
+            "title": "Foreign Keys",
+            "type": "array"
+          },
           "kind": {
             "enum": [
               "sqlserver",
@@ -6397,6 +6966,7 @@
           "id": {
             "enum": [
               "analysis",
+              "comprehension",
               "investigation",
               "report"
             ],
@@ -7151,7 +7721,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.25.0"
+    "version": "0.26.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -11894,6 +12464,346 @@
         "summary": "Automatic Evidence",
         "tags": [
           "Datasets"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/comprehension": {
+      "get": {
+        "description": "Escalas de medida, asociaciones, hipótesis de la IA y relaciones con su evidencia.",
+        "operationId": "getComprehension",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComprehensionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Comprehension",
+        "tags": [
+          "Comprensión del negocio"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/comprehension/feedback": {
+      "post": {
+        "description": "Valoración opcional («Relevante» / «No relevante»): no bloquea ni recalcula; la\nsiguiente carga del mismo archivo la tiene en cuenta. Vale la última.",
+        "operationId": "judgeRelationship",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/FeedbackRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComprehensionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Judge",
+        "tags": [
+          "Comprensión del negocio"
         ]
       }
     },

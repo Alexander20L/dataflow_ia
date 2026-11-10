@@ -15,6 +15,7 @@ from dataflow.modules.analytics.contracts import (
     AutomaticEvidence,
     AutomaticInsight,
 )
+from dataflow.modules.comprehension.contracts import Comprehension
 from dataflow.modules.copilot.contracts import Segment
 from dataflow.modules.delivery.contracts import (
     Progress,
@@ -450,6 +451,106 @@ def structure_section(review: SourceReview | None) -> ReportSection | None:
     )
 
 
+SCALE_LABELS = {
+    "nominal": "nominal",
+    "ordinal": "ordinal",
+    "interval": "de intervalo",
+    "ratio": "de razón",
+    "identifier": "identificador",
+    "text": "texto libre",
+    "empty": "vacía",
+}
+STATUS_LABELS = {
+    "confirmed": "Confirmada por los datos",
+    "not_supported": "Los datos no la respaldan",
+    "not_testable": "No comprobable",
+}
+ORIGIN_LABELS = {
+    "ai": "Hipótesis de la IA",
+    "data": "Detectada en los datos",
+    "declared": "Declarada",
+}
+VERDICT_LABELS = {"relevant": "Relevante (usuario)", "not_relevant": "No relevante (usuario)"}
+
+
+def comprehension_section(comprehension: Comprehension | None) -> ReportSection | None:
+    """Fase 19: entendimiento del negocio (hipótesis de la IA contrastadas con los datos)."""
+    if comprehension is None:
+        return None
+    blocks: list[ReportBlock] = []
+    if comprehension.domain:
+        blocks.append(
+            ReportBlock(
+                title="De qué trata (hipótesis de la IA)",
+                paragraphs=[comprehension.domain]
+                + [
+                    f"{entity.name}: {', '.join(entity.columns)}."
+                    for entity in comprehension.entities
+                ],
+            )
+        )
+    else:
+        blocks.append(
+            ReportBlock(
+                paragraphs=[
+                    "Sin hipótesis de la IA "
+                    f"({comprehension.ai_reason or comprehension.ai_state}): escalas y "
+                    "relaciones calculadas sólo con los datos."
+                ]
+            )
+        )
+    meanings = {m.column: m.meaning for m in comprehension.meanings}
+    blocks.append(
+        ReportBlock(
+            title="Columnas y escala de medida",
+            table=ReportTable(
+                headers=["Columna", "Escala", "Significado (IA)"],
+                rows=[
+                    [
+                        s.column,
+                        SCALE_LABELS[s.scale]
+                        + (f" ({' < '.join(s.order[:8])})" if s.order else ""),
+                        meanings.get(s.column, "—"),
+                    ]
+                    for s in comprehension.scales
+                ],
+            ),
+        )
+    )
+    if comprehension.relationships:
+        blocks.append(
+            ReportBlock(
+                title="Relaciones",
+                table=ReportTable(
+                    headers=["Columnas", "Origen", "Estado", "Evidencia"],
+                    rows=[
+                        [
+                            f"{r.columns[0]} – {r.columns[1]}",
+                            ORIGIN_LABELS[r.origin],
+                            STATUS_LABELS[r.status]
+                            + (f" · {VERDICT_LABELS[r.verdict]}" if r.verdict else ""),
+                            r.detail,
+                        ]
+                        for r in comprehension.relationships
+                    ],
+                ),
+            )
+        )
+    if comprehension.questions:
+        blocks.append(
+            ReportBlock(title="Preguntas de negocio sugeridas", paragraphs=comprehension.questions)
+        )
+    return ReportSection(
+        id="comprehension",
+        title="Entendimiento del negocio",
+        intro=(
+            "La IA sólo vio los nombres de las columnas y un perfil agregado; cada relación se "
+            "midió sobre todas las filas. Una asociación no es una causa."
+        ),
+        blocks=blocks,
+    )
+
+
 def build_report(
     source: ReportSource,
     analysis: AutomaticAnalysis,
@@ -457,11 +558,13 @@ def build_report(
     quality: QualityReport | None,
     generated_at: datetime,
     review: SourceReview | None = None,
+    comprehension: Comprehension | None = None,
 ) -> ReportDocument:
     identifiers = evidence_ids(analysis, investigation)
     sections = [
         summary_section(source, analysis, quality),
         explanation_section(investigation),
+        comprehension_section(comprehension),
         ReportSection(
             id="findings",
             title="Hallazgos",
@@ -490,6 +593,7 @@ def build_report(
 
 STAGES: list[tuple[StageId, str, set[str]]] = [
     ("analysis", "Análisis del archivo", {"csv_import", "table_analysis"}),
+    ("comprehension", "Entendimiento del negocio", {"comprehension"}),
     ("investigation", "Investigación", {"investigation"}),
     ("report", "Informe", {"automatic_report"}),
 ]

@@ -36,6 +36,18 @@ JOIN sys.partitions AS p ON p.object_id = t.object_id AND p.index_id IN (0, 1)
 WHERE t.is_ms_shipped = 0
 GROUP BY s.name, t.name
 """
+FOREIGN_KEYS = """
+SELECT ps.name, pt.name, pc.name, rs.name, rt.name, rc.name
+FROM sys.foreign_key_columns AS fkc
+JOIN sys.tables AS pt ON pt.object_id = fkc.parent_object_id
+JOIN sys.schemas AS ps ON ps.schema_id = pt.schema_id
+JOIN sys.columns AS pc
+  ON pc.object_id = fkc.parent_object_id AND pc.column_id = fkc.parent_column_id
+JOIN sys.tables AS rt ON rt.object_id = fkc.referenced_object_id
+JOIN sys.schemas AS rs ON rs.schema_id = rt.schema_id
+JOIN sys.columns AS rc
+  ON rc.object_id = fkc.referenced_object_id AND rc.column_id = fkc.referenced_column_id
+"""
 COLUMNS = """
 SELECT TABLE_SCHEMA, TABLE_NAME, COLUMN_NAME, DATA_TYPE
 FROM INFORMATION_SCHEMA.COLUMNS
@@ -82,6 +94,8 @@ class TableCopy:
     headers: list[str]
     rows: list[list[str | None]]
     excluded: list[Column] = field(default_factory=list)
+    # Fase 19: claves foráneas declaradas (columna, esquema.tabla.columna referenciada).
+    foreign_keys: list[tuple[str, str]] = field(default_factory=list)
 
     @property
     def label(self) -> str:
@@ -200,15 +214,37 @@ def copy(cursor: Cursor, table: Candidate, max_rows: int) -> TableCopy | str:
     return TableCopy(table.schema, table.name, headers, rows, excluded)
 
 
+def foreign_keys(cursor: Cursor) -> dict[tuple[str, str], list[tuple[str, str]]]:
+    """Claves foráneas por tabla; si la cuenta no puede leerlas, ninguna (no es un error)."""
+    try:
+        cursor.execute(FOREIGN_KEYS)
+        rows = cursor.fetchall()
+    except Exception:
+        return {}
+    found: dict[tuple[str, str], list[tuple[str, str]]] = {}
+    for schema, table, column, ref_schema, ref_table, ref_column in rows:
+        found.setdefault((str(schema), str(table)), []).append(
+            (str(column), f"{ref_schema}.{ref_table}.{ref_column}")
+        )
+    return found
+
+
 def snapshot(connection: Connection, max_rows: int, max_columns: int) -> Snapshot:
     cursor = connection.cursor()
     chosen, omitted = choose(catalog(cursor), max_rows, max_columns)
+    declared = foreign_keys(cursor)
     tables: list[TableCopy] = []
     for table in chosen:
         result = copy(cursor, table, max_rows)
         if isinstance(result, str):
             omitted.append((table.label, result))
         else:
+            copied = {c for c in result.headers}
+            result.foreign_keys = [
+                (column, reference)
+                for column, reference in declared.get((table.schema, table.name), [])
+                if column in copied
+            ]
             tables.append(result)
     if not tables:
         raise ApplicationError(

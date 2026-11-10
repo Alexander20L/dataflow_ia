@@ -9,6 +9,7 @@ from datetime import UTC, datetime
 from uuid import UUID, uuid4, uuid5
 
 from dataflow.modules.analytics.contracts import AutomaticAnalysis
+from dataflow.modules.comprehension.contracts import Comprehension
 from dataflow.modules.datasets.public import Datasets, ObjectStore, StoredObject
 from dataflow.modules.delivery.contracts import (
     Progress,
@@ -70,6 +71,17 @@ def enqueue_report(
         None,
     )
     version = datasets.get(lease.owner_id, lease.version_id)
+    # Fase 19: la comprensión de la carga, si ya terminó (se encola antes que la investigación).
+    comprehension = next(
+        (
+            a
+            for run in executions.for_version(lease.owner_id, lease.version_id)
+            if run.kind == "comprehension" and run.state == "succeeded"
+            for a in executions.artifacts(lease.owner_id, run.id)
+            if a.kind == "comprehension"
+        ),
+        None,
+    )
     key = uuid5(lease.execution_id, "automatic-report@1")
     fingerprint = digest(
         "automatic_report_request",
@@ -80,6 +92,7 @@ def enqueue_report(
             "quality_sha256": quality.content.sha256 if quality else None,
             "operation": f"{STEP}@1",
             **({"review": review.model_dump(mode="json")} if review else {}),
+            **({"comprehension_sha256": comprehension.content.sha256} if comprehension else {}),
         },
     )
     if executions.find_request(
@@ -102,6 +115,7 @@ def enqueue_report(
             "analysis_execution_id": str(analysis.execution_id),
             "quality": stored(quality) if quality else None,
             **({"review": review.model_dump(mode="json")} if review else {}),
+            **({"comprehension": stored(comprehension)} if comprehension else {}),
         },
         "steps": [
             {
@@ -225,6 +239,9 @@ class ReportStep:
             quality,
             datetime.now(UTC).replace(microsecond=0),
             SourceReview.model_validate(given["review"]) if given.get("review") else None,
+            Comprehension.model_validate_json(self.objects.read(reference(given["comprehension"])))
+            if given.get("comprehension")
+            else None,
         )
         prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
         content = self.objects.put(f"{prefix}/report.pdf", render_pdf(document))

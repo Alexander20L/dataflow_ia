@@ -235,6 +235,7 @@ def test_delivery_only_reorders_published_results() -> None:
     root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "delivery"
     allowed = {
         "dataflow.modules.analytics.contracts",
+        "dataflow.modules.comprehension.contracts",  # Fase 19: entendimiento del negocio
         "dataflow.modules.copilot.contracts",
         "dataflow.modules.ingestion.contracts",  # Fase 18: lectura y cambios de estructura
         "dataflow.modules.investigation.contracts",

@@ -252,7 +252,9 @@ def test_two_workers_claim_and_publish_independent_runs(
         with Session(committed_engine, expire_on_commit=False) as db:
             barrier.wait(timeout=10)
             # La investigación de la carga (Fase 16) queda en cola: aquí compiten por los análisis.
-            return make_runner(db, store, kinds=WORKER_KINDS - {"investigation"}).run_once()
+            return make_runner(
+                db, store, kinds=WORKER_KINDS - {"investigation", "comprehension"}
+            ).run_once()
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(worker) for _ in range(2)]

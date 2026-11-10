@@ -153,34 +153,54 @@ def run(kind: str, state: str) -> RunSummary:
 @pytest.mark.parametrize(
     ("runs", "states", "complete"),
     [
-        ([run("csv_import", "running")], ["running", "pending", "pending"], False),
+        ([run("csv_import", "running")], ["running", "pending", "pending", "pending"], False),
         (
-            [run("investigation", "queued"), run("csv_import", "succeeded")],
-            ["done", "queued", "pending"],
+            [
+                run("investigation", "queued"),
+                run("comprehension", "running"),
+                run("csv_import", "succeeded"),
+            ],
+            ["done", "running", "queued", "pending"],
             False,
         ),
         (
             [
                 run("automatic_report", "succeeded"),
                 run("investigation", "succeeded"),
+                run("comprehension", "succeeded"),
                 run("csv_import", "succeeded"),
             ],
-            ["done", "done", "done"],
+            ["done", "done", "done", "done"],
+            True,
+        ),
+        # Versión anterior a la Fase 19: sin comprensión, el resto sigue igual.
+        (
+            [
+                run("automatic_report", "succeeded"),
+                run("investigation", "succeeded"),
+                run("csv_import", "succeeded"),
+            ],
+            ["done", "skipped", "done", "done"],
             True,
         ),
         (
             [run("investigation", "failed"), run("csv_import", "succeeded")],
-            ["done", "failed", "skipped"],
+            ["done", "skipped", "failed", "skipped"],
             True,
         ),
-        ([run("csv_import", "succeeded")], ["done", "skipped", "skipped"], True),
-        ([run("csv_import", "failed")], ["failed", "skipped", "skipped"], True),
+        ([run("csv_import", "succeeded")], ["done", "skipped", "skipped", "skipped"], True),
+        ([run("csv_import", "failed")], ["failed", "skipped", "skipped", "skipped"], True),
     ],
 )
 def test_progress_by_stage(runs: list[RunSummary], states: list[str], complete: bool) -> None:
     result = progress(UUID(int=1), runs)
     assert [stage.state for stage in result.stages] == states
-    assert [stage.id for stage in result.stages] == ["analysis", "investigation", "report"]
+    assert [stage.id for stage in result.stages] == [
+        "analysis",
+        "comprehension",
+        "investigation",
+        "report",
+    ]
     assert result.complete is complete
 
 
@@ -196,10 +216,11 @@ def test_upload_ends_with_a_downloadable_report(
     version = upload(client, headers, pid, reference_csv(), name="ventas_mensuales.csv").json()
     base = f"/api/v1/versions/{version['id']}"
     stages = client.get(f"{base}/progress").json()["stages"]
-    assert [s["state"] for s in stages] == ["queued", "pending", "pending"]
+    assert [s["state"] for s in stages] == ["queued", "pending", "pending", "pending"]
     runner = make_runner(db, objects)
     assert runner.run_once()
     assert client.get(f"{base}/report").json()["code"] == "REPORT_NOT_AVAILABLE"
+    assert runner.run_once()  # comprensión del negocio (Fase 19)
     assert runner.run_once()  # investigación
     assert client.get(f"{base}/report").json()["state"] == "queued"
     assert client.get(f"{base}/report.pdf").json()["code"] == "REPORT_NOT_READY"
@@ -207,7 +228,7 @@ def test_upload_ends_with_a_downloadable_report(
     assert not runner.run_once()
     progress_view = client.get(f"{base}/progress").json()
     assert progress_view["complete"] is True
-    assert [s["state"] for s in progress_view["stages"]] == ["done", "done", "done"]
+    assert [s["state"] for s in progress_view["stages"]] == ["done", "done", "done", "done"]
     view = client.get(f"{base}/report").json()
     assert view["state"] == "ready" and view["file_name"] == "informe-ventas_mensuales-v1.pdf"
     assert view["evidence_count"] > 0
@@ -227,7 +248,8 @@ def test_reports_wait_behind_newer_uploads(
     pid = project(client, headers)
     first = upload(client, headers, pid, reference_csv(), name="ventas_mensuales.csv").json()
     runner = make_runner(db, objects)
-    assert runner.run_once() and runner.run_once()  # carga e investigación
+    # Carga, comprensión e investigación.
+    assert runner.run_once() and runner.run_once() and runner.run_once()
     second = upload(client, headers, pid, reference_csv() + b"\n", name="otra.csv").json()
     assert runner.run_once()
     assert client.get(f"/api/v1/executions/{second['execution_id']}").json()["state"] == (

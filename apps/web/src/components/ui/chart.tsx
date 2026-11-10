@@ -1,11 +1,18 @@
 "use client";
 import { useEffect, useRef } from "react";
 import { init, use as registerECharts } from "echarts/core";
-import { BarChart, LineChart, PieChart, ScatterChart } from "echarts/charts";
+import {
+  BarChart,
+  HeatmapChart,
+  LineChart,
+  PieChart,
+  ScatterChart,
+} from "echarts/charts";
 import {
   GridComponent,
   TooltipComponent,
   LegendComponent,
+  VisualMapComponent,
 } from "echarts/components";
 import { CanvasRenderer } from "echarts/renderers";
 import type { EChartsCoreOption } from "echarts/core";
@@ -15,9 +22,11 @@ registerECharts([
   LineChart,
   PieChart,
   ScatterChart,
+  HeatmapChart,
   GridComponent,
   TooltipComponent,
   LegendComponent,
+  VisualMapComponent,
   CanvasRenderer,
 ]);
 export function Chart({

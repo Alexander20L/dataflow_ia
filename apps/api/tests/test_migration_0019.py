@@ -9,7 +9,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
-from migration_support import RETIRED_IN_0019
+from migration_support import RETIRED_IN_0019, modelled_at_0019
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
@@ -72,7 +72,9 @@ def test_0019_drops_the_policy_pipeline_and_keeps_everything_else(
         assert not tables & RETIRED_IN_0019
         assert {"projects", "cleaning_approvals", "dashboard_revisions"} <= tables
         with engine.connect() as connection:
-            context = MigrationContext.configure(connection, opts={})
+            context = MigrationContext.configure(
+                connection, opts={"include_object": modelled_at_0019}
+            )
             assert compare_metadata(context, Base.metadata) == []
         with Session(engine) as db:
             assert ProjectService(SQLProjectRepository(db, str(uuid4()))).get(owner, project.id)

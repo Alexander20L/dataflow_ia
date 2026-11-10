@@ -281,3 +281,44 @@ export function useImportSqlServer() {
     },
   });
 }
+
+export type ComprehensionView = components["schemas"]["ComprehensionView"];
+export type Verdict = components["schemas"]["FeedbackRequest"]["verdict"];
+
+// Fase 19: entendimiento del negocio (hipótesis de la IA contrastadas con los datos). Las
+// versiones anteriores no lo tienen (404).
+export function useComprehension(version?: DatasetVersion) {
+  return useQuery({
+    queryKey: ["comprehension", version?.id],
+    enabled: version?.state === "succeeded",
+    queryFn: async ({ signal }) => {
+      const result = await api.GET(
+        "/api/v1/versions/{version_id}/comprehension",
+        {
+          signal,
+          params: { path: { version_id: version!.id } },
+        },
+      );
+      if (result.response.status === 404) return null;
+      return requireData(result);
+    },
+    refetchInterval: (q) =>
+      ["queued", "running"].includes(q.state.data?.state ?? "") ? 1000 : false,
+  });
+}
+
+/** Valoración opcional de una relación: no bloquea nada; la próxima carga la usa. */
+export function useJudgeRelationship(versionId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ key, verdict }: { key: string; verdict: Verdict }) =>
+      requireData(
+        await api.POST("/api/v1/versions/{version_id}/comprehension/feedback", {
+          params: { path: { version_id: versionId } },
+          body: { relationship_key: key, verdict },
+        }),
+      ),
+    onSuccess: (view) =>
+      client.setQueryData(["comprehension", versionId], view),
+  });
+}

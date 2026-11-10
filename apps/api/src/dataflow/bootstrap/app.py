@@ -13,6 +13,7 @@ from starlette.responses import Response
 from dataflow.bootstrap.schemas import ErrorResponse
 from dataflow.modules.analytics.presentation import router as analytics_router
 from dataflow.modules.cleaning.presentation import router as cleaning_router
+from dataflow.modules.comprehension.presentation import router as comprehension_router
 from dataflow.modules.copilot.presentation import router as copilot_router
 from dataflow.modules.delivery.presentation import router as delivery_router
 from dataflow.modules.executions.presentation import router as executions_router
@@ -30,7 +31,7 @@ logger = logging.getLogger("dataflow.http")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 app = FastAPI(
     title="DataFlow AI API",
-    version="0.25.0",
+    version="0.26.0",
     description="DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     responses={
         status: {"model": ErrorResponse}
@@ -150,3 +151,4 @@ app.include_router(analytics_router)
 app.include_router(copilot_router)
 app.include_router(investigation_router)
 app.include_router(delivery_router)
+app.include_router(comprehension_router)
