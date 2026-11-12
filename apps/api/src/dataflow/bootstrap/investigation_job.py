@@ -13,6 +13,7 @@ from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.loads import same_load
 from dataflow.integrations.ai import AIProvider
 from dataflow.modules.analytics.contracts import (
     AutomaticAnalysis,
@@ -170,7 +171,7 @@ class InvestigationInput:
             or table.kind != "table"
             or analysis.version_id != version.id
             or table.version_id != version.id
-            or analysis.execution_id != table.execution_id
+            or not same_load(self.executions, run.owner_id, analysis, table)
             or str(analysis.id) != source.get("artifact_id")
             or str(analysis.execution_id) != source.get("producer_execution_id")
             or str(version.id) != source.get("version_id")

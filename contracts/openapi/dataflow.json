@@ -695,7 +695,7 @@
       },
       "AnnotationRequest": {
         "additionalProperties": false,
-        "description": "Corrección de una columna. Sustituye a la anterior; todo vacío y sin confirmar vuelve a\nla clasificación automática. Nunca cambia el archivo ni los cálculos.",
+        "description": "Corrección de una columna. Sustituye a la anterior; todo vacío y sin confirmar vuelve a\nla clasificación automática. Nunca cambia el archivo: desde la Fase 23 la clasificación\ncorregida se usa en la comprensión (que se recalcula) y los textos declarados como nulos\ncrean una versión derivada.",
         "properties": {
           "column_id": {
             "format": "uuid",
@@ -737,6 +737,25 @@
               }
             ],
             "title": "Notes"
+          },
+          "null_tokens": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 20,
+            "title": "Null Tokens",
+            "type": "array"
+          },
+          "personal": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personal"
           },
           "role": {
             "anyOf": [
@@ -1898,6 +1917,11 @@
             "title": "Count",
             "type": "integer"
           },
+          "dichotomous": {
+            "default": false,
+            "title": "Dichotomous",
+            "type": "boolean"
+          },
           "distinct": {
             "title": "Distinct",
             "type": "integer"
@@ -1905,6 +1929,16 @@
           "distinct_percent": {
             "title": "Distinct Percent",
             "type": "string"
+          },
+          "domain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ValueDomain"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "examples": {
             "items": {
@@ -1988,6 +2022,26 @@
           "ordinal": {
             "title": "Ordinal",
             "type": "integer"
+          },
+          "ordinal_candidate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrdinalHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "personal": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/PersonalHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "reading": {
             "anyOf": [
@@ -2181,7 +2235,8 @@
               {
                 "enum": [
                   "rules",
-                  "ai"
+                  "ai",
+                  "user"
                 ],
                 "type": "string"
               },
@@ -2359,6 +2414,13 @@
             "title": "Calls",
             "type": "array"
           },
+          "corrected_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Corrected Columns",
+            "type": "array"
+          },
           "discarded": {
             "items": {
               "type": "string"
@@ -2405,6 +2467,13 @@
             "title": "Meanings",
             "type": "array"
           },
+          "personal_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Personal Columns",
+            "type": "array"
+          },
           "questions": {
             "items": {
               "type": "string"
@@ -2420,8 +2489,11 @@
             "type": "array"
           },
           "rules_version": {
-            "const": "business-comprehension-v1",
-            "default": "business-comprehension-v1",
+            "default": "business-comprehension-v2",
+            "enum": [
+              "business-comprehension-v1",
+              "business-comprehension-v2"
+            ],
             "title": "Rules Version",
             "type": "string"
           },
@@ -3086,6 +3158,11 @@
             "title": "Description",
             "type": "string"
           },
+          "dichotomous": {
+            "default": false,
+            "title": "Dichotomous",
+            "type": "boolean"
+          },
           "distinct": {
             "title": "Distinct",
             "type": "integer"
@@ -3133,13 +3210,70 @@
             ],
             "title": "Notes"
           },
+          "null_tokens": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Null Tokens",
+            "type": "array"
+          },
           "nulls": {
             "title": "Nulls",
             "type": "integer"
           },
+          "ordinal_candidate": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/OrdinalHint"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "origin": {
             "title": "Origin",
             "type": "string"
+          },
+          "personal": {
+            "default": false,
+            "title": "Personal",
+            "type": "boolean"
+          },
+          "personal_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "name",
+                  "document",
+                  "email",
+                  "phone",
+                  "address"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personal Kind"
+          },
+          "personal_status": {
+            "anyOf": [
+              {
+                "enum": [
+                  "automatic",
+                  "confirmed",
+                  "rejected",
+                  "marked"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Personal Status"
           },
           "role": {
             "enum": [
@@ -3781,7 +3915,8 @@
               "comprehension",
               "exploration",
               "dashboard",
-              "inspection"
+              "inspection",
+              "null_cleaning"
             ],
             "title": "Kind",
             "type": "string"
@@ -3957,7 +4092,8 @@
               "comprehension",
               "exploration",
               "dashboard",
-              "inspection"
+              "inspection",
+              "null_cleaning"
             ],
             "title": "Kind",
             "type": "string"
@@ -4455,8 +4591,8 @@
             "anyOf": [
               {
                 "enum": [
-                  "rules",
-                  "ai"
+                  "ai",
+                  "rules"
                 ],
                 "type": "string"
               },
@@ -4971,6 +5107,7 @@
           "source": {
             "enum": [
               "dataset-inspection-v1",
+              "dataset-inspection-v2",
               "automatic-quality-v1"
             ],
             "title": "Source",
@@ -5449,8 +5586,11 @@
             "type": "string"
           },
           "rules": {
-            "const": "dataset-inspection-v1",
-            "default": "dataset-inspection-v1",
+            "default": "dataset-inspection-v2",
+            "enum": [
+              "dataset-inspection-v1",
+              "dataset-inspection-v2"
+            ],
             "title": "Rules",
             "type": "string"
           },
@@ -5531,6 +5671,16 @@
               }
             ],
             "title": "Reason"
+          },
+          "recalculation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Recalculation"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "state": {
             "enum": [
@@ -6831,6 +6981,16 @@
             "title": "Minimum",
             "type": "string"
           },
+          "outliers": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Outliers"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "q1": {
             "title": "Q1",
             "type": "string"
@@ -6915,6 +7075,74 @@
           "reason"
         ],
         "title": "OmittedSource",
+        "type": "object"
+      },
+      "OrdinalHint": {
+        "description": "Enteros con pocos valores que parecen una escala ordenada. Es una candidata: sólo cambia la\nclasificación si el usuario la confirma en el Diccionario.",
+        "properties": {
+          "order": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Order",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "order",
+          "reason"
+        ],
+        "title": "OrdinalHint",
+        "type": "object"
+      },
+      "Outliers": {
+        "description": "Valores atípicos por las vallas de Tukey (Fase 23). Es un aviso: no se elimina nada.",
+        "properties": {
+          "count": {
+            "minimum": 0.0,
+            "title": "Count",
+            "type": "integer"
+          },
+          "extreme": {
+            "minimum": 0.0,
+            "title": "Extreme",
+            "type": "integer"
+          },
+          "extreme_lower": {
+            "title": "Extreme Lower",
+            "type": "string"
+          },
+          "extreme_upper": {
+            "title": "Extreme Upper",
+            "type": "string"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "mild_lower": {
+            "title": "Mild Lower",
+            "type": "string"
+          },
+          "mild_upper": {
+            "title": "Mild Upper",
+            "type": "string"
+          }
+        },
+        "required": [
+          "mild_lower",
+          "mild_upper",
+          "extreme_lower",
+          "extreme_upper",
+          "count",
+          "extreme",
+          "method"
+        ],
+        "title": "Outliers",
         "type": "object"
       },
       "OverviewAudit": {
@@ -7453,6 +7681,32 @@
           "note"
         ],
         "title": "PeriodCandidate",
+        "type": "object"
+      },
+      "PersonalHint": {
+        "description": "Columna que parece contener datos personales (Fase 23).",
+        "properties": {
+          "kind": {
+            "enum": [
+              "name",
+              "document",
+              "email",
+              "phone",
+              "address"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "kind",
+          "reason"
+        ],
+        "title": "PersonalHint",
         "type": "object"
       },
       "PlanResponse": {
@@ -8109,6 +8363,65 @@
           "hidden_groups"
         ],
         "title": "RankingSummary",
+        "type": "object"
+      },
+      "Recalculation": {
+        "description": "Trabajo en marcha o terminado que provocó la última corrección (Fase 23).",
+        "properties": {
+          "derived_version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Derived Version Id"
+          },
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "comprehension",
+              "null_cleaning"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "kind",
+          "execution_id"
+        ],
+        "title": "Recalculation",
         "type": "object"
       },
       "RecordsPage": {
@@ -9317,6 +9630,17 @@
             "title": "Duplicate Rows",
             "type": "integer"
           },
+          "duplicate_rows_without_ids": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Duplicate Rows Without Ids"
+          },
           "groups": {
             "additionalProperties": {
               "type": "integer"
@@ -9333,6 +9657,13 @@
             "title": "Groups",
             "type": "object"
           },
+          "identifier_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Identifier Columns",
+            "type": "array"
+          },
           "memory_bytes": {
             "anyOf": [
               {
@@ -9347,6 +9678,13 @@
           "missing_cells": {
             "title": "Missing Cells",
             "type": "integer"
+          },
+          "personal_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Personal Columns",
+            "type": "array"
           },
           "rows": {
             "title": "Rows",
@@ -9592,6 +9930,13 @@
           "token": {
             "title": "Token",
             "type": "string"
+          },
+          "variants": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Variants",
+            "type": "array"
           }
         },
         "required": [
@@ -9651,6 +9996,52 @@
           "name"
         ],
         "title": "UserResponse",
+        "type": "object"
+      },
+      "ValueDomain": {
+        "description": "Dominio evidente de una columna numérica (Fase 23) y cuántos valores lo incumplen.",
+        "properties": {
+          "kind": {
+            "enum": [
+              "percent",
+              "non_negative"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "lower": {
+            "title": "Lower",
+            "type": "string"
+          },
+          "outside": {
+            "minimum": 0.0,
+            "title": "Outside",
+            "type": "integer"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "upper": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Upper"
+          }
+        },
+        "required": [
+          "kind",
+          "lower",
+          "upper",
+          "outside",
+          "reason"
+        ],
+        "title": "ValueDomain",
         "type": "object"
       },
       "VersionPage": {
@@ -10149,7 +10540,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.29.0"
+    "version": "0.30.0"
   },
   "openapi": "3.1.0",
   "paths": {

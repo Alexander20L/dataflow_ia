@@ -1,10 +1,15 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useEffect, useRef, useState, type KeyboardEvent } from "react";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/api";
-import { useInspection, type InspectionView } from "./api";
+import {
+  recalculating,
+  useInspection,
+  useRefreshAfterRecalculation,
+  type InspectionView,
+} from "./api";
 import { ColumnsView } from "./columns";
 import { DictionaryView } from "./dictionary";
 import { FileView } from "./file";
@@ -23,10 +28,28 @@ const SUBVIEWS = [
 type Subview = (typeof SUBVIEWS)[number]["id"];
 
 /** Fase 22: inspección del dataset. Todo viene del servidor (calculado una vez sobre la tabla
- * completa); cambiar de subvista no recalcula nada. */
-export function DatasetTab({ versionId }: { versionId: string }) {
+ * completa); cambiar de subvista no recalcula nada. Fase 23: las correcciones del Diccionario
+ * recalculan el análisis; al terminar, las demás pestañas vuelven a pedir sus resultados. */
+export function DatasetTab({
+  versionId,
+  onOpenVersion,
+  onKeepVersion,
+}: {
+  versionId: string;
+  onOpenVersion?: (versionId: string) => void;
+  /** Fija la versión que se está viendo: la derivada no la sustituye sin que el usuario lo pida. */
+  onKeepVersion?: () => void;
+}) {
   const inspection = useInspection(versionId);
   const [subview, setSubview] = useState<Subview>("summary");
+  const [focusRow, setFocusRow] = useState<number | undefined>();
+  const refresh = useRefreshAfterRecalculation(versionId);
+  const busy = recalculating(inspection.data);
+  const wasBusy = useRef(busy);
+  useEffect(() => {
+    if (wasBusy.current && !busy) refresh();
+    wasBusy.current = busy;
+  }, [busy, refresh]);
   if (inspection.isPending)
     return (
       <p className="empty-copy" role="status">
@@ -107,7 +130,18 @@ export function DatasetTab({ versionId }: { versionId: string }) {
         aria-labelledby={`dataset-tab-${subview}`}
         className="inspection-panel"
       >
-        <Subview view={view} subview={subview} versionId={versionId} />
+        <Subview
+          view={view}
+          subview={subview}
+          versionId={versionId}
+          focusRow={focusRow}
+          onShowRow={(row) => {
+            setFocusRow(row);
+            setSubview("records");
+          }}
+          onOpenVersion={onOpenVersion}
+          onKeepVersion={onKeepVersion}
+        />
       </div>
     </section>
   );
@@ -117,23 +151,45 @@ function Subview({
   view,
   subview,
   versionId,
+  focusRow,
+  onShowRow,
+  onOpenVersion,
+  onKeepVersion,
 }: {
   view: InspectionView;
   subview: Subview;
   versionId: string;
+  focusRow?: number;
+  onShowRow: (row: number) => void;
+  onOpenVersion?: (versionId: string) => void;
+  onKeepVersion?: () => void;
 }) {
   const inspection = view.inspection!;
   switch (subview) {
     case "summary":
       return <SummaryView view={view} />;
     case "records":
-      return <RecordsView versionId={versionId} inspection={inspection} />;
+      return (
+        <RecordsView
+          key={focusRow ?? "records"}
+          versionId={versionId}
+          inspection={inspection}
+          focusRow={focusRow}
+        />
+      );
     case "columns":
       return <ColumnsView inspection={inspection} />;
     case "dictionary":
-      return <DictionaryView view={view} versionId={versionId} />;
+      return (
+        <DictionaryView
+          view={view}
+          versionId={versionId}
+          onOpenVersion={onOpenVersion}
+          onKeepVersion={onKeepVersion}
+        />
+      );
     case "quality":
-      return <QualityView inspection={inspection} />;
+      return <QualityView inspection={inspection} onShowRow={onShowRow} />;
     case "file":
       return <FileView inspection={inspection} versionId={versionId} />;
   }

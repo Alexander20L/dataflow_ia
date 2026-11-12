@@ -84,7 +84,12 @@ def build_plan(
     encoding: Literal["utf-8-sig", "cp1252"] = "utf-8-sig",
     pdf: ReadPdfParameters | None = None,
     source_origin: SourceOrigin | None = None,
+    analytical_table: bool = False,
+    source_key: str | None = None,
 ) -> PlanRevision:
+    """Plan de lectura y análisis. `analytical_table` (Fase 23): una tabla derivada del recorrido
+    automático (textos declarados como nulos) se analiza como una carga nueva (perfil@4, calidad@3
+    y análisis automático); `source_key` conserva la identidad de la fuente de su carga."""
     # analysis-v13 (Fase 18): lecturas @2 con codificación y valores regionales.
     regional = config.operation_catalog == "analysis-v13"
     if table:
@@ -145,14 +150,14 @@ def build_plan(
         step_input = {"kind": "step", "step_id": "read"}
     # analysis-v11 (Fase 14): las cargas nuevas usan la interpretación analítica y la calidad
     # que indica los análisis afectados. Las tablas derivadas conservan profile@1/quality@1.
-    analytical = table is None and config.operation_catalog in {
+    analytical = (table is None or analytical_table) and config.operation_catalog in {
         "analysis-v11",
         "analysis-v12",
         "analysis-v13",
     }
     if analysis_kind == "profile_quality":
         profile_version = 1
-        if table is None:
+        if table is None or analytical_table:
             if analytical:
                 profile_version = 4
             elif config.operation_catalog == "analysis-v10":
@@ -189,7 +194,10 @@ def build_plan(
             },
         }
     )
-    if table is None and config.operation_catalog in {"analysis-v12", "analysis-v13"}:
+    if (table is None or analytical_table) and config.operation_catalog in {
+        "analysis-v12",
+        "analysis-v13",
+    }:
         # Fase 15: plan analítico automático y hallazgos sobre la misma tabla importada.
         steps.append(
             {
@@ -200,7 +208,7 @@ def build_plan(
                 "parameters": {"rules": "automatic-analysis-v1", "plan_rules": "automatic-plan-v1"},
             }
         )
-    content = {
+    content: dict[str, Any] = {
         "objective": None,
         "input": input_ref,
         "semantic_ref": semantic_ref.model_dump(mode="json") if semantic_ref else None,
@@ -211,6 +219,8 @@ def build_plan(
         content["source_selection"] = source_selection.model_dump(mode="json")
     if source_origin is not None:
         content["source_origin"] = source_origin.model_dump(mode="json")
+    if source_key is not None:
+        content["source_key"] = source_key
     return PlanRevision(
         uuid4(), uuid4(), 1, content, digest("plan", content), owner, datetime.now(UTC)
     )

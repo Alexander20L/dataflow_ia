@@ -389,3 +389,61 @@ class ApplyFinalizer(EffectFinalizer):
 
     def put(self, lease: Lease, name: str, content: bytes) -> StoredObject:
         return self.objects.put(f"{prefix(lease)}/result/{name}", content)
+
+
+class DeclaredNullsFinalizer(EffectFinalizer):
+    """null_cleaning (Fase 23, ADR-040): textos que el usuario declaró como «sin dato» en el
+    Diccionario pasan a nulos en una versión derivada. Es una decisión registrada del sistema, sin
+    aprobación aparte: el plan sólo contiene `cleaning.normalize_null_tokens@1` (sin pérdida de
+    filas ni de columnas) y el efecto exacto (`effect_sha256`) queda guardado con la versión."""
+
+    expected: set[tuple[str, ArtifactKind]] = ApplyFinalizer.expected
+
+    def prepare(self, lease: Lease) -> None:
+        assert lease.execution.plan
+        operations = {s.get("operation") for s in lease.execution.plan.content.get("steps", [])}
+        if operations != {"cleaning.normalize_null_tokens"}:
+            raise ApplicationError(
+                "INVALID_PLAN", "Sólo se aplican textos declarados como nulos.", 409
+            )
+        return None
+
+    def finalize(
+        self, lease: Lease, context: Any, source: StepInput, final: StepInput, timeout: float
+    ) -> list[ArtifactOutput]:
+        result, manifest, sha = self.effect(lease, source, final, timeout)
+        if result.counts.output_rows != result.counts.input_rows:
+            raise ApplicationError("EFFECT_INVALID", "Declarar nulos no quita filas.", 409)
+        version = derived_version_id(lease.execution_id)
+        columns = len(final.columns or [])
+        table = self.objects.put(f"{prefix(lease)}/result/table.parquet", result.table)
+        lineage = self.objects.put(f"{prefix(lease)}/result/row_lineage.parquet", result.lineage)
+        rows = result.counts.output_rows
+        return [
+            *self.effect_outputs(lease, result, manifest, sha),
+            ArtifactOutput(
+                uuid4(),
+                "result",
+                "table",
+                "table",
+                table,
+                PARQUET,
+                rows,
+                columns,
+                final.columns,
+                result.logical_content_sha256,
+                version,
+            ),
+            ArtifactOutput(
+                uuid4(),
+                "result",
+                "row_lineage",
+                "row_lineage",
+                lineage,
+                PARQUET,
+                rows,
+                2,
+                logical_content_sha256=result.row_lineage_sha256,
+                version_id=version,
+            ),
+        ]

@@ -9,6 +9,7 @@ from dataflow.modules.datasets.contracts import StoredObject
 
 # report_render (Fase 9): informe exacto a PDF; su entrada es una instantánea del informe.
 # automatic_report (Fase 17): informe automático en PDF; su entrada es la investigación.
+# null_cleaning (Fase 23): textos declarados como nulos en el Diccionario → versión derivada.
 RunKind = Literal[
     "csv_import",
     "table_analysis",
@@ -23,6 +24,7 @@ RunKind = Literal[
     "exploration",
     "dashboard",
     "inspection",
+    "null_cleaning",
 ]
 RunState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 ArtifactKind = Literal[

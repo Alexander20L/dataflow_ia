@@ -68,6 +68,7 @@ from dataflow.modules.cleaning.repository import SQLApprovalRepository, SQLAppro
 from dataflow.modules.cleaning.steps import (
     ApplyFinalizer,
     CastStep,
+    DeclaredNullsFinalizer,
     DeduplicateStep,
     FilterRowsStep,
     NormalizeNullTokensStep,
@@ -106,6 +107,7 @@ from dataflow.modules.ingestion.executor import (
     TableInputResolver,
 )
 from dataflow.modules.ingestion.plans import analysis_fingerprint, build_plan
+from dataflow.modules.inspection.public import SQLColumnAnnotations
 from dataflow.modules.planning.application import PlanningService
 from dataflow.modules.planning.infrastructure import SQLPlanningRepository
 from dataflow.modules.projects.public import ProjectPermissions
@@ -237,10 +239,13 @@ class DatasetPublication:
                 self.db, lease, next(o for o in outputs if o.kind == "overview_audit"), self.objects
             )
             return
-        if lease.execution.kind != "cleaning_apply":
+        if lease.execution.kind not in {"cleaning_apply", "null_cleaning"}:
             return
-        # Revocación comprobada otra vez al confirmar, no sólo al empezar el cálculo.
-        require_valid_approval(self.approvals, lease)
+        if lease.execution.kind == "cleaning_apply":
+            # Revocación comprobada otra vez al confirmar, no sólo al empezar el cálculo.
+            require_valid_approval(self.approvals, lease)
+        # null_cleaning (Fase 23): decisión del sistema por textos declarados como nulos; su
+        # efecto exacto queda registrado en los artefactos `effect`.
         table = next(output for output in outputs if output.kind == "table")
         version = derived_version_id(lease.execution_id)
         if table.version_id != version:
@@ -252,6 +257,33 @@ class DatasetPublication:
             table.content,
         )
 
+    def background(self, lease: Lease, artifacts: list[Artifact]) -> bool:
+        """Trabajos de fondo del recorrido automático tras una carga (o, desde la Fase 23, tras
+        analizar una versión derivada por textos declarados como nulos)."""
+        analysis = next((a for a in artifacts if a.kind == "automatic_analysis"), None)
+        table = next((a for a in artifacts if a.kind == "table"), None)
+        if analysis is None or table is None:
+            return False
+        # Fase 22: la inspección de la pestaña Dataset, la primera de los trabajos de
+        # fondo (sólo en el recorrido automático actual, como la comprensión).
+        enqueue_inspection(self.executions, self.datasets, lease, artifacts, self.config)
+        # Fase 19: primero la comprensión del negocio (se reclama antes por llegar
+        # antes); después la investigación (Fase 16), que explica los hallazgos.
+        profile = next((a for a in artifacts if a.kind == "profile"), None)
+        if profile is not None:
+            enqueue_comprehension(
+                self.executions,
+                self.datasets,
+                SQLFeedbackRepository(self.db),
+                lease,
+                profile,
+                table,
+                self.config,
+                SQLColumnAnnotations(self.db),
+            )
+        enqueue_investigation(self.executions, lease, analysis, table, self.config)
+        return True
+
     def published(self, lease: Lease, artifacts: list[Artifact]) -> None:
         kind = lease.execution.kind
         if kind == "csv_import":
@@ -260,26 +292,7 @@ class DatasetPublication:
                 lease.execution_id,
                 {artifact.kind: artifact.id for artifact in artifacts},
             )
-            analysis = next((a for a in artifacts if a.kind == "automatic_analysis"), None)
-            table = next((a for a in artifacts if a.kind == "table"), None)
-            if analysis is not None and table is not None:
-                # Fase 22: la inspección de la pestaña Dataset, la primera de los trabajos de
-                # fondo (sólo en el recorrido automático actual, como la comprensión).
-                enqueue_inspection(self.executions, self.datasets, lease, artifacts, self.config)
-                # Fase 19: primero la comprensión del negocio (se reclama antes por llegar
-                # antes); después la investigación (Fase 16), que explica los hallazgos.
-                profile = next((a for a in artifacts if a.kind == "profile"), None)
-                if profile is not None:
-                    enqueue_comprehension(
-                        self.executions,
-                        self.datasets,
-                        SQLFeedbackRepository(self.db),
-                        lease,
-                        profile,
-                        table,
-                        self.config,
-                    )
-                enqueue_investigation(self.executions, lease, analysis, table, self.config)
+            if self.background(lease, artifacts):
                 return
             profile = next((a for a in artifacts if a.kind == "profile"), None)
             if (
@@ -332,8 +345,23 @@ class DatasetPublication:
                 lease.execution_id,
                 {artifact.kind: artifact.id for artifact in artifacts},
             )
+            # Fase 23: la versión derivada por textos nulos se analiza como una carga nueva
+            # (su tabla es la entrada fijada del análisis, publicada por `null_cleaning`).
+            run = lease.execution
+            if run.input_artifact_id is not None and any(
+                a.kind == "automatic_analysis" for a in artifacts
+            ):
+                table = self.executions.artifact(lease.owner_id, run.input_artifact_id)
+                self.background(lease, [*artifacts, table])
         elif kind == "cleaning_apply":
             self.derived(lease, next(a for a in artifacts if a.kind == "table"))
+        elif kind == "null_cleaning":
+            assert lease.execution.plan
+            self.derived(
+                lease,
+                next(a for a in artifacts if a.kind == "table"),
+                str(lease.execution.plan.content.get("source_key") or "") or None,
+            )
 
     def review(self, lease: Lease) -> SourceReview | None:
         """Fase 18: lectura y cambios de estructura de la versión, para el informe. Si no se
@@ -343,10 +371,19 @@ class DatasetPublication:
         except ApplicationError:
             return None
 
-    def derived(self, lease: Lease, table: Artifact) -> None:
-        """Encola perfil y calidad de la versión derivada y la vincula a ese análisis."""
+    def derived(self, lease: Lease, table: Artifact, source: str | None = None) -> None:
+        """Encola perfil y calidad de la versión derivada y la vincula a ese análisis. Con
+        `source` (Fase 23, textos declarados como nulos) el análisis es el de una carga nueva y
+        conserva la identidad de la fuente."""
         version = self.datasets.get(lease.owner_id, table.version_id)
-        plan = build_plan(lease.owner_id, version, self.config, table=table)
+        plan = build_plan(
+            lease.owner_id,
+            version,
+            self.config,
+            table=table,
+            analytical_table=source is not None,
+            source_key=source,
+        )
         run = self.executions.enqueue_followup(
             lease.owner_id,
             version.project_id,
@@ -381,6 +418,7 @@ WORKER_KINDS: set[RunKind] = {
     "plan",
     "cleaning_preview",
     "cleaning_apply",
+    "null_cleaning",
 }
 
 
@@ -498,6 +536,7 @@ def make_runner(
         {
             "cleaning_preview": PreviewFinalizer(objects, cleaner),
             "cleaning_apply": ApplyFinalizer(objects, cleaner, approvals),
+            "null_cleaning": DeclaredNullsFinalizer(objects, cleaner),
         },
     )
 

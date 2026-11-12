@@ -381,6 +381,8 @@ export function CsvWorkspace({
                   <DatasetTab
                     key={`dataset-${version.id}`}
                     versionId={version.id}
+                    onOpenVersion={(id) => setSelected(id)}
+                    onKeepVersion={() => setSelected(version.id)}
                   />
                 </div>
               ) : (

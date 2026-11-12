@@ -6,10 +6,15 @@ from dataflow.modules.inspection.contracts import (
     InspectionScope,
     InspectionView,
 )
-from dataflow.modules.inspection.infrastructure import ColumnAnnotationRecord, SQLColumnAnnotations
+from dataflow.modules.inspection.infrastructure import (
+    ColumnAnnotationDetailRecord,
+    ColumnAnnotationRecord,
+    SQLColumnAnnotations,
+)
 
 __all__ = [
     "AnnotationRequest",
+    "ColumnAnnotationDetailRecord",
     "ColumnAnnotationRecord",
     "Inspection",
     "InspectionScope",

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type FormEvent } from "react";
+import { useEffect, useState, type FormEvent } from "react";
 import { ArrowDown, ArrowUp, ArrowUpDown, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/api";
@@ -9,16 +9,21 @@ import { formatNumber } from "./labels";
 
 const SIZES = [25, 50, 100];
 
-/** Registros tal como se leyeron, paginados, ordenados y buscados en el servidor. */
+/** Registros tal como se leyeron, paginados, ordenados y buscados en el servidor. `focusRow`
+ * (Fase 23): fila que se quiere ver desde Calidad; se abre su página y se resalta. */
 export function RecordsView({
   versionId,
   inspection,
+  focusRow,
 }: {
   versionId: string;
   inspection: Inspection;
+  focusRow?: number;
 }) {
-  const [page, setPage] = useState(0);
   const [size, setSize] = useState(25);
+  const [page, setPage] = useState(
+    focusRow ? Math.floor((focusRow - 1) / 25) : 0,
+  );
   const [sort, setSort] = useState<string | undefined>();
   const [descending, setDescending] = useState(false);
   const [draft, setDraft] = useState("");
@@ -52,6 +57,17 @@ export function RecordsView({
       .getElementById(`records-col-${id}`)
       ?.scrollIntoView({ inline: "center", block: "nearest" });
   const data = records.data;
+  const focusVisible =
+    focusRow != null &&
+    !sort &&
+    !search &&
+    data?.rows.some((row) => row.row_number === focusRow);
+  useEffect(() => {
+    if (focusVisible)
+      document
+        .getElementById(`records-row-${focusRow}`)
+        ?.scrollIntoView({ block: "center" });
+  }, [focusVisible, focusRow]);
   const total = data?.total ?? 0;
   const pages = Math.max(1, Math.ceil(total / size));
   return (
@@ -159,7 +175,20 @@ export function RecordsView({
                   </tr>
                 ) : (
                   data.rows.map((row) => (
-                    <tr key={row.row_number}>
+                    <tr
+                      key={row.row_number}
+                      id={`records-row-${row.row_number}`}
+                      className={
+                        focusVisible && row.row_number === focusRow
+                          ? "focus-row"
+                          : undefined
+                      }
+                      aria-current={
+                        focusVisible && row.row_number === focusRow
+                          ? "true"
+                          : undefined
+                      }
+                    >
                       <th scope="row">{row.row_number}</th>
                       {data.columns.map((name) => {
                         const value = row.values[name];

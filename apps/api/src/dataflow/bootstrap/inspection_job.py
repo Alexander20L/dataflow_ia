@@ -4,7 +4,11 @@ original y las correcciones manuales sin acoplar los módulos entre sí.
 Al publicarse una carga se encola un trabajo `inspection` (el primero de los de fondo) cuyo
 input fija la tabla leída, el perfil y la calidad de la carga. Se calcula una sola vez sobre la
 tabla completa y se guarda como artefacto: cambiar de subvista no recalcula nada. Las
-correcciones del diccionario se aplican al leer y nunca tocan el archivo ni el cálculo.
+correcciones del diccionario se aplican al leer y nunca tocan el archivo.
+
+Fase 23 (ADR-040): una corrección que cambia la clasificación (rol, naturaleza o datos
+personales) encola otra comprensión de la versión; textos declarados como nulos encolan una
+versión derivada (`null_cleaning`). La vista dice en qué estado está ese recálculo.
 """
 
 from datetime import UTC, datetime
@@ -13,7 +17,10 @@ from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
-from dataflow.bootstrap.comprehension_job import source_key
+from dataflow.bootstrap.comprehension_job import request_comprehension_update, source_key
+from dataflow.bootstrap.loads import same_load
+from dataflow.bootstrap.null_cleaning_job import enqueue_null_cleaning
+from dataflow.modules.cleaning.public import derived_version_id
 from dataflow.modules.datasets.public import Datasets, ObjectStore, StoredObject
 from dataflow.modules.executions.public import (
     Artifact,
@@ -31,10 +38,12 @@ from dataflow.modules.executions.public import (
 from dataflow.modules.ingestion.analytical import IsolatedAnalyzer, PolarsPreview
 from dataflow.modules.ingestion.contracts import SourceFacts
 from dataflow.modules.inspection.contracts import (
+    INSPECTION_RULES,
     AnnotationRequest,
     Inspection,
     InspectionScope,
     InspectionView,
+    Recalculation,
 )
 from dataflow.modules.inspection.domain import dictionary, groups, validate_annotation
 from dataflow.modules.inspection.engine import FileMeta, inspect
@@ -121,7 +130,7 @@ def enqueue_inspection(
                 "operation": STEP,
                 "version": 1,
                 "input": {"kind": "input", "alias": "source"},
-                "parameters": {"rules": "dataset-inspection-v1"},
+                "parameters": {"rules": INSPECTION_RULES},
             }
         ],
         "config": config.model_dump(),
@@ -169,7 +178,7 @@ class InspectionInput:
             or table.kind != "table"
             or profile.version_id != version.id
             or table.version_id != version.id
-            or profile.execution_id != table.execution_id
+            or not same_load(self.executions, run.owner_id, profile, table)
             or str(version.id) != given.get("version_id")
             or version.content.sha256 != given.get("version_content_sha256")
             or profile.content.sha256 != run.input_artifact_sha256
@@ -179,7 +188,7 @@ class InspectionInput:
                 quality is not None
                 and (
                     quality.kind != "quality"
-                    or quality.execution_id != table.execution_id
+                    or not same_load(self.executions, run.owner_id, quality, table)
                     or quality.content != reference(given["quality"])
                 )
             )
@@ -345,6 +354,27 @@ class InspectionAccess:
             None,
         )
 
+    def recalculation(self, owner: UUID, version: UUID) -> Recalculation | None:
+        """El último recálculo que provocó una corrección del Diccionario en esta versión."""
+        for run in self.executions.for_version(owner, version):
+            if run.kind not in {"comprehension", "null_cleaning"} or run.plan is None:
+                continue
+            if run.plan.content.get("trigger") != "dictionary":
+                continue
+            derived = (
+                derived_version_id(run.id)
+                if run.kind == "null_cleaning" and run.state == "succeeded"
+                else None
+            )
+            return Recalculation(
+                state=run.state,
+                kind="null_cleaning" if run.kind == "null_cleaning" else "comprehension",
+                execution_id=run.id,
+                derived_version_id=derived,
+                reason=run.error_code,
+            )
+        return None
+
     def view(self, owner: UUID, version: UUID) -> InspectionView:
         run = self.run(owner, version)
         if run is None:
@@ -365,7 +395,10 @@ class InspectionAccess:
         assert run.plan
         source = str(run.plan.content["input"]["source_key"])
         entries = dictionary(
-            result, self.annotations.for_source(owner, run.project_id, source), version
+            result.columns,
+            result.scope.rules,
+            self.annotations.for_source(owner, run.project_id, source),
+            version,
         )
         return InspectionView(
             state="ready",
@@ -373,10 +406,14 @@ class InspectionAccess:
             inspection=result,
             dictionary=entries,
             groups=groups(entries),
+            recalculation=self.recalculation(owner, version),
         )
 
     def annotate(self, owner: UUID, version: UUID, request: AnnotationRequest) -> InspectionView:
-        """Corrección opcional: se guarda como metadato de la fuente; no recalcula nada."""
+        """Corrección opcional: se guarda como metadato de la fuente (nunca cambia el archivo).
+        Fase 23: si cambia la clasificación, se recalcula la comprensión de esta versión (y, tras
+        ella, la exploración, el dashboard y el informe); si declara textos como nulos, se crea
+        una versión derivada que se analiza entera."""
         run = self.run(owner, version)
         result = self.result(owner, run) if run else None
         if run is None or result is None:
@@ -386,16 +423,15 @@ class InspectionAccess:
         column = next((c for c in result.columns if c.id == request.column_id), None)
         if column is None:
             raise ApplicationError("UNKNOWN_COLUMN", "La columna no existe en esta versión.", 404)
-        validate_annotation(request, column)
-        ProjectPermissions(self.db).require(owner, run.project_id, writable=True)
         assert run.plan
-        self.annotations.add(
-            owner,
-            run.project_id,
-            version,
-            str(run.plan.content["input"]["source_key"]),
-            column.name,
-            request,
-        )
+        source = str(run.plan.content["input"]["source_key"])
+        before = self.annotations.for_source(owner, run.project_id, source).get(column.name)
+        validate_annotation(request, column, before.null_tokens if before else [])
+        ProjectPermissions(self.db).require(owner, run.project_id, writable=True)
+        self.annotations.add(owner, run.project_id, version, source, column.name, request)
+        after = self.annotations.for_source(owner, run.project_id, source)
+        if request.null_tokens and request.null_tokens != (before.null_tokens if before else []):
+            enqueue_null_cleaning(self.executions, self.datasets, owner, run, result, after)
+        request_comprehension_update(self.executions, self.annotations, owner, version, source)
         self.db.commit()
         return self.view(owner, version)

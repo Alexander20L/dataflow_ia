@@ -6,6 +6,10 @@ sigue en `analysis-v13`). Documentación: [Fase 22](../architecture/phase-22.md)
 (lectura regional) y [ADR-036](036-business-comprehension-and-optional-feedback.md) (valoración
 opcional del usuario).
 
+> **Vigencia:** el punto 7 lo modifica [ADR-040](040-dataset-tab-closure-and-corrections-that-count.md)
+> (Fase 23): desde entonces las correcciones del Diccionario se usan en la comprensión y lo que
+> depende de ella, y los textos declarados como nulos crean una versión derivada.
+
 ## Contexto
 
 La interfaz era una sola página larga con los resultados automáticos. Hacía falta una primera
