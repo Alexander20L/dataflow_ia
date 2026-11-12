@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { Chart, seriesOption } from "@/components/ui/chart";
+import { capDecimalsInText } from "@/lib/numbers";
 import type { ColumnInspection, Inspection } from "./api";
 import {
   FREQUENCIES,
@@ -69,7 +70,7 @@ function ColumnDetail({
   const option = useMemo(
     () =>
       seriesOption(
-        (histogram ?? []).map((bin) => bin.label),
+        (histogram ?? []).map((bin) => capDecimalsInText(bin.label, ".")),
         (histogram ?? []).map((bin) => bin.count),
         "bar",
       ),

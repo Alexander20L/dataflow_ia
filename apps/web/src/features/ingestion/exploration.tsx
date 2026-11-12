@@ -2,6 +2,7 @@
 
 import { Compass, LoaderCircle } from "lucide-react";
 import { Chart, seriesOption } from "@/components/ui/chart";
+import { capDecimals } from "@/lib/numbers";
 import type { ExplorationView } from "./api";
 
 type Result = NonNullable<ExplorationView["exploration"]>["results"][number];
@@ -10,7 +11,7 @@ const ROWS = 10;
 
 function number(value?: string | null) {
   if (value == null) return "—";
-  const [whole, fraction] = value.split(".");
+  const [whole, fraction] = capDecimals(value).split(".");
   const grouped = whole.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
   return fraction ? `${grouped},${fraction}` : grouped;
 }

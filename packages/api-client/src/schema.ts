@@ -1727,7 +1727,9 @@ export interface components {
         /**
          * ColumnMeaning
          * @description Hipótesis de la IA sobre una columna (no se usa para calcular). Fase 24: con su confianza
-         *     (una columna con nombre de código nunca pasa de «baja») o escrita por el usuario.
+         *     (una columna con nombre de código nunca pasa de «baja») o escrita por el usuario. Fase 24B:
+         *     con la justificación de la IA (`reason`, prompt v3) y `unknown` si el usuario la marcó como
+         *     desconocida.
          */
         ColumnMeaning: {
             /** Column */
@@ -1743,12 +1745,19 @@ export interface components {
             entity?: string | null;
             /** Meaning */
             meaning: string;
+            /** Reason */
+            reason?: string | null;
             /**
              * Source
              * @default ai
              * @enum {string}
              */
             source: "ai" | "user";
+            /**
+             * Unknown
+             * @default false
+             */
+            unknown: boolean;
         };
         /** ColumnProfile */
         ColumnProfile: {
@@ -3267,8 +3276,9 @@ export interface components {
         /**
          * MeaningRequest
          * @description Fase 24: significado escrito o confirmado por el usuario (metadato de la fuente y la
-         *     columna, heredado por las versiones siguientes). Sin texto y sin confirmar = vuelve al de la
-         *     IA. No cambia ningún cálculo.
+         *     columna, heredado por las versiones siguientes). Sin texto, sin confirmar y sin marcar =
+         *     vuelve al de la IA. Fase 24B: `unknown` marca la columna como desconocida (sin texto). No
+         *     cambia ningún cálculo; el informe usa el significado vigente.
          */
         MeaningRequest: {
             /** Column */
@@ -3280,6 +3290,11 @@ export interface components {
             confirmed: boolean;
             /** Meaning */
             meaning?: string | null;
+            /**
+             * Unknown
+             * @default false
+             */
+            unknown: boolean;
         };
         /** MeasureInfo */
         MeasureInfo: {

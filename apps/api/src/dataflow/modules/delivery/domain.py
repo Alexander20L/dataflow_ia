@@ -510,12 +510,16 @@ def comprehension_section(comprehension: Comprehension | None) -> ReportSection 
                 ]
             )
         )
-    meanings = {m.column: m.meaning for m in comprehension.meanings}
+    # Fase 24B: el significado vigente, con su procedencia (el del usuario manda sobre la IA).
+    meanings = {
+        m.column: m.meaning + (" (usuario)" if m.source == "user" and not m.unknown else "")
+        for m in comprehension.meanings
+    }
     blocks.append(
         ReportBlock(
             title="Columnas y escala de medida",
             table=ReportTable(
-                headers=["Columna", "Escala", "Significado (IA)"],
+                headers=["Columna", "Escala", "Significado"],
                 rows=[
                     [
                         s.column,

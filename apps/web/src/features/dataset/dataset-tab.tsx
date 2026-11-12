@@ -25,7 +25,8 @@ const SUBVIEWS = [
   { id: "quality", label: "Calidad" },
   { id: "file", label: "Archivo" },
 ] as const;
-type Subview = (typeof SUBVIEWS)[number]["id"];
+export type DatasetSubview = (typeof SUBVIEWS)[number]["id"];
+type Subview = DatasetSubview;
 
 /** Fase 22: inspección del dataset. Todo viene del servidor (calculado una vez sobre la tabla
  * completa); cambiar de subvista no recalcula nada. Fase 23: las correcciones del Diccionario
@@ -34,14 +35,17 @@ export function DatasetTab({
   versionId,
   onOpenVersion,
   onKeepVersion,
+  initialSubview,
 }: {
   versionId: string;
+  /** Fase 24B: subvista con la que se abre (p. ej. el Diccionario desde Comprensión). */
+  initialSubview?: DatasetSubview;
   onOpenVersion?: (versionId: string) => void;
   /** Fija la versión que se está viendo: la derivada no la sustituye sin que el usuario lo pida. */
   onKeepVersion?: () => void;
 }) {
   const inspection = useInspection(versionId);
-  const [subview, setSubview] = useState<Subview>("summary");
+  const [subview, setSubview] = useState<Subview>(initialSubview ?? "summary");
   const [focusRow, setFocusRow] = useState<number | undefined>();
   const refresh = useRefreshAfterRecalculation(versionId);
   const busy = recalculating(inspection.data);

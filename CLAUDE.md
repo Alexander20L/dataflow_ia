@@ -147,42 +147,43 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 
 ## Estado (2026-11-12)
 
-| Fase | API  | Rama                              | Estado                                                                         |
-| ---- | ---- | --------------------------------- | ------------------------------------------------------------------------------ |
-| 1–3  | 0.5  | `main`                            | contratos, datasets/ejecuciones separados, semántica                           |
-| 4    | 0.6  | `feat/fase-4-planificacion`       | planes versionados, catálogo `analysis-v1`, worker por pasos                   |
-| 5    | 0.7  | `feat/fase-5-limpieza`            | trim/filter_rows, vista previa, aprobación, derivada; con commits, sin push    |
-| 6A   | 0.8  | `feat/fase-6-conversiones`        | tablas tipadas, cast, normalize_null_tokens, deduplicate; migración 0007       |
-| 6B   | 0.9  | `feat/fase-6-conversiones`        | csv-quality-v2, conjuntos de reglas, quality.evaluate@2; migración 0008        |
-| 7A   | 0.10 | `feat/fase-7-analisis`            | métricas, analytics.query@1, evidencia por cifra; migración 0009; con commit   |
-| 7B   | 0.11 | `feat/fase-7-analisis`            | analytics.query@2: comparaciones, ranking, % del total; `analysis-v6`          |
-| 8    | 0.12 | `feat/fase-8-dashboards`          | dashboards persistidos, «Actualizar» explícito, historial; migración 0010      |
-| 9    | 0.13 | `feat/fase-9-informes`            | informes, PDF en el worker (ReportLab), CSV estándar/Excel; migración 0011     |
-| 10   | 0.14 | `feat/fase-10-copiloto`           | copiloto IA (Anthropic), propuestas validadas, cifras por evidencia; 0012      |
-| 11   | 0.14 | `feat/fase-11*` (PR)              | 11.0 estabilización, query@3; pipeline 0013–0017 y 11F (0018) retirados        |
-| 12A  | 0.14 | `feat/fase-12a-excel` (PR)        | importación .xlsx (`read_xlsx@1`, lector OOXML propio), `analysis-v8`          |
-| A–C  | 0.17 | `develop`                         | dashboard descriptivo (`profile@2/@3`), interpretación, explicación IA (C2)    |
-| 13   | 0.18 | `feat/fase-13-solo-automatico`    | un solo recorrido automático; manual y política retirados; migración 0019      |
-| 13B  | 0.19 | `feat/fase-13b-excel-ia-auto`     | Excel sin elegir hoja (`xlsx-selection-v1`), `/new` con .xlsx, IA `auto`       |
-| 13C  | 0.20 | `feat/fase-13c-cola`              | las cargas esperan en cola (sin `PROJECT_BUSY`); 3 en marcha por propietario   |
-| 14   | 0.21 | `feat/fase-14-comprender`         | `profile@4`, `quality.evaluate@3`, dashboard por medidas, `analysis-v11`       |
-| 15   | 0.22 | `feat/fase-15-criterio`           | plan automático, `analytics.automatic@1` (hallazgos), `analysis-v12`           |
-| 16   | 0.23 | `feat/fase-16-investigar`         | módulo `investigation`, reglas + propuestas IA validadas, límites duros        |
-| 17   | 0.24 | `feat/fase-17-entrega`            | módulo `delivery`: informe PDF automático, progreso por etapas, resumen        |
-| 18   | 0.25 | `feat/fase-18-fuentes`            | CSV/Excel regionales, varias tablas, estructura, SQL Server y PDF              |
-| 19   | 0.26 | `feat/fase-19-comprender-negocio` | comprensión del negocio (IA + medidas), escalas, valoración opcional; 0020     |
-| 20   | 0.27 | `feat/fase-20-consultas`          | exploración guiada: consultas `explore-v1` de reglas e IA, relevancia          |
-| 21   | 0.28 | `feat/fase-21-dashboard-adaptado` | dashboard adaptado (IA + validación), marcas «sí va / no va», informe; 0021    |
-| 22   | 0.29 | `feat/fase-22-dataset`            | pestaña Dataset: inspección completa, registros, diccionario corregible; 0022  |
-| 23   | 0.30 | `feat/fase-23-dataset-cierre`     | Dataset v2 (rangos, atípicos, personales); correcciones que cuentan; 0023      |
-| 24   | 0.31 | `feat/fase-24-comprension`        | pestaña Comprensión: grano, fórmulas, relaciones por familia, validación; 0024 |
+| Fase | API  | Rama                                | Estado                                                                         |
+| ---- | ---- | ----------------------------------- | ------------------------------------------------------------------------------ |
+| 1–3  | 0.5  | `main`                              | contratos, datasets/ejecuciones separados, semántica                           |
+| 4    | 0.6  | `feat/fase-4-planificacion`         | planes versionados, catálogo `analysis-v1`, worker por pasos                   |
+| 5    | 0.7  | `feat/fase-5-limpieza`              | trim/filter_rows, vista previa, aprobación, derivada; con commits, sin push    |
+| 6A   | 0.8  | `feat/fase-6-conversiones`          | tablas tipadas, cast, normalize_null_tokens, deduplicate; migración 0007       |
+| 6B   | 0.9  | `feat/fase-6-conversiones`          | csv-quality-v2, conjuntos de reglas, quality.evaluate@2; migración 0008        |
+| 7A   | 0.10 | `feat/fase-7-analisis`              | métricas, analytics.query@1, evidencia por cifra; migración 0009; con commit   |
+| 7B   | 0.11 | `feat/fase-7-analisis`              | analytics.query@2: comparaciones, ranking, % del total; `analysis-v6`          |
+| 8    | 0.12 | `feat/fase-8-dashboards`            | dashboards persistidos, «Actualizar» explícito, historial; migración 0010      |
+| 9    | 0.13 | `feat/fase-9-informes`              | informes, PDF en el worker (ReportLab), CSV estándar/Excel; migración 0011     |
+| 10   | 0.14 | `feat/fase-10-copiloto`             | copiloto IA (Anthropic), propuestas validadas, cifras por evidencia; 0012      |
+| 11   | 0.14 | `feat/fase-11*` (PR)                | 11.0 estabilización, query@3; pipeline 0013–0017 y 11F (0018) retirados        |
+| 12A  | 0.14 | `feat/fase-12a-excel` (PR)          | importación .xlsx (`read_xlsx@1`, lector OOXML propio), `analysis-v8`          |
+| A–C  | 0.17 | `develop`                           | dashboard descriptivo (`profile@2/@3`), interpretación, explicación IA (C2)    |
+| 13   | 0.18 | `feat/fase-13-solo-automatico`      | un solo recorrido automático; manual y política retirados; migración 0019      |
+| 13B  | 0.19 | `feat/fase-13b-excel-ia-auto`       | Excel sin elegir hoja (`xlsx-selection-v1`), `/new` con .xlsx, IA `auto`       |
+| 13C  | 0.20 | `feat/fase-13c-cola`                | las cargas esperan en cola (sin `PROJECT_BUSY`); 3 en marcha por propietario   |
+| 14   | 0.21 | `feat/fase-14-comprender`           | `profile@4`, `quality.evaluate@3`, dashboard por medidas, `analysis-v11`       |
+| 15   | 0.22 | `feat/fase-15-criterio`             | plan automático, `analytics.automatic@1` (hallazgos), `analysis-v12`           |
+| 16   | 0.23 | `feat/fase-16-investigar`           | módulo `investigation`, reglas + propuestas IA validadas, límites duros        |
+| 17   | 0.24 | `feat/fase-17-entrega`              | módulo `delivery`: informe PDF automático, progreso por etapas, resumen        |
+| 18   | 0.25 | `feat/fase-18-fuentes`              | CSV/Excel regionales, varias tablas, estructura, SQL Server y PDF              |
+| 19   | 0.26 | `feat/fase-19-comprender-negocio`   | comprensión del negocio (IA + medidas), escalas, valoración opcional; 0020     |
+| 20   | 0.27 | `feat/fase-20-consultas`            | exploración guiada: consultas `explore-v1` de reglas e IA, relevancia          |
+| 21   | 0.28 | `feat/fase-21-dashboard-adaptado`   | dashboard adaptado (IA + validación), marcas «sí va / no va», informe; 0021    |
+| 22   | 0.29 | `feat/fase-22-dataset`              | pestaña Dataset: inspección completa, registros, diccionario corregible; 0022  |
+| 23   | 0.30 | `feat/fase-23-dataset-cierre`       | Dataset v2 (rangos, atípicos, personales); correcciones que cuentan; 0023      |
+| 24   | 0.31 | `feat/fase-24-comprension`          | pestaña Comprensión: grano, fórmulas, relaciones por familia, validación; 0024 |
+| 24B  | 0.32 | `feat/fase-24b-comprension-mejoras` | significados en el informe, «desconocida», justificación, 3 decimales; 0025    |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
 no regenerar sus referencias para hacer pasar una prueba.
 Integración: `develop` contiene las Fases 4 a 14 y A–C (merge `--no-ff` o PR; desde 2026-11-09, siempre PR). Fase 13: ADR-026 sustituye
 al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
-`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 18: ADR-035. Fase 19: ADR-036 (valoración opcional del usuario). Fase 20: ADR-037. Fase 21: ADR-038. Fase 22: ADR-039. Fase 23: ADR-040 (modifica el punto 7 de ADR-039). Fase 24: ADR-041 (modifica ADR-036). Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
+`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 18: ADR-035. Fase 19: ADR-036 (valoración opcional del usuario). Fase 20: ADR-037. Fase 21: ADR-038. Fase 22: ADR-039. Fase 23: ADR-040 (modifica el punto 7 de ADR-039). Fase 24: ADR-041 (modifica ADR-036). Fase 24B: ADR-042 (las cifras se muestran con 3 decimales como mucho: `delivery/numbers.py` y `apps/web/src/lib/numbers.ts`; nunca se redondean los cálculos). Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
 (limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
 contradiga el enfoque automático. Fase 7 completa (7A y 7B): ADR-018 y
 ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa

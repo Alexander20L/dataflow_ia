@@ -21,7 +21,7 @@ puede editar. Validar o rechazar una relación rehace la exploración, el dashbo
 """
 
 from datetime import datetime
-from typing import Literal
+from typing import Literal, NamedTuple
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field
@@ -64,7 +64,9 @@ class Association(ComprehensionModel):
 
 class ColumnMeaning(ComprehensionModel):
     """Hipótesis de la IA sobre una columna (no se usa para calcular). Fase 24: con su confianza
-    (una columna con nombre de código nunca pasa de «baja») o escrita por el usuario."""
+    (una columna con nombre de código nunca pasa de «baja») o escrita por el usuario. Fase 24B:
+    con la justificación de la IA (`reason`, prompt v3) y `unknown` si el usuario la marcó como
+    desconocida."""
 
     column: str
     meaning: str
@@ -72,6 +74,16 @@ class ColumnMeaning(ComprehensionModel):
     confidence: Confidence | None = None
     source: Literal["ai", "user"] = "ai"
     confirmed: bool = False
+    reason: str | None = None
+    unknown: bool = False
+
+
+class UserMeaning(NamedTuple):
+    """Último significado del usuario de una columna (Fase 24 y 24B)."""
+
+    text: str | None
+    confirmed: bool
+    unknown: bool = False
 
 
 class Entity(ComprehensionModel):
@@ -237,12 +249,14 @@ class FeedbackRequest(ComprehensionModel):
 
 class MeaningRequest(ComprehensionModel):
     """Fase 24: significado escrito o confirmado por el usuario (metadato de la fuente y la
-    columna, heredado por las versiones siguientes). Sin texto y sin confirmar = vuelve al de la
-    IA. No cambia ningún cálculo."""
+    columna, heredado por las versiones siguientes). Sin texto, sin confirmar y sin marcar =
+    vuelve al de la IA. Fase 24B: `unknown` marca la columna como desconocida (sin texto). No
+    cambia ningún cálculo; el informe usa el significado vigente."""
 
     column: str = Field(min_length=1, max_length=200)
     meaning: str | None = Field(default=None, max_length=300)
     confirmed: bool = False
+    unknown: bool = False
 
 
 class FeedbackItem(ComprehensionModel):

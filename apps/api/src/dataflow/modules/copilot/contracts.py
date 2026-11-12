@@ -68,6 +68,12 @@ class ColumnaIA(OutputModel):
         default="media",
         description="alta si el nombre es descriptivo; baja si es un código o una abreviatura.",
     )
+    # Fase 24B (prompt v3): por qué se propone ese significado (nombre, valores, perfil).
+    justificacion: str = Field(
+        default="",
+        max_length=200,
+        description="En qué te basas (nombre, valores frecuentes, rango), sin cifras nuevas.",
+    )
 
 
 class EntidadIA(OutputModel):

@@ -73,4 +73,26 @@ test("Comprensión: grano, fórmulas, relaciones por familia y significado propi
   const row = tab.getByRole("row", { name: /^horas/ });
   await expect(row).toContainText("Horas de estudio por semana");
   await expect(row).toContainText("Escrito por ti");
+
+  // Fase 24B: tipo técnico y naturaleza de la pestaña Dataset, y una columna desconocida.
+  await expect(row).toContainText("Entero");
+  await expect(row).toContainText("Cuantitativa discreta");
+  await tab
+    .getByRole("button", { name: "Editar el significado de carrera" })
+    .click();
+  await page
+    .getByRole("dialog")
+    .getByRole("button", { name: "Marcar como desconocida" })
+    .click();
+  await expect(tab.getByRole("row", { name: /^carrera/ })).toContainText(
+    "Marcada por ti",
+  );
+
+  // El rol se cambia en el Diccionario de la pestaña Dataset.
+  await tab
+    .getByRole("button", { name: "Cambiar el rol en el Diccionario" })
+    .click();
+  await expect(
+    page.getByRole("tab", { name: "Diccionario", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
 });

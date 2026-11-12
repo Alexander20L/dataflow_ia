@@ -26,6 +26,7 @@ from dataflow.modules.comprehension.contracts import (
     Period,
     Relationship,
     Strength,
+    UserMeaning,
     Verdict,
 )
 
@@ -346,6 +347,9 @@ def accept_ai(reply: AIComprehension, columns: Sequence[str]) -> tuple[AICompreh
                         meaning=described,
                         entity=meaning.entity,
                         confidence=meaning.confidence,
+                        reason=text(meaning.reason, f"Justificación de «{meaning.column}»", 200)
+                        if meaning.reason
+                        else None,
                     )
                 )
             )
@@ -527,6 +531,7 @@ def relationships(
 ID_WORDS = frozenset(
     {"id", "codigo", "cod", "code", "num", "nro", "numero", "key", "clave", "pk", "uuid"}
 )
+USER_UNKNOWN_MEANING = "Desconocida: marcada así por el usuario."
 UNKNOWN_MEANING = "No se puede saber por el nombre ni por el perfil: confírmalo o escríbelo."
 FAMILY: dict[str, str] = {
     "association": "statistical",
@@ -770,13 +775,24 @@ def confident(meaning: ColumnMeaning) -> ColumnMeaning:
 
 
 def with_user_meanings(
-    meanings: Sequence[ColumnMeaning], user: Mapping[str, tuple[str | None, bool]]
+    meanings: Sequence[ColumnMeaning], user: Mapping[str, UserMeaning]
 ) -> list[ColumnMeaning]:
-    """Significados vigentes: el del usuario (escrito o confirmado) sobre el de la IA."""
+    """Significados vigentes: el del usuario (escrito, confirmado o marcado como desconocido)
+    sobre el de la IA."""
     by_column = {m.column: m for m in meanings}
-    for column, (text, confirmed) in user.items():
+    for column, (text, confirmed, unknown) in user.items():
         current = by_column.get(column)
-        if text:
+        if unknown:
+            # Fase 24B: quien conoce el negocio dice que no se sabe; no se describe la columna.
+            by_column[column] = ColumnMeaning(
+                column=column,
+                meaning=USER_UNKNOWN_MEANING,
+                confidence=None,
+                source="user",
+                confirmed=True,
+                unknown=True,
+            )
+        elif text:
             by_column[column] = ColumnMeaning(
                 column=column,
                 meaning=text,
