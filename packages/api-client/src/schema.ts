@@ -554,6 +554,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/versions/{version_id}/dictionary": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Annotate
+         * @description Corrección manual de una columna (rol, naturaleza, interpretación temporal, observación
+         *     o confirmación). Se guarda como metadato: no cambia el archivo ni ningún cálculo, y las
+         *     versiones siguientes del mismo archivo la heredan. Vale la última.
+         */
+        post: operations["annotateColumn"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/versions/{version_id}/executions": {
         parameters: {
             query?: never;
@@ -603,6 +625,29 @@ export interface paths {
          * @description Tabla de la versión (también derivada) en el perfil `standard` o `excel_regional`.
          */
         get: operations["exportVersionCsv"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/inspection": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Inspection
+         * @description Resumen, perfil de cada columna, diagnóstico de calidad y lectura del archivo, calculados
+         *     una vez sobre la tabla completa, y el diccionario vigente (con tus correcciones). Mientras
+         *     se calcula devuelve el estado («queued» o «running»); las versiones anteriores a esta fase
+         *     devuelven «unavailable».
+         */
+        get: operations["getInspection"];
         put?: never;
         post?: never;
         delete?: never;
@@ -726,7 +771,11 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** Preview */
+        /**
+         * Preview
+         * @description Registros tal como se leyeron, paginados en el servidor. `sort` es el identificador de
+         *     una columna; `search` busca el texto literal (sin distinguir mayúsculas) en todas.
+         */
         get: operations["previewVersion"];
         put?: never;
         post?: never;
@@ -1121,6 +1170,31 @@ export interface components {
             /** Warnings */
             warnings: number;
         };
+        /**
+         * AnnotationRequest
+         * @description Corrección de una columna. Sustituye a la anterior; todo vacío y sin confirmar vuelve a
+         *     la clasificación automática. Nunca cambia el archivo ni los cálculos.
+         */
+        AnnotationRequest: {
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /** Nature */
+            nature?: ("nominal" | "ordinal" | "discrete" | "continuous" | "temporal" | "unknown") | null;
+            /** Notes */
+            notes?: string | null;
+            /** Role */
+            role?: ("identifier" | "dimension" | "measure" | "time" | "category" | "text" | "unknown") | null;
+            /** Time Format */
+            time_format?: ("day_month_year" | "month_day_year" | "year_month_day" | "year" | "month" | "year_month") | null;
+        };
         /** ArchiveProjectRequest */
         ArchiveProjectRequest: {
             /** Expected Revision */
@@ -1164,7 +1238,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis" | "investigation" | "comprehension" | "exploration" | "dashboard";
+            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis" | "investigation" | "comprehension" | "exploration" | "dashboard" | "inspection";
             /** Logical Content Sha256 */
             logical_content_sha256: string | null;
             /**
@@ -1491,6 +1565,26 @@ export interface components {
              */
             version_id: string;
         };
+        /** Bin */
+        Bin: {
+            /** Count */
+            count: number;
+            /** Label */
+            label: string;
+            /** Lower */
+            lower?: string | null;
+            /** Upper */
+            upper?: string | null;
+        };
+        /** CategoricalStats */
+        CategoricalStats: {
+            /** Distinct */
+            distinct: number;
+            /** Others */
+            others: number;
+            /** Top */
+            top: components["schemas"]["Frequency"][];
+        };
         /** ColumnChange */
         ColumnChange: {
             /** After */
@@ -1532,6 +1626,66 @@ export interface components {
              * @default []
              */
             sample_row_numbers: number[];
+        };
+        /** ColumnInspection */
+        ColumnInspection: {
+            categorical?: components["schemas"]["CategoricalStats"] | null;
+            /** Count */
+            count: number;
+            /** Distinct */
+            distinct: number;
+            /** Distinct Percent */
+            distinct_percent: string;
+            /** Examples */
+            examples: string[];
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "numeric" | "categorical" | "temporal" | "identifier" | "other";
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Leading Zeros
+             * @default 0
+             */
+            leading_zeros: number;
+            missing: components["schemas"]["Missing"];
+            mixed?: components["schemas"]["MixedTypes"] | null;
+            /** Name */
+            name: string;
+            /**
+             * Nature
+             * @enum {string}
+             */
+            nature: "nominal" | "ordinal" | "discrete" | "continuous" | "temporal" | "unknown";
+            /** Nature Reason */
+            nature_reason: string;
+            /** Null Percent */
+            null_percent: string;
+            /** Nulls */
+            nulls: number;
+            numeric?: components["schemas"]["NumericStats"] | null;
+            /** Ordinal */
+            ordinal: number;
+            /** Reading */
+            reading?: string | null;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "identifier" | "dimension" | "measure" | "time" | "category" | "text" | "unknown";
+            /** Role Evidence */
+            role_evidence: string[];
+            /**
+             * Technical Type
+             * @enum {string}
+             */
+            technical_type: "string" | "integer" | "decimal" | "boolean" | "date" | "datetime" | "empty";
+            temporal?: components["schemas"]["TemporalStats"] | null;
         };
         /**
          * ColumnMeaning
@@ -1908,6 +2062,70 @@ export interface components {
             profile: components["schemas"]["DatasetProfile"];
             quality: components["schemas"]["QualityReport"];
         };
+        /** DictionaryEntry */
+        DictionaryEntry: {
+            /**
+             * Automatic Nature
+             * @enum {string}
+             */
+            automatic_nature: "nominal" | "ordinal" | "discrete" | "continuous" | "temporal" | "unknown";
+            /**
+             * Automatic Role
+             * @enum {string}
+             */
+            automatic_role: "identifier" | "dimension" | "measure" | "time" | "category" | "text" | "unknown";
+            /**
+             * Column Id
+             * Format: uuid
+             */
+            column_id: string;
+            /** Description */
+            description: string;
+            /** Distinct */
+            distinct: number;
+            /**
+             * Group
+             * @enum {string}
+             */
+            group: "numeric" | "categorical" | "temporal" | "identifier" | "other";
+            /**
+             * Inherited
+             * @default false
+             */
+            inherited: boolean;
+            /** Name */
+            name: string;
+            /**
+             * Nature
+             * @enum {string}
+             */
+            nature: "nominal" | "ordinal" | "discrete" | "continuous" | "temporal" | "unknown";
+            /** Notes */
+            notes?: string | null;
+            /** Nulls */
+            nulls: number;
+            /** Origin */
+            origin: string;
+            /**
+             * Role
+             * @enum {string}
+             */
+            role: "identifier" | "dimension" | "measure" | "time" | "category" | "text" | "unknown";
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "automatic" | "corrected" | "confirmed";
+            /**
+             * Technical Type
+             * @enum {string}
+             */
+            technical_type: "string" | "integer" | "decimal" | "boolean" | "date" | "datetime" | "empty";
+            /** Time Format */
+            time_format?: ("day_month_year" | "month_day_year" | "year_month_day" | "year" | "month" | "year_month") | null;
+            /** Updated At */
+            updated_at?: string | null;
+        };
         /** Entity */
         Entity: {
             /** Columns */
@@ -2082,7 +2300,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration" | "dashboard";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration" | "dashboard" | "inspection";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -2137,7 +2355,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration" | "dashboard";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration" | "dashboard" | "inspection";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -2368,6 +2586,65 @@ export interface components {
              */
             verdict: "relevant" | "not_relevant";
         };
+        /** FileInspection */
+        FileInspection: {
+            /** Blank Lines */
+            blank_lines?: number | null;
+            /** Converted */
+            converted?: components["schemas"]["ConvertedColumn"][];
+            /** Date Cells */
+            date_cells?: number | null;
+            /** Date Convention */
+            date_convention: string | null;
+            /** Decimal Convention */
+            decimal_convention: string | null;
+            /** Empty Columns */
+            empty_columns?: string[];
+            /** Empty Rows */
+            empty_rows?: number | null;
+            /** Encoding */
+            encoding: string | null;
+            /** File Name */
+            file_name: string;
+            /**
+             * Format
+             * @enum {string}
+             */
+            format: "csv" | "xlsx" | "pdf" | "sqlserver" | "other";
+            /** Formula Cells */
+            formula_cells?: number | null;
+            /** Header */
+            header: string;
+            /** Inexact Numbers */
+            inexact_numbers?: number | null;
+            /** Kept As Text */
+            kept_as_text?: components["schemas"]["KeptColumn"][];
+            /** Problems */
+            problems?: string[];
+            /** Rules */
+            rules: string[];
+            /** Selection Rule */
+            selection_rule?: string | null;
+            /** Separator */
+            separator: string | null;
+            /** Sha256 */
+            sha256: string;
+            /** Sheet */
+            sheet?: string | null;
+            /** Sheets */
+            sheets?: components["schemas"]["SheetFacts"][];
+            /** Size Bytes */
+            size_bytes: number | null;
+            /** Table */
+            table?: string | null;
+            /**
+             * Uploaded At
+             * Format: date-time
+             */
+            uploaded_at: string;
+            /** Used Range */
+            used_range?: string | null;
+        };
         /**
          * Filter
          * @description Filtro estructurado. Los valores se escriben como cadenas canónicas del tipo de la
@@ -2386,6 +2663,42 @@ export interface components {
             operator: "eq" | "neq" | "in" | "not_in" | "gt" | "gte" | "lt" | "lte" | "between" | "is_null" | "is_not_null";
             /** Values */
             values?: string[];
+        };
+        /** Finding */
+        Finding: {
+            /** Affected Rows */
+            affected_rows: number;
+            /** Columns */
+            columns: string[];
+            /** Description */
+            description: string;
+            /**
+             * Dimension
+             * @enum {string}
+             */
+            dimension: "completeness" | "uniqueness" | "validity" | "consistency" | "format" | "integrity";
+            /** Examples */
+            examples: string[];
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /** Percent */
+            percent: string;
+            /** Sample Rows */
+            sample_rows: number[];
+            /**
+             * Severity
+             * @enum {string}
+             */
+            severity: "high" | "medium" | "low" | "info";
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "dataset-inspection-v1" | "automatic-quality-v1";
+            /** Title */
+            title: string;
         };
         /** FindingFeedback */
         FindingFeedback: {
@@ -2462,6 +2775,15 @@ export interface components {
             /** References */
             references: string;
         };
+        /** Frequency */
+        Frequency: {
+            /** Count */
+            count: number;
+            /** Percent */
+            percent: string;
+            /** Value */
+            value: string;
+        };
         /** IngestionSummary */
         IngestionSummary: {
             /** Datasets */
@@ -2514,6 +2836,67 @@ export interface components {
             label: string;
             /** Value */
             value: string | null;
+        };
+        /** Inspection */
+        Inspection: {
+            /** Columns */
+            columns: components["schemas"]["ColumnInspection"][];
+            file: components["schemas"]["FileInspection"];
+            /** Findings */
+            findings: components["schemas"]["Finding"][];
+            /** Limitations */
+            limitations: string[];
+            /** Periods */
+            periods: components["schemas"]["PeriodCandidate"][];
+            scope: components["schemas"]["InspectionScope"];
+            summary: components["schemas"]["Summary"];
+        };
+        /** InspectionScope */
+        InspectionScope: {
+            /**
+             * Computed At
+             * Format: date-time
+             */
+            computed_at: string;
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            /** Profile Sha256 */
+            profile_sha256: string;
+            /**
+             * Rules
+             * @default dataset-inspection-v1
+             * @constant
+             */
+            rules: "dataset-inspection-v1";
+            /** Table Sha256 */
+            table_sha256: string;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+        };
+        /** InspectionView */
+        InspectionView: {
+            /** Dictionary */
+            dictionary?: components["schemas"]["DictionaryEntry"][];
+            /** Execution Id */
+            execution_id?: string | null;
+            /** Groups */
+            groups?: {
+                [key: string]: number;
+            };
+            inspection?: components["schemas"]["Inspection"] | null;
+            /** Reason */
+            reason?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "ready" | "failed" | "unavailable";
         };
         /** Investigation */
         Investigation: {
@@ -2943,6 +3326,29 @@ export interface components {
             revision_id: string;
         };
         /**
+         * Missing
+         * @description Faltantes por clase: nunca se suman entre sí ni se convierten en nulos.
+         */
+        Missing: {
+            /** Empty Strings */
+            empty_strings: number;
+            /** Nulls */
+            nulls: number;
+            /** Tokens */
+            tokens: components["schemas"]["TokenCount"][];
+            /** Whitespace */
+            whitespace: number;
+        };
+        /** MixedTypes */
+        MixedTypes: {
+            /** Examples */
+            examples: string[];
+            /** Numeric */
+            numeric: number;
+            /** Text */
+            text: number;
+        };
+        /**
          * ModelCall
          * @description Metadatos de una llamada al proveedor (nunca el contenido tabular).
          */
@@ -2987,6 +3393,29 @@ export interface components {
              * @enum {string}
              */
             purpose: "proposal" | "explanation";
+        };
+        /** NumericStats */
+        NumericStats: {
+            /** Count */
+            count: number;
+            /** Histogram */
+            histogram: components["schemas"]["Bin"][];
+            /** Maximum */
+            maximum: string;
+            /** Mean */
+            mean: string;
+            /** Median */
+            median: string;
+            /** Method */
+            method: string;
+            /** Minimum */
+            minimum: string;
+            /** Q1 */
+            q1: string;
+            /** Q3 */
+            q3: string;
+            /** Std */
+            std: string | null;
         };
         /** NumericSummary */
         NumericSummary: {
@@ -3183,6 +3612,24 @@ export interface components {
             /** Value */
             value: number;
         };
+        /**
+         * PeriodCandidate
+         * @description Año + Mes que podrían formar un periodo: se informa, nunca se crea una fecha.
+         */
+        PeriodCandidate: {
+            /** Columns */
+            columns: string[];
+            /** First */
+            first: string | null;
+            /** Last */
+            last: string | null;
+            /** Note */
+            note: string;
+            /** Periods */
+            periods: number;
+            /** Unparsed Rows */
+            unparsed_rows: number;
+        };
         /** PlanResponse */
         PlanResponse: {
             /** Content */
@@ -3253,19 +3700,6 @@ export interface components {
             title: string;
             /** Weight */
             weight?: string | null;
-        };
-        /** PreviewPage */
-        PreviewPage: {
-            /** Columns */
-            columns: string[];
-            /** Limit */
-            limit: number;
-            /** Offset */
-            offset: number;
-            /** Rows */
-            rows: components["schemas"]["PreviewRow"][];
-            /** Total */
-            total: number;
         };
         /** PreviewRow */
         PreviewRow: {
@@ -3455,6 +3889,35 @@ export interface components {
             partitions: components["schemas"]["RankingPartition"][];
             /** Top N */
             top_n: number;
+        };
+        /**
+         * RecordsPage
+         * @description Fase 22: página de registros con los identificadores de columna (mismo orden que
+         *     `columns`) y el orden y la búsqueda aplicados; `total` cuenta las filas que cumplen el
+         *     filtro y la búsqueda. `PreviewPage` no cambia.
+         */
+        RecordsPage: {
+            /** Column Ids */
+            column_ids?: string[];
+            /** Columns */
+            columns: string[];
+            /**
+             * Descending
+             * @default false
+             */
+            descending: boolean;
+            /** Limit */
+            limit: number;
+            /** Offset */
+            offset: number;
+            /** Rows */
+            rows: components["schemas"]["PreviewRow"][];
+            /** Search */
+            search?: string | null;
+            /** Sort */
+            sort?: string | null;
+            /** Total */
+            total: number;
         };
         /** RegisterRequest */
         RegisterRequest: {
@@ -3703,6 +4166,17 @@ export interface components {
             /** Total */
             total: string;
         };
+        /** SheetFacts */
+        SheetFacts: {
+            /** Hidden */
+            hidden: boolean;
+            /** Name */
+            name: string;
+            /** Selected */
+            selected: boolean;
+            /** Tables */
+            tables: string[];
+        };
         /**
          * SnapshotCounts
          * @description Último corte de una métrica semi-aditiva. `superseded_rows`: filas incluidas (pasan
@@ -3856,6 +4330,46 @@ export interface components {
             /** Unchanged */
             unchanged: number;
         };
+        /** Summary */
+        Summary: {
+            /** Cells */
+            cells: number;
+            /** Columns */
+            columns: number;
+            /** Completeness Percent */
+            completeness_percent: string;
+            /** Duplicate Rows */
+            duplicate_rows: number;
+            /** Groups */
+            groups: {
+                [key: string]: number;
+            };
+            /** Memory Bytes */
+            memory_bytes: number | null;
+            /** Missing Cells */
+            missing_cells: number;
+            /** Rows */
+            rows: number;
+        };
+        /** TemporalStats */
+        TemporalStats: {
+            /** Distinct Periods */
+            distinct_periods: number;
+            /** Frequency */
+            frequency: ("daily" | "weekly" | "monthly" | "quarterly" | "yearly" | "irregular") | null;
+            /** Maximum */
+            maximum: string;
+            /** Method */
+            method: string;
+            /** Minimum */
+            minimum: string;
+            /** Missing Periods */
+            missing_periods: number | null;
+            /** Missing Sample */
+            missing_sample: string[];
+            /** Span Days */
+            span_days: number | null;
+        };
         /**
          * TimeAxis
          * @description Eje temporal mensual: una fecha o Año + Mes compuestos. No rellena meses vacíos.
@@ -3905,6 +4419,13 @@ export interface components {
             end?: string | null;
             /** Start */
             start?: string | null;
+        };
+        /** TokenCount */
+        TokenCount: {
+            /** Count */
+            count: number;
+            /** Token */
+            token: string;
         };
         /** UpdateProjectRequest */
         UpdateProjectRequest: {
@@ -8101,6 +8622,133 @@ export interface operations {
             };
         };
     };
+    annotateColumn: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnnotationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspectionView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     listVersionExecutions: {
         parameters: {
             query?: never;
@@ -8369,6 +9017,129 @@ export interface operations {
                 };
                 content: {
                     "text/csv": Blob;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getInspection: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InspectionView"];
                 };
             };
             /** @description Bad Request */
@@ -9218,6 +9989,9 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 issue_id?: string | null;
+                sort?: string | null;
+                descending?: boolean;
+                search?: string | null;
             };
             header?: {
                 "X-CSRF-Token"?: string | null;
@@ -9235,7 +10009,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["PreviewPage"];
+                    "application/json": components["schemas"]["RecordsPage"];
                 };
             };
             /** @description Bad Request */

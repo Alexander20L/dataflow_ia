@@ -25,6 +25,11 @@ from dataflow.bootstrap.exploration_job import (
     enqueue_exploration,
     record_exploration_calls,
 )
+from dataflow.bootstrap.inspection_job import (
+    InspectionInput,
+    InspectionStep,
+    enqueue_inspection,
+)
 from dataflow.bootstrap.investigation_job import (
     InvestigationInput,
     InvestigationStep,
@@ -258,6 +263,9 @@ class DatasetPublication:
             analysis = next((a for a in artifacts if a.kind == "automatic_analysis"), None)
             table = next((a for a in artifacts if a.kind == "table"), None)
             if analysis is not None and table is not None:
+                # Fase 22: la inspección de la pestaña Dataset, la primera de los trabajos de
+                # fondo (sólo en el recorrido automático actual, como la comprensión).
+                enqueue_inspection(self.executions, self.datasets, lease, artifacts, self.config)
                 # Fase 19: primero la comprensión del negocio (se reclama antes por llegar
                 # antes); después la investigación (Fase 16), que explica los hallazgos.
                 profile = next((a for a in artifacts if a.kind == "profile"), None)
@@ -361,6 +369,7 @@ class DatasetPublication:
 
 
 WORKER_KINDS: set[RunKind] = {
+    "inspection",
     "comprehension",
     "exploration",
     "dashboard",
@@ -449,6 +458,7 @@ def make_runner(
             "comprehension": ComprehensionInput(datasets, executions, projects),
             "exploration": ExplorationInput(datasets, executions, projects),
             "dashboard": DashboardInput(datasets, executions, projects),
+            "inspection": InspectionInput(datasets, executions, projects),
             "investigation": ReportInput(datasets, executions, projects),
         },
         WorkerRegistry(
@@ -474,6 +484,9 @@ def make_runner(
                 ),
                 "exploration.explore@1": ExplorationStep(
                     objects, make_copilot(db, provider, ai_config)
+                ),
+                "inspection.inspect@1": InspectionStep(
+                    objects, engine if isinstance(engine, IsolatedAnalyzer) else None
                 ),
                 "comprehension.understand@1": ComprehensionStep(
                     objects, make_copilot(db, provider, ai_config)

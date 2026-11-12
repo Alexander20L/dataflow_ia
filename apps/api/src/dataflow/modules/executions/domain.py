@@ -10,9 +10,16 @@ from dataflow.platform.errors import ApplicationError
 PENDING_LIMIT = 50
 RUNNING_LIMIT = 3
 # Fase 16: trabajos de fondo que se reclaman después de cualquier otro en cola (Fase 17: y el
-# informe automático).
+# informe automático; Fase 22: la inspección de la pestaña Dataset).
 BACKGROUND_KINDS: frozenset[str] = frozenset(
-    {"comprehension", "exploration", "dashboard", "investigation", "automatic_report"}
+    {
+        "inspection",
+        "comprehension",
+        "exploration",
+        "dashboard",
+        "investigation",
+        "automatic_report",
+    }
 )
 
 
@@ -44,6 +51,8 @@ def plan_input_kind(content: dict[str, Any]) -> InputKind:
         return "exploration"
     if kind == "dashboard":
         return "dashboard"
+    if kind == "inspection":
+        return "inspection"
     raise ApplicationError("INPUT_MISMATCH", "El plan no declara un input admitido.", 409)
 
 

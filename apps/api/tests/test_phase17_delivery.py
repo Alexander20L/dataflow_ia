@@ -224,6 +224,7 @@ def test_upload_ends_with_a_downloadable_report(
     runner = make_runner(db, objects)
     assert runner.run_once()
     assert client.get(f"{base}/report").json()["code"] == "REPORT_NOT_AVAILABLE"
+    assert runner.run_once()  # inspección del dataset (Fase 22)
     assert runner.run_once()  # comprensión del negocio (Fase 19)
     assert runner.run_once()  # investigación
     assert runner.run_once()  # exploración guiada (Fase 20)
@@ -254,8 +255,8 @@ def test_reports_wait_behind_newer_uploads(
     pid = project(client, headers)
     first = upload(client, headers, pid, reference_csv(), name="ventas_mensuales.csv").json()
     runner = make_runner(db, objects)
-    # Carga, comprensión e investigación.
-    assert runner.run_once() and runner.run_once() and runner.run_once()
+    # Carga, inspección (Fase 22), comprensión e investigación.
+    assert runner.run_once() and runner.run_once() and runner.run_once() and runner.run_once()
     second = upload(client, headers, pid, reference_csv() + b"\n", name="otra.csv").json()
     assert runner.run_once()
     assert client.get(f"/api/v1/executions/{second['execution_id']}").json()["state"] == (

@@ -13,6 +13,8 @@ from dataflow.modules.ingestion.contracts import (
     PreviewRow,
     ReadPdfParameters,
     ReadXlsxParameters,
+    RecordsPage,
+    SourceFacts,
     SourceReading,
     SqlServerConnection,
     SqlSnapshot,
@@ -185,6 +187,20 @@ class IsolatedAnalyzer:
         )
         return XlsxInspection.model_validate_json(files["inspect.json"])
 
+    def source_facts(
+        self, content: bytes, parameters: dict[str, Any], config: ProcessingConfig, timeout: float
+    ) -> SourceFacts:
+        """Fase 22: datos del original (rango, hojas, fórmulas, líneas en blanco)."""
+        files = self.run(
+            "source_facts",
+            content,
+            config,
+            timeout,
+            ["facts.json"],
+            ["--facts-json", json.dumps(parameters, ensure_ascii=False)],
+        )
+        return SourceFacts.model_validate_json(files["facts.json"])
+
     def profile(
         self,
         table: bytes,
@@ -279,7 +295,42 @@ class PolarsPreview:
         offset: int,
         rule: str | None = None,
         column: str | None = None,
+        sort: str | None = None,
+        descending: bool = False,
+        search: str | None = None,
+        column_ids: list[str] | None = None,
     ) -> PreviewPage:
+        """Página de filas con su número original. Fase 22: orden por una columna (numérico si
+        todos sus valores son números; si no, texto) y búsqueda literal sin distinguir
+        mayúsculas en todas las columnas. Sin filtro, orden ni búsqueda sólo se materializa la
+        página pedida."""
+        if rule is None and sort is None and not search:
+            lazy = pl.scan_parquet(io.BytesIO(content))
+            columns = lazy.collect_schema().names()
+            total = lazy.select(pl.len()).collect().item()
+            page = lazy.slice(offset, limit).collect()
+            types = frame_types(page)
+            plain = PreviewPage(
+                columns=columns,
+                rows=[
+                    PreviewRow(
+                        row_number=offset + index + 1,
+                        values={
+                            name: display_cell(cell, data_type, parameters)
+                            for name, cell, (data_type, parameters) in zip(
+                                columns, row, types, strict=True
+                            )
+                        },
+                    )
+                    for index, row in enumerate(page.iter_rows())
+                ],
+                total=int(total),
+                limit=limit,
+                offset=offset,
+            )
+            if column_ids is None:
+                return plain
+            return RecordsPage(**plain.__dict__, column_ids=column_ids)
         frame = pl.read_parquet(io.BytesIO(content))
         columns = frame.columns
         types = frame_types(frame)
@@ -301,7 +352,31 @@ class PolarsPreview:
                 [frame.get_column(name).alias(f"c{index}") for index, name in enumerate(columns)]
             )
             mask = ~neutral.select(pl.struct(pl.all()).is_first_distinct()).to_series()
+        if search:
+            needle = search.lower()
+            found = pl.Series("found", [False] * frame.height)
+            for name in columns:
+                text = frame.get_column(name).cast(pl.String).alias("value")
+                hit = text.str.to_lowercase().str.contains(needle, literal=True)
+                found = found | hit.fill_null(False)
+            mask = found if mask is None else mask & found
         numbers = pl.Series("row", range(1, frame.height + 1), dtype=pl.Int64)
+        if sort is not None:
+            if sort not in columns:
+                raise ApplicationError("UNKNOWN_COLUMN", "La columna no existe en la tabla.", 422)
+            key = frame.get_column(sort).alias("key")
+            if key.dtype == pl.String:
+                numeric = key.cast(pl.Float64, strict=False)
+                if numeric.null_count() == key.null_count():
+                    key = numeric
+            order = pl.DataFrame([key, numbers]).with_row_index("position")
+            order = order.sort(
+                ["key", "row"], descending=[descending, False], nulls_last=True, maintain_order=True
+            )
+            positions = order.get_column("position")
+            frame, numbers = frame[positions], numbers.gather(positions)
+            if mask is not None:
+                mask = mask.gather(positions)
         if mask is not None:
             frame, numbers = frame.filter(mask), numbers.filter(mask)
         page = frame.slice(offset, limit)
@@ -317,6 +392,15 @@ class PolarsPreview:
                 numbers.slice(offset, limit).to_list(), page.iter_rows(), strict=True
             )
         ]
-        return PreviewPage(
+        result = PreviewPage(
             columns=columns, rows=rows, total=frame.height, limit=limit, offset=offset
+        )
+        if column_ids is None and sort is None and not search:
+            return result
+        return RecordsPage(
+            **result.__dict__,
+            column_ids=column_ids or [],
+            sort=sort,
+            descending=descending,
+            search=search,
         )

@@ -12,6 +12,7 @@ from dataflow.modules.ingestion.contracts import (
     SourceOrigin,
     XlsxSelection,
 )
+from dataflow.modules.ingestion.domain import detect_separator
 from dataflow.modules.understanding.public import SemanticReference
 from dataflow.platform.canonical import digest
 
@@ -64,11 +65,7 @@ def resolve_separator(content: bytes, requested: str, encoding: str = "utf-8-sig
     if requested != "auto":
         return requested
     try:
-        return (
-            csv.Sniffer()
-            .sniff(content.decode(encoding, errors="replace")[:65536], delimiters=",;\t")
-            .delimiter
-        )
+        return detect_separator(content.decode(encoding, errors="replace"))
     except csv.Error:
         return ","
 

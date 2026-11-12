@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { openAnalysis } from "./helpers";
 
 test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
   page,
@@ -27,6 +28,7 @@ test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
   });
   await expect(page.getByLabel("Nombre del proyecto")).toHaveValue("datos");
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAnalysis(page);
   const dashboard = page.getByRole("region", {
     name: "Dashboard automático",
     exact: true,
@@ -91,6 +93,7 @@ test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
   ])
     expect((await page.request.get(retired)).status()).toBe(404);
   await page.reload();
+  await openAnalysis(page);
   await expect(explanation).toHaveText(savedExplanation.replace(/\s+/g, " "), {
     useInnerText: true,
   });

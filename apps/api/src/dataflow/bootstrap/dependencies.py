@@ -9,6 +9,7 @@ from dataflow.bootstrap.comprehension_job import ComprehensionAccess
 from dataflow.bootstrap.dashboard_job import DashboardAccess
 from dataflow.bootstrap.delivery_job import DeliveryAccess
 from dataflow.bootstrap.exploration_job import ExplorationAccess
+from dataflow.bootstrap.inspection_job import InspectionAccess
 from dataflow.bootstrap.investigation_job import InvestigationAccess
 from dataflow.bootstrap.overview_audit import OverviewAuditAccess
 from dataflow.bootstrap.services import (
@@ -30,6 +31,7 @@ from dataflow.modules.identity.application import IdentityService
 from dataflow.modules.identity.contracts import SessionIdentity
 from dataflow.modules.identity.infrastructure import ArgonPasswords, SQLIdentityRepository
 from dataflow.modules.ingestion.application import AnalysisService, IngestionService
+from dataflow.modules.inspection.infrastructure import SQLColumnAnnotations
 from dataflow.modules.projects.application import ProjectService
 from dataflow.modules.projects.infrastructure import SQLProjectRepository
 from dataflow.platform.config import get_settings
@@ -117,6 +119,18 @@ def exploration_service(db: Db, objects: Objects) -> ExplorationAccess:
 
 
 Explorations = Annotated[ExplorationAccess, Depends(exploration_service)]
+
+
+def inspection_service(db: Db, objects: Objects) -> InspectionAccess:
+    from dataflow.platform.runtime import require_ready
+
+    require_ready(db)
+    return InspectionAccess(
+        db, make_datasets(db), make_executions(db), objects, SQLColumnAnnotations(db)
+    )
+
+
+Inspections = Annotated[InspectionAccess, Depends(inspection_service)]
 
 
 def dashboard_service(db: Db, objects: Objects) -> DashboardAccess:

@@ -24,11 +24,17 @@ from dataflow.modules.reports.infrastructure import (
     ReportSaveRequest,
 )
 
+# Tablas creadas después de 0021 (Fase 22 en adelante).
+TABLES_AFTER_0021 = {
+    # 0022: correcciones manuales del diccionario de datos (Fase 22)
+    "column_annotations",
+}
+
 # Tablas creadas después de 0020 (Fase 21 en adelante).
 TABLES_AFTER_0020 = {
     # 0021: valoraciones de hallazgos del dashboard (Fase 21)
     "finding_feedback",
-}
+} | TABLES_AFTER_0021
 
 # Tablas creadas después de 0019 (Fase 19 en adelante).
 TABLES_AFTER_0019 = {
@@ -85,6 +91,12 @@ def modelled_at_0020(
     obj: object, name: str | None, type_: str, reflected: bool, other: object
 ) -> bool:
     return table_of(obj, name, type_) not in TABLES_AFTER_0020
+
+
+def modelled_at_0021(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0021
 
 
 def insert_dashboard(db: Session, owner: UUID, project: UUID) -> UUID:

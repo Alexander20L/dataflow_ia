@@ -254,3 +254,25 @@ def test_delivery_only_reorders_published_results() -> None:
                 assert module in allowed, (file, module)
             if module.startswith("reportlab"):
                 assert file.name == "pdf.py", (file, module)
+
+
+def test_inspection_diagnoses_without_ai_or_database_in_its_engine() -> None:
+    """Fase 22 (ADR-039): la inspección del Dataset la calcula el motor sin IA; su cálculo no
+    abre la base de datos y sólo lee contratos de otros módulos."""
+    root = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "modules" / "inspection"
+    allowed = {
+        "dataflow.modules.ingestion.contracts",
+        "dataflow.modules.quality.contracts",
+        "dataflow.modules.understanding.contracts",
+    }
+    for file in root.glob("*.py"):
+        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+            assert not module.startswith(("anthropic", "dataflow.integrations")), (file, module)
+            if module.startswith("dataflow.modules.") and not module.startswith(
+                "dataflow.modules.inspection"
+            ):
+                assert module in allowed, (file, module)
+            if file.name in {"engine.py", "domain.py", "contracts.py"}:
+                assert not module.startswith(
+                    ("sqlalchemy", "fastapi", "dataflow.platform.database", "dataflow.bootstrap")
+                ), (file, module)

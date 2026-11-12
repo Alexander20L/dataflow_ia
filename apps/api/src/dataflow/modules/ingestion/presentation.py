@@ -12,8 +12,8 @@ from dataflow.modules.analytics.contracts import AutomaticAnalysis, AutomaticEvi
 from dataflow.modules.ingestion.contracts import (
     Diagnostic,
     IngestionSummary,
-    PreviewPage,
     ReadXlsxParameters,
+    RecordsPage,
     SourceOrigin,
     SourceReview,
     SqlServerConnection,
@@ -353,7 +353,7 @@ def automatic_evidence(
 
 
 @router.get(
-    "/versions/{version_id}/preview", response_model=PreviewPage, operation_id="previewVersion"
+    "/versions/{version_id}/preview", response_model=RecordsPage, operation_id="previewVersion"
 )
 def preview(
     version_id: UUID,
@@ -362,8 +362,15 @@ def preview(
     limit: Annotated[int, Query(ge=1, le=100)] = 10,
     offset: Annotated[int, Query(ge=0)] = 0,
     issue_id: Annotated[str | None, Query(max_length=100)] = None,
-) -> PreviewPage:
-    return service.preview(identity.user.id, version_id, limit, offset, issue_id)
+    sort: Annotated[UUID | None, Query()] = None,
+    descending: Annotated[bool, Query()] = False,
+    search: Annotated[str | None, Query(min_length=1, max_length=100)] = None,
+) -> RecordsPage:
+    """Registros tal como se leyeron, paginados en el servidor. `sort` es el identificador de
+    una columna; `search` busca el texto literal (sin distinguir mayúsculas) en todas."""
+    return service.preview(
+        identity.user.id, version_id, limit, offset, issue_id, sort, descending, search
+    )
 
 
 @router.get(

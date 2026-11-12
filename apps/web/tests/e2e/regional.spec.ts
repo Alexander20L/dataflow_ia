@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAnalysis } from "./helpers";
 
 // Fase 18: un CSV guardado por Excel en Windows (ANSI, punto y coma, coma decimal y fechas
 // día/mes/año) se lee sin preguntar nada y la lectura se explica.
@@ -30,6 +31,7 @@ test("CSV regional: se lee solo y se explica cómo", async ({ page }) => {
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAnalysis(page);
   const reading = page.getByRole("region", { name: "Lectura del archivo" });
   await expect(reading).toContainText("Windows-1252 (ANSI)", {
     timeout: 30000,
@@ -63,6 +65,7 @@ test("PDF con tablas: cada tabla se analiza sola", async ({ page }) => {
     buffer: pdf,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAnalysis(page);
   const origin = page.getByRole("note", { name: "Origen de los datos" });
   await expect(origin).toContainText("Tabla 1 de la página 1 del PDF.", {
     timeout: 30000,
