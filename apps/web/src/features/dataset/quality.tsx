@@ -20,8 +20,16 @@ const ORDER: Dimension[] = [
   "integrity",
 ];
 
-/** Calidad: diagnóstico verificable por dimensión. No elimina, corrige ni descarta nada. */
-export function QualityView({ inspection }: { inspection: Inspection }) {
+/** Calidad: diagnóstico verificable por dimensión. No elimina, corrige ni descarta nada. Las
+ * filas de ejemplo abren su página en Registros (Fase 23). */
+export function QualityView({
+  inspection,
+  onShowRow,
+}: {
+  inspection: Inspection;
+  onShowRow?: (row: number) => void;
+}) {
+  const repeated = inspection.summary.duplicate_rows_without_ids;
   const [dimension, setDimension] = useState<Dimension | "all">("all");
   const findings = inspection.findings.filter(
     (f) => dimension === "all" || f.dimension === dimension,
@@ -36,9 +44,12 @@ export function QualityView({ inspection }: { inspection: Inspection }) {
     <div className="dataset-quality">
       <p className="info-banner">
         Completitud: {formatPercent(inspection.summary.completeness_percent)} ·{" "}
-        {formatNumber(inspection.summary.duplicate_rows)} filas duplicadas. El
-        diagnóstico informa; no elimina duplicados, no corrige valores y no
-        descarta valores extremos.
+        {formatNumber(inspection.summary.duplicate_rows)} filas duplicadas
+        {repeated != null
+          ? ` · ${formatNumber(repeated)} repetidas sin contar ${inspection.summary.identifier_columns?.join(", ")}`
+          : ""}
+        . El diagnóstico informa; no elimina duplicados, no corrige valores y no
+        descarta valores extremos ni fuera de rango.
       </p>
       <div
         className="chip-options"
@@ -108,7 +119,21 @@ export function QualityView({ inspection }: { inspection: Inspection }) {
                 {finding.sample_rows.length > 0 && (
                   <div>
                     <dt>Filas de ejemplo</dt>
-                    <dd>{finding.sample_rows.join(", ")}</dd>
+                    <dd className="row-links">
+                      {onShowRow
+                        ? finding.sample_rows.map((row) => (
+                            <button
+                              key={row}
+                              type="button"
+                              className="link-button"
+                              onClick={() => onShowRow(row)}
+                              aria-label={`Ver la fila ${row} en Registros`}
+                            >
+                              {row}
+                            </button>
+                          ))
+                        : finding.sample_rows.join(", ")}
+                    </dd>
                   </div>
                 )}
               </dl>

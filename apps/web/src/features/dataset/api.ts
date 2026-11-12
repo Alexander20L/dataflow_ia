@@ -15,7 +15,12 @@ export type Finding = components["schemas"]["Finding"];
 export type AnnotationRequest = components["schemas"]["AnnotationRequest"];
 export type RecordsPage = components["schemas"]["RecordsPage"];
 
-/** Fase 22: inspección calculada una vez al cargar; mientras se calcula se consulta cada segundo. */
+export type Recalculation = components["schemas"]["Recalculation"];
+
+const WORKING = ["queued", "running"];
+
+/** Fase 22: inspección calculada una vez al cargar; mientras se calcula se consulta cada segundo.
+ * Fase 23: también mientras se recalcula el análisis tras una corrección del Diccionario. */
 export function useInspection(versionId?: string, enabled = true) {
   return useQuery({
     queryKey: ["inspection", versionId],
@@ -28,10 +33,25 @@ export function useInspection(versionId?: string, enabled = true) {
         }),
       ),
     refetchInterval: (query) =>
-      ["queued", "running"].includes(query.state.data?.state ?? "")
-        ? 1000
+      WORKING.includes(query.state.data?.state ?? "") ||
+      WORKING.includes(query.state.data?.recalculation?.state ?? "")
+        ? 1500
         : false,
   });
+}
+
+export function recalculating(view?: InspectionView) {
+  return WORKING.includes(view?.recalculation?.state ?? "");
+}
+
+/** Al terminar un recálculo, las demás pestañas vuelven a pedir sus resultados (Fase 23). */
+export function useRefreshAfterRecalculation(versionId: string) {
+  const client = useQueryClient();
+  return () => {
+    for (const key of ["comprehension", "exploration", "dashboard", "report"])
+      void client.invalidateQueries({ queryKey: [key, versionId] });
+    void client.invalidateQueries({ queryKey: ["versions"] });
+  };
 }
 
 export type RecordQuery = {
@@ -67,7 +87,8 @@ export function useRecords(versionId: string, query: RecordQuery) {
   });
 }
 
-/** Corrección manual del diccionario: metadato que no cambia el archivo ni los cálculos. */
+/** Corrección del diccionario: metadato que nunca cambia el archivo. Desde la Fase 23 recalcula
+ * la comprensión (y lo que depende de ella) o crea una versión derivada con textos nulos. */
 export function useAnnotate(versionId: string) {
   const client = useQueryClient();
   return useMutation({

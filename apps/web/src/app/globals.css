@@ -5519,3 +5519,44 @@ tbody tr:hover {
 .dataset-findings .dataset-facts {
   margin: 0;
 }
+/* Fase 23: filas enlazadas desde Calidad, avisos de columna y edición del Diccionario. */
+.row-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 10px;
+}
+.records-table tbody tr.focus-row th,
+.records-table tbody tr.focus-row td {
+  background: var(--primary-soft);
+}
+.dictionary-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.dictionary-editor fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin: 0;
+  display: grid;
+  gap: 6px;
+}
+.dictionary-editor fieldset legend {
+  font-weight: 600;
+  font-size: 13px;
+  padding: 0 4px;
+}
+.dictionary-editor .check-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 400;
+}
+.recalculation-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+}

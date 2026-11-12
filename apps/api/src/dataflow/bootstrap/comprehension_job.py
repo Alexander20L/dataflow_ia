@@ -5,6 +5,13 @@ Tras publicar una carga con interpretación analítica se encola un trabajo `com
 (antes que la investigación) cuyo input fija el perfil y la tabla de la carga y una instantánea de
 las valoraciones previas de la misma fuente. Siempre se ejecuta: sin IA calcula escalas,
 asociaciones y relaciones por los datos.
+
+Fase 23 (`business-comprehension-v2`, ADR-040): el input fija también una instantánea de las
+correcciones del Diccionario de la fuente. Al calcular, la comprensión parte de la misma
+clasificación que la pestaña Dataset (mismas reglas sobre la misma tabla) con esas correcciones
+encima; las columnas con datos personales se tratan como texto y no se envían a la IA. Una
+corrección nueva encola otra comprensión de la versión (y, al publicarse, otra exploración, otro
+dashboard y otra versión del informe).
 """
 
 import json
@@ -15,6 +22,7 @@ from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.loads import same_load
 from dataflow.modules.comprehension.contracts import (
     AIColumn,
     AIComprehension,
@@ -25,7 +33,12 @@ from dataflow.modules.comprehension.contracts import (
     Entity,
     FeedbackRequest,
 )
-from dataflow.modules.comprehension.domain import accept_ai, relationships, scales
+from dataflow.modules.comprehension.domain import (
+    accept_ai,
+    classified_roles,
+    relationships,
+    scales,
+)
 from dataflow.modules.comprehension.infrastructure import SQLFeedbackRepository
 from dataflow.modules.comprehension.measures import associations, dependencies, distinct_values
 from dataflow.modules.copilot.application import CopilotService
@@ -46,16 +59,24 @@ from dataflow.modules.executions.public import (
     StepInput,
     StepResult,
 )
+from dataflow.modules.inspection.contracts import INSPECTION_RULES, ColumnAnnotation
+from dataflow.modules.inspection.domain import classification, dictionary
+from dataflow.modules.inspection.engine import classify_table
+from dataflow.modules.inspection.infrastructure import SQLColumnAnnotations
 from dataflow.modules.projects.public import ProjectPermissions
 from dataflow.modules.understanding.contracts import DatasetProfile
 from dataflow.platform.canonical import digest
 from dataflow.platform.errors import ApplicationError
 
 STEP = "comprehension.understand"
+RULES = "business-comprehension-v2"
 
 
 def source_key(file_name: str, plan: dict[str, Any]) -> str:
-    """Identidad de la fuente entre versiones: archivo y hoja, tabla o segmentos leídos."""
+    """Identidad de la fuente entre versiones: archivo y hoja, tabla o segmentos leídos. Una
+    versión derivada (Fase 23) hereda la de su carga en `source_key`."""
+    if plan.get("source_key"):
+        return str(plan["source_key"])
     steps = plan.get("steps", [])
     read: dict[str, Any] = next((s for s in steps if s.get("id") == "read"), {})
     parameters = read.get("parameters", {})
@@ -77,6 +98,40 @@ def declared_keys(plan: dict[str, Any]) -> list[tuple[str, str]]:
     ]
 
 
+def snapshot(annotations: dict[str, ColumnAnnotation]) -> list[list[str]]:
+    """Lo que cuenta de las correcciones para la comprensión, como lista ordenada de textos (el
+    hash canónico sólo admite claves en snake_case): columna, rol, naturaleza y la decisión sobre
+    datos personales («yes», «no» o vacío)."""
+    return sorted(
+        [
+            name,
+            note.role or "",
+            note.nature or "",
+            "" if note.personal is None else "yes" if note.personal else "no",
+        ]
+        for name, note in annotations.items()
+        if note.role or note.nature or note.personal is not None
+    )
+
+
+def from_snapshot(items: list[list[str]], version: UUID) -> dict[str, ColumnAnnotation]:
+    moment = datetime(2000, 1, 1, tzinfo=UTC)
+    return {
+        name: ColumnAnnotation(
+            column=name,
+            role=role or None,
+            nature=nature or None,
+            time_format=None,
+            notes=None,
+            confirmed=False,
+            version_id=version,
+            created_at=moment,
+            personal=None if personal == "" else personal == "yes",
+        )
+        for name, role, nature, personal in items
+    }
+
+
 def enqueue_comprehension(
     executions: Executions,
     datasets: Datasets,
@@ -85,6 +140,7 @@ def enqueue_comprehension(
     profile: Artifact,
     table: Artifact,
     config: ProcessingConfig,
+    annotations: SQLColumnAnnotations | None = None,
 ) -> None:
     run = lease.execution
     assert run.plan
@@ -96,12 +152,18 @@ def enqueue_comprehension(
         [key, verdict]
         for key, verdict in feedback.for_source(lease.owner_id, run.project_id, source).items()
     )
+    corrections = (
+        snapshot(annotations.for_source(lease.owner_id, run.project_id, source))
+        if annotations is not None
+        else []
+    )
     fingerprint = digest(
         "comprehension_request",
         {
             "profile_sha256": profile.content.sha256,
             "table_sha256": table.content.sha256,
             "verdicts": verdicts,
+            "annotations": corrections,
             "operation": f"{STEP}@1",
         },
     )
@@ -125,6 +187,9 @@ def enqueue_comprehension(
             "table_byte_size": table.content.byte_size,
             "verdicts": verdicts,
             "declared": [list(pair) for pair in declared_keys(run.plan.content)],
+            # Fase 23: IDs de las columnas y correcciones del Diccionario de la fuente.
+            "column_ids": [str(c["id"]) for c in table.columns or []],
+            "annotations": corrections,
         },
         "steps": [
             {
@@ -132,7 +197,7 @@ def enqueue_comprehension(
                 "operation": STEP,
                 "version": 1,
                 "input": {"kind": "input", "alias": "source"},
-                "parameters": {"rules": "business-comprehension-v1"},
+                "parameters": {"rules": RULES},
             }
         ],
         # Una llamada facturable no se reintenta.
@@ -151,6 +216,61 @@ def enqueue_comprehension(
         str(lease.execution_id),
         profile.id,
         profile.content.sha256,
+        kind="comprehension",
+    )
+
+
+def request_comprehension_update(
+    executions: Executions,
+    annotations: SQLColumnAnnotations,
+    owner: UUID,
+    version: UUID,
+    source: str,
+) -> Execution | None:
+    """Fase 23: encola otra comprensión de la versión con las correcciones vigentes del
+    Diccionario (misma tabla, mismo perfil, mismas valoraciones). No hace nada si la versión no
+    tiene comprensión `business-comprehension-v2` (cargas anteriores a la Fase 23) o si la última
+    ya usa esas correcciones. La comprensión anterior se conserva."""
+    runs = [r for r in executions.for_version(owner, version) if r.kind == "comprehension"]
+    if not runs:
+        return None
+    base = runs[0]
+    assert base.plan and base.input_artifact_id and base.input_artifact_sha256
+    given = base.plan.content["input"]
+    if "column_ids" not in given:
+        return None
+    corrections = snapshot(annotations.for_source(owner, base.project_id, source))
+    if given.get("annotations", []) == corrections:
+        return None
+    content = {
+        **base.plan.content,
+        "input": {**given, "annotations": corrections},
+        "trigger": "dictionary",
+    }
+    fingerprint = digest(
+        "comprehension_update",
+        {
+            "base_sha256": base.plan.content_sha256,
+            "annotations": corrections,
+            "count": len(runs),
+        },
+    )
+    key = uuid5(version, f"comprehension-update:{len(runs)}:{fingerprint}")
+    if executions.find_request(owner, base.project_id, "comprehension", key, fingerprint):
+        return None
+    plan = PlanRevision(
+        uuid4(), uuid4(), 1, content, digest("plan", content), owner, datetime.now(UTC)
+    )
+    return executions.enqueue_followup(
+        owner,
+        base.project_id,
+        version,
+        key,
+        fingerprint,
+        plan,
+        str(uuid5(version, fingerprint)),  # correlación (36 caracteres)
+        base.input_artifact_id,
+        base.input_artifact_sha256,
         kind="comprehension",
     )
 
@@ -176,7 +296,7 @@ class ComprehensionInput:
             or table.kind != "table"
             or profile.version_id != version.id
             or table.version_id != version.id
-            or profile.execution_id != table.execution_id
+            or not same_load(self.executions, run.owner_id, profile, table)
             or str(profile.id) != given.get("artifact_id")
             or str(version.id) != given.get("version_id")
             or version.content.sha256 != given.get("version_content_sha256")
@@ -192,11 +312,21 @@ class ComprehensionInput:
         return StepInput("comprehension", profile.content, table.content.sha256)
 
 
-def ai_columns(profile: DatasetProfile, scale_of: dict[str, str]) -> list[AIColumn]:
+def ai_columns(
+    profile: DatasetProfile,
+    scale_of: dict[str, str],
+    roles_of: dict[str, str] | None = None,
+    hidden: set[str] | None = None,
+) -> list[AIColumn]:
+    """Nombre y perfil agregado de cada columna. Fase 23: con el rol vigente (con las
+    correcciones del Diccionario) y sin las columnas con datos personales."""
     analysis = profile.overview.analysis if profile.overview else None
-    roles = {c.name: c.role for c in analysis.columns} if analysis else {}
+    roles: dict[str, str] = {c.name: c.role for c in analysis.columns} if analysis else {}
+    roles |= roles_of or {}
     columns = []
     for column in profile.columns:
+        if column.name in (hidden or set()):
+            continue
         numeric = column.numeric
         columns.append(
             AIColumn(
@@ -249,16 +379,37 @@ class ComprehensionStep:
             StoredObject(given["table_key"], given["table_sha256"], given["table_byte_size"])
         )
         analysis = profile.overview.analysis if profile.overview else None
-        roles = (
+        roles: list[tuple[str, str]] = (
             [(c.name, c.role) for c in analysis.columns]
             if analysis
             else [(c.name, "text") for c in profile.columns]
         )
-        names = [name for name, _ in roles]
+        declared: dict[str, str] = {}
+        corrected: list[str] = []
+        personal: list[str] = []
+        v2 = "column_ids" in given
+        if v2:
+            # Fase 23: la clasificación de la pestaña Dataset con las correcciones fijadas.
+            columns = classify_table(table, [UUID(i) for i in given["column_ids"]], profile)
+            entries = dictionary(
+                columns,
+                INSPECTION_RULES,
+                from_snapshot(given.get("annotations", []), lease.version_id),
+                lease.version_id,
+            )
+            roles, declared, corrected, personal = classified_roles(
+                roles,
+                [
+                    (c.name, c.role, c.nature, c.personal, c.corrected)
+                    for c in classification(entries)
+                ],
+            )
+        hidden = set(personal)
+        names = [name for name, _ in roles if name not in hidden]
         measures = [name for name, role in roles if role == "measure"]
         dimensions = [name for name, role in roles if role == "dimension"]
         distinct = distinct_values(table, dimensions)
-        rule_scales = scales(roles, distinct)
+        rule_scales = scales(roles, distinct, None, declared)
         limitations = [
             "La comprensión de la IA son hipótesis sobre nombres y un perfil agregado: no vio "
             "filas. Cada relación lleva la medida calculada que la respalda o no.",
@@ -266,6 +417,18 @@ class ComprehensionStep:
         ]
         if analysis is None:
             limitations.append("Esta carga no tiene interpretación analítica: todo es texto.")
+        if corrected:
+            limitations.append(
+                "La clasificación de "
+                + ", ".join(f"«{n}»" for n in corrected)
+                + " viene de tus correcciones en el Diccionario de la pestaña Dataset."
+            )
+        if personal:
+            limitations.append(
+                "Las columnas con datos personales ("
+                + ", ".join(f"«{n}»" for n in personal)
+                + ") se tratan como texto y no se envían a la IA."
+            )
 
         accepted: AIComprehension | None = None
         discarded: list[str] = []
@@ -278,7 +441,12 @@ class ComprehensionStep:
                 context(
                     [
                         item.model_dump()
-                        for item in ai_columns(profile, {s.column: s.scale for s in rule_scales})
+                        for item in ai_columns(
+                            profile,
+                            {s.column: s.scale for s in rule_scales},
+                            dict(roles),
+                            hidden,
+                        )
                     ],
                     profile.row_count,
                     str(given["file_name"]),
@@ -306,7 +474,7 @@ class ComprehensionStep:
                 )
                 accepted, discarded = accept_ai(raw, names)
                 ai_state, ai_reason = "ready", None
-        final_scales = scales(roles, distinct, accepted.orders if accepted else None)
+        final_scales = scales(roles, distinct, accepted.orders if accepted else None, declared)
         found, matrix = associations(table, measures, dimensions)
         ai_pairs = accepted.relationships if accepted else []
         dependency_pairs = [
@@ -316,6 +484,7 @@ class ComprehensionStep:
             dependency_pairs += [(d.determinant, d.dependent) for d in analysis.dependencies]
         checked = dependencies(table, dependency_pairs)
         result = Comprehension(
+            rules_version=RULES if v2 else "business-comprehension-v1",
             scope=ComprehensionScope(
                 execution_id=lease.execution_id,
                 version_id=lease.version_id,
@@ -342,6 +511,8 @@ class ComprehensionStep:
             discarded=discarded,
             limitations=limitations,
             calls=calls,
+            corrected_columns=corrected,
+            personal_columns=personal,
         )
         prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
         stored = self.objects.put(f"{prefix}/comprehension.json", result.model_dump_json().encode())

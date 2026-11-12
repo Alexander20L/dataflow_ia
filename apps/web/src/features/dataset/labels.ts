@@ -9,6 +9,12 @@ export type Dimension = Schemas["Finding"]["dimension"];
 export type Severity = Schemas["Finding"]["severity"];
 export type TimeFormat = NonNullable<Schemas["DictionaryEntry"]["time_format"]>;
 export type Status = Schemas["DictionaryEntry"]["status"];
+export type PersonalKind = NonNullable<
+  Schemas["DictionaryEntry"]["personal_kind"]
+>;
+export type PersonalStatus = NonNullable<
+  Schemas["DictionaryEntry"]["personal_status"]
+>;
 
 export const TYPES: Record<TechnicalType, string> = {
   string: "Texto",
@@ -75,6 +81,19 @@ export const STATUSES: Record<Status, string> = {
   automatic: "Automática",
   corrected: "Corrección manual",
   confirmed: "Confirmada",
+};
+export const PERSONAL_KINDS: Record<PersonalKind, string> = {
+  name: "nombre de persona",
+  document: "documento de identidad",
+  email: "correo electrónico",
+  phone: "teléfono",
+  address: "dirección",
+};
+export const PERSONAL_STATUSES: Record<PersonalStatus, string> = {
+  automatic: "detectado automáticamente",
+  confirmed: "confirmado por ti",
+  rejected: "descartado por ti",
+  marked: "marcado por ti",
 };
 export const FREQUENCIES: Record<string, string> = {
   daily: "Diaria",

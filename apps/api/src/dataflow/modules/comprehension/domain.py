@@ -126,15 +126,104 @@ def ordinal_order(values: Sequence[str]) -> tuple[list[str], str] | None:
     return None
 
 
+def classified_roles(
+    analysis: Sequence[tuple[str, str]],
+    items: Sequence[tuple[str, str, str, bool, bool]],
+) -> tuple[list[tuple[str, str]], dict[str, str], list[str], list[str]]:
+    """Fase 23: roles de partida con la clasificación del Diccionario.
+
+    `analysis`: (nombre, rol de la interpretación analítica). `items`: (nombre, rol, naturaleza,
+    ¿datos personales?, ¿corregida por el usuario?) de la pestaña Dataset. Una columna sin
+    corregir conserva su rol analítico (mismas reglas, sin regresiones); una con datos personales
+    pasa a texto; una corregida toma el rol que indicó el usuario. Devuelve los roles, la escala
+    declarada («ordinal» o «nominal») de las columnas corregidas, las corregidas y las personales.
+    """
+    by_name = {item[0]: item for item in items}
+    roles: list[tuple[str, str]] = []
+    declared: dict[str, str] = {}
+    corrected: list[str] = []
+    personal: list[str] = []
+    for name, role in analysis:
+        item = by_name.get(name)
+        if item is None:
+            roles.append((name, role))
+            continue
+        _, user_role, nature, is_personal, is_corrected = item
+        if is_personal:
+            personal.append(name)
+            roles.append((name, "text"))
+            continue
+        if not is_corrected:
+            roles.append((name, role))
+            continue
+        corrected.append(name)
+        if user_role == "identifier":
+            roles.append((name, "identifier"))
+        elif user_role == "time" or nature == "temporal":
+            roles.append((name, "time"))
+        elif nature in {"ordinal", "nominal"} and user_role in {"dimension", "category", "measure"}:
+            roles.append((name, "dimension"))
+            declared[name] = nature
+        elif user_role == "measure":
+            roles.append((name, "measure"))
+        elif user_role in {"dimension", "category"}:
+            roles.append((name, "dimension"))
+        elif user_role == "text":
+            roles.append((name, "text"))
+        else:
+            roles.append((name, role))
+    return roles, declared, corrected, personal
+
+
+def numeric_order(values: Sequence[str]) -> list[str] | None:
+    try:
+        return sorted(values, key=lambda v: Decimal(v.strip()))
+    except ArithmeticError:
+        return None
+
+
 def scales(
     columns: Sequence[tuple[str, str]],
     distinct: Mapping[str, list[str]],
     ai_orders: Mapping[str, list[str]] | None = None,
+    declared: Mapping[str, str] | None = None,
 ) -> list[ColumnScale]:
     """`columns`: (nombre, rol de la interpretación analítica). `distinct`: valores distintos de
-    las dimensiones (todos, si son pocos)."""
+    las dimensiones (todos, si son pocos). `declared` (Fase 23): escala que el usuario indicó en
+    el Diccionario para una dimensión («ordinal» o «nominal»); manda sobre las reglas."""
     result: list[ColumnScale] = []
     for name, role in columns:
+        user = (declared or {}).get(name)
+        if role == "dimension" and user == "nominal":
+            result.append(
+                ColumnScale(
+                    column=name,
+                    scale="nominal",
+                    reason="Indicada como cualitativa nominal en el Diccionario: categorías sin "
+                    "orden.",
+                )
+            )
+            continue
+        if role == "dimension" and user == "ordinal":
+            values = distinct.get(name, [])
+            found = ordinal_order(values)
+            ranked = found[0] if found else numeric_order(values)
+            result.append(
+                ColumnScale(
+                    column=name,
+                    scale="ordinal",
+                    order=ranked or [],
+                    reason="Indicada como cualitativa ordinal en el Diccionario"
+                    + (
+                        "; sus categorías se ordenan por su valor."
+                        if ranked
+                        else "; el orden de sus categorías no se conoce, así que se comparan "
+                        "sin ordenarlas."
+                    ),
+                    order_source="user",
+                )
+            )
+            continue
         if role == "measure":
             result.append(
                 ColumnScale(

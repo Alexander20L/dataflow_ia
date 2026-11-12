@@ -33,8 +33,17 @@ export function SummaryView({ view }: { view: InspectionView }) {
     ["Completitud", formatPercent(summary.completeness_percent)],
     ["Valores faltantes", formatNumber(summary.missing_cells)],
     ["Filas duplicadas", formatNumber(summary.duplicate_rows)],
+    ...(summary.duplicate_rows_without_ids != null
+      ? ([
+          [
+            "Repetidas sin identificador",
+            formatNumber(summary.duplicate_rows_without_ids),
+          ],
+        ] as [string, string][])
+      : []),
     ["Memoria estimada", formatBytes(summary.memory_bytes)],
   ];
+  const personal = (view.dictionary ?? []).filter((e) => e.personal);
   return (
     <div className="dataset-summary">
       <dl className="dataset-metrics" aria-label="Indicadores del dataset">
@@ -109,10 +118,18 @@ export function SummaryView({ view }: { view: InspectionView }) {
           </ul>
           <p className="muted">
             Clasificación vigente: la automática con tus correcciones del
-            Diccionario.
+            Diccionario. Es la que usan la comprensión, la exploración y el
+            dashboard.
           </p>
         </section>
       </div>
+      {personal.length > 0 && (
+        <p className="info-banner">
+          Columnas con datos personales:{" "}
+          {personal.map((e) => `«${e.name}»`).join(", ")}. No se envían a la IA
+          ni se usan para agrupar; puedes descartarlo en el Diccionario.
+        </p>
+      )}
       {inspection.periods.map((period) => (
         <p key={period.columns.join("|")} className="info-banner">
           {period.columns.join(" + ")}: {period.note} ({period.periods} periodos

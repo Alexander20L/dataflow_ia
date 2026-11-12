@@ -1173,7 +1173,9 @@ export interface components {
         /**
          * AnnotationRequest
          * @description Corrección de una columna. Sustituye a la anterior; todo vacío y sin confirmar vuelve a
-         *     la clasificación automática. Nunca cambia el archivo ni los cálculos.
+         *     la clasificación automática. Nunca cambia el archivo: desde la Fase 23 la clasificación
+         *     corregida se usa en la comprensión (que se recalcula) y los textos declarados como nulos
+         *     crean una versión derivada.
          */
         AnnotationRequest: {
             /**
@@ -1190,6 +1192,10 @@ export interface components {
             nature?: ("nominal" | "ordinal" | "discrete" | "continuous" | "temporal" | "unknown") | null;
             /** Notes */
             notes?: string | null;
+            /** Null Tokens */
+            null_tokens?: string[];
+            /** Personal */
+            personal?: boolean | null;
             /** Role */
             role?: ("identifier" | "dimension" | "measure" | "time" | "category" | "text" | "unknown") | null;
             /** Time Format */
@@ -1632,10 +1638,16 @@ export interface components {
             categorical?: components["schemas"]["CategoricalStats"] | null;
             /** Count */
             count: number;
+            /**
+             * Dichotomous
+             * @default false
+             */
+            dichotomous: boolean;
             /** Distinct */
             distinct: number;
             /** Distinct Percent */
             distinct_percent: string;
+            domain?: components["schemas"]["ValueDomain"] | null;
             /** Examples */
             examples: string[];
             /**
@@ -1671,6 +1683,8 @@ export interface components {
             numeric?: components["schemas"]["NumericStats"] | null;
             /** Ordinal */
             ordinal: number;
+            ordinal_candidate?: components["schemas"]["OrdinalHint"] | null;
+            personal?: components["schemas"]["PersonalHint"] | null;
             /** Reading */
             reading?: string | null;
             /**
@@ -1732,7 +1746,7 @@ export interface components {
             /** Order */
             order?: string[];
             /** Order Source */
-            order_source?: ("rules" | "ai") | null;
+            order_source?: ("rules" | "ai" | "user") | null;
             /** Reason */
             reason: string;
             /**
@@ -1796,6 +1810,8 @@ export interface components {
             calls?: {
                 [key: string]: unknown;
             }[];
+            /** Corrected Columns */
+            corrected_columns?: string[];
             /** Discarded */
             discarded?: string[];
             /** Domain */
@@ -1808,16 +1824,18 @@ export interface components {
             matrix_columns: string[];
             /** Meanings */
             meanings?: components["schemas"]["ColumnMeaning"][];
+            /** Personal Columns */
+            personal_columns?: string[];
             /** Questions */
             questions?: string[];
             /** Relationships */
             relationships: components["schemas"]["Relationship"][];
             /**
              * Rules Version
-             * @default business-comprehension-v1
-             * @constant
+             * @default business-comprehension-v2
+             * @enum {string}
              */
-            rules_version: "business-comprehension-v1";
+            rules_version: "business-comprehension-v1" | "business-comprehension-v2";
             /** Scales */
             scales: components["schemas"]["ColumnScale"][];
             scope: components["schemas"]["ComprehensionScope"];
@@ -2081,6 +2099,11 @@ export interface components {
             column_id: string;
             /** Description */
             description: string;
+            /**
+             * Dichotomous
+             * @default false
+             */
+            dichotomous: boolean;
             /** Distinct */
             distinct: number;
             /**
@@ -2102,10 +2125,22 @@ export interface components {
             nature: "nominal" | "ordinal" | "discrete" | "continuous" | "temporal" | "unknown";
             /** Notes */
             notes?: string | null;
+            /** Null Tokens */
+            null_tokens?: string[];
             /** Nulls */
             nulls: number;
+            ordinal_candidate?: components["schemas"]["OrdinalHint"] | null;
             /** Origin */
             origin: string;
+            /**
+             * Personal
+             * @default false
+             */
+            personal: boolean;
+            /** Personal Kind */
+            personal_kind?: ("name" | "document" | "email" | "phone" | "address") | null;
+            /** Personal Status */
+            personal_status?: ("automatic" | "confirmed" | "rejected" | "marked") | null;
             /**
              * Role
              * @enum {string}
@@ -2300,7 +2335,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration" | "dashboard" | "inspection";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration" | "dashboard" | "inspection" | "null_cleaning";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -2355,7 +2390,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration" | "dashboard" | "inspection";
+            kind: "csv_import" | "table_analysis" | "plan" | "cleaning_preview" | "cleaning_apply" | "report_render" | "overview_audit" | "investigation" | "automatic_report" | "comprehension" | "exploration" | "dashboard" | "inspection" | "null_cleaning";
             plan: components["schemas"]["PlanResponse"] | null;
             /**
              * Project Id
@@ -2533,7 +2568,7 @@ export interface components {
             /** Covered Rows */
             covered_rows: number;
             /** Judged By */
-            judged_by?: ("rules" | "ai") | null;
+            judged_by?: ("ai" | "rules") | null;
             /** Key */
             key: string;
             /** Method */
@@ -2696,7 +2731,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "dataset-inspection-v1" | "automatic-quality-v1";
+            source: "dataset-inspection-v1" | "dataset-inspection-v2" | "automatic-quality-v1";
             /** Title */
             title: string;
         };
@@ -2867,10 +2902,10 @@ export interface components {
             profile_sha256: string;
             /**
              * Rules
-             * @default dataset-inspection-v1
-             * @constant
+             * @default dataset-inspection-v2
+             * @enum {string}
              */
-            rules: "dataset-inspection-v1";
+            rules: "dataset-inspection-v1" | "dataset-inspection-v2";
             /** Table Sha256 */
             table_sha256: string;
             /**
@@ -2892,6 +2927,7 @@ export interface components {
             inspection?: components["schemas"]["Inspection"] | null;
             /** Reason */
             reason?: string | null;
+            recalculation?: components["schemas"]["Recalculation"] | null;
             /**
              * State
              * @enum {string}
@@ -3410,6 +3446,7 @@ export interface components {
             method: string;
             /** Minimum */
             minimum: string;
+            outliers?: components["schemas"]["Outliers"] | null;
             /** Q1 */
             q1: string;
             /** Q3 */
@@ -3436,6 +3473,37 @@ export interface components {
             reason: string;
             /** Table */
             table: string;
+        };
+        /**
+         * OrdinalHint
+         * @description Enteros con pocos valores que parecen una escala ordenada. Es una candidata: sólo cambia la
+         *     clasificación si el usuario la confirma en el Diccionario.
+         */
+        OrdinalHint: {
+            /** Order */
+            order: string[];
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * Outliers
+         * @description Valores atípicos por las vallas de Tukey (Fase 23). Es un aviso: no se elimina nada.
+         */
+        Outliers: {
+            /** Count */
+            count: number;
+            /** Extreme */
+            extreme: number;
+            /** Extreme Lower */
+            extreme_lower: string;
+            /** Extreme Upper */
+            extreme_upper: string;
+            /** Method */
+            method: string;
+            /** Mild Lower */
+            mild_lower: string;
+            /** Mild Upper */
+            mild_upper: string;
         };
         /** OverviewAudit */
         OverviewAudit: {
@@ -3629,6 +3697,19 @@ export interface components {
             periods: number;
             /** Unparsed Rows */
             unparsed_rows: number;
+        };
+        /**
+         * PersonalHint
+         * @description Columna que parece contener datos personales (Fase 23).
+         */
+        PersonalHint: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "name" | "document" | "email" | "phone" | "address";
+            /** Reason */
+            reason: string;
         };
         /** PlanResponse */
         PlanResponse: {
@@ -3889,6 +3970,31 @@ export interface components {
             partitions: components["schemas"]["RankingPartition"][];
             /** Top N */
             top_n: number;
+        };
+        /**
+         * Recalculation
+         * @description Trabajo en marcha o terminado que provocó la última corrección (Fase 23).
+         */
+        Recalculation: {
+            /** Derived Version Id */
+            derived_version_id?: string | null;
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "comprehension" | "null_cleaning";
+            /** Reason */
+            reason?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "succeeded" | "failed" | "cancelled";
         };
         /**
          * RecordsPage
@@ -4340,14 +4446,20 @@ export interface components {
             completeness_percent: string;
             /** Duplicate Rows */
             duplicate_rows: number;
+            /** Duplicate Rows Without Ids */
+            duplicate_rows_without_ids?: number | null;
             /** Groups */
             groups: {
                 [key: string]: number;
             };
+            /** Identifier Columns */
+            identifier_columns?: string[];
             /** Memory Bytes */
             memory_bytes: number | null;
             /** Missing Cells */
             missing_cells: number;
+            /** Personal Columns */
+            personal_columns?: string[];
             /** Rows */
             rows: number;
         };
@@ -4426,6 +4538,8 @@ export interface components {
             count: number;
             /** Token */
             token: string;
+            /** Variants */
+            variants?: string[];
         };
         /** UpdateProjectRequest */
         UpdateProjectRequest: {
@@ -4450,6 +4564,25 @@ export interface components {
             id: string;
             /** Name */
             name: string;
+        };
+        /**
+         * ValueDomain
+         * @description Dominio evidente de una columna numérica (Fase 23) y cuántos valores lo incumplen.
+         */
+        ValueDomain: {
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "percent" | "non_negative";
+            /** Lower */
+            lower: string;
+            /** Outside */
+            outside: number;
+            /** Reason */
+            reason: string;
+            /** Upper */
+            upper: string | null;
         };
         /** VersionPage */
         VersionPage: {

@@ -98,3 +98,107 @@ test("Dataset: inspección completa y corrección manual persistente", async ({
   await expect(row).toContainText("Corrección manual");
   await expect(row).toContainText("Escala de 1 a 5");
 });
+
+// Fase 23: avisos de rango, escala candidata y datos personales; las correcciones del
+// Diccionario recalculan el análisis y los textos «sin dato» crean una versión derivada.
+test("Dataset: las correcciones cuentan y los textos sin dato crean una versión", async ({
+  page,
+}) => {
+  // Recálculo y versión derivada completa: más que el límite por defecto.
+  test.setTimeout(240_000);
+  const registration = await page.request.post("/api/v1/auth/register", {
+    headers: { Origin: "http://127.0.0.1:3100" },
+    data: {
+      name: "Analista Dataset 23",
+      email: `dataset23-${crypto.randomUUID()}@example.com`,
+      password: "Prueba-segura-Dataset-123",
+    },
+  });
+  expect(registration.status()).toBe(201);
+  const lines = ["estudiante_id,nombre,ciclo,asistencia_pct,estado"];
+  for (let i = 1; i <= 20; i++)
+    lines.push(
+      `S${String(i).padStart(3, "0")},Persona ${i} Apellido${i},${1 + (i % 10)},` +
+        `${i === 5 ? 120 : 70 + i},${i === 3 || i === 8 ? "N/A" : "Activo"}`,
+    );
+  await page.goto("/new");
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "estudiantes.csv",
+    mimeType: "text/csv",
+    buffer: Buffer.from(lines.join("\n") + "\n"),
+  });
+  await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  const dataset = page.getByRole("region", { name: "Dataset" });
+  await expect(dataset.getByLabel("Indicadores del dataset")).toContainText(
+    "Registros20",
+    { timeout: 30000 },
+  );
+  await expect(dataset).toContainText(
+    "Columnas con datos personales: «nombre»",
+  );
+
+  // Columnas: escala candidata y rango esperado.
+  await page.getByRole("tab", { name: "Columnas" }).click();
+  await page.getByRole("button", { name: /^ciclo/ }).click();
+  await expect(
+    page.getByRole("region", { name: "Columna ciclo" }),
+  ).toContainText("Escala ordinal candidata");
+  await page.getByRole("button", { name: /^asistencia_pct/ }).click();
+  await expect(
+    page.getByRole("region", { name: "Columna asistencia_pct" }),
+  ).toContainText("1 fuera de rango");
+
+  // Calidad: la fila fuera de rango se abre en Registros.
+  await page.getByRole("tab", { name: "Calidad" }).click();
+  const findings = page.getByLabel("Incidencias de calidad");
+  await expect(findings).toContainText(
+    "Valores fuera de rango en «asistencia_pct»",
+  );
+  await findings
+    .getByRole("listitem")
+    .filter({ hasText: "Valores fuera de rango" })
+    .getByRole("button", { name: "Ver la fila 5 en Registros" })
+    .click();
+  await expect(page.getByRole("row", { name: /^5 S005/ })).toHaveAttribute(
+    "aria-current",
+    "true",
+  );
+
+  // Diccionario: «ciclo» como escala ordinal → se recalcula el análisis.
+  await page.getByRole("tab", { name: "Diccionario" }).click();
+  await page
+    .getByRole("button", { name: "Editar la clasificación de ciclo" })
+    .click();
+  let dialog = page.getByRole("dialog");
+  await dialog
+    .getByRole("button", { name: "Usar como escala ordinal" })
+    .click();
+  await dialog.getByRole("button", { name: "Guardar corrección" }).click();
+  await expect(page.getByText("Se recalculan la comprensión")).toBeVisible();
+  await expect(
+    page.getByText("Análisis actualizado con tus correcciones"),
+  ).toBeVisible({
+    timeout: 60000,
+  });
+
+  // «N/A» significa «sin dato»: versión derivada con esos textos como nulos.
+  await page
+    .getByRole("button", { name: "Editar la clasificación de estado" })
+    .click();
+  dialog = page.getByRole("dialog");
+  await dialog.getByRole("checkbox", { name: /«N\/A»/ }).check();
+  await dialog.getByRole("button", { name: "Guardar corrección" }).click();
+  await expect(page.getByText("Se crea una versión derivada")).toBeVisible();
+  await page
+    .getByRole("button", { name: "Ver la versión derivada" })
+    .click({ timeout: 90000 });
+  await expect(
+    page
+      .getByRole("region", { name: "Dataset" })
+      .getByLabel("Indicadores del dataset"),
+  ).toContainText("Valores faltantes2", { timeout: 60000 });
+  await page.getByRole("tab", { name: "Diccionario" }).click();
+  await expect(page.getByRole("row", { name: /ciclo/ })).toContainText(
+    "Cualitativa ordinal",
+  );
+});

@@ -1,9 +1,11 @@
-"""Pestaña Dataset (Fase 22, ADR-039): inspección estructural, estadística y de calidad de una
-versión, calculada una vez por el motor sobre la tabla completa (`dataset-inspection-v1`), y
-correcciones manuales opcionales del diccionario, guardadas como metadatos.
+"""Pestaña Dataset (Fases 22 y 23, ADR-039 y ADR-040): inspección estructural, estadística y de
+calidad de una versión, calculada una vez por el motor sobre la tabla completa
+(`dataset-inspection-v2`), y correcciones del diccionario guardadas como metadatos.
 
-Nada aquí modifica el archivo, la tabla leída ni los resultados de otras pestañas: la
-inspección diagnostica y comunica; las correcciones sólo cambian cómo se describe una columna.
+La inspección nunca modifica el archivo ni la tabla leída. Desde la Fase 23 (ADR-040) las
+correcciones del diccionario sí cuentan en las etapas siguientes: la comprensión las usa como
+clasificación de partida, las columnas con datos personales no se envían a la IA y los textos
+declarados como nulos crean una versión derivada (el original no cambia).
 """
 
 from datetime import datetime
@@ -14,7 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataflow.modules.ingestion.contracts import ConvertedColumn, KeptColumn, SheetFacts
 
-INSPECTION_RULES = "dataset-inspection-v1"
+INSPECTION_RULES = "dataset-inspection-v2"
+RulesVersion = Literal["dataset-inspection-v1", "dataset-inspection-v2"]
 
 # Tipo técnico: cómo están escritos los valores (lo que el motor puede leer sin perder nada).
 TechnicalType = Literal["string", "integer", "decimal", "boolean", "date", "datetime", "empty"]
@@ -33,9 +36,15 @@ TimeFormat = Literal[
 EntryStatus = Literal["automatic", "corrected", "confirmed"]
 
 
+PersonalKind = Literal["name", "document", "email", "phone", "address"]
+
+
 class TokenCount(BaseModel):
     token: str
     count: int = Field(ge=0)
+    # Fase 23: escrituras exactas del original (p. ej. «N/A» y «n/a»), para poder declararlas
+    # como nulos con una coincidencia exacta de la celda completa.
+    variants: list[str] = Field(default_factory=list)
 
 
 class Missing(BaseModel):
@@ -61,6 +70,19 @@ class Bin(BaseModel):
     count: int = Field(ge=0)
 
 
+class Outliers(BaseModel):
+    """Valores atípicos por las vallas de Tukey (Fase 23). Es un aviso: no se elimina nada."""
+
+    mild_lower: str
+    mild_upper: str
+    extreme_lower: str
+    extreme_upper: str
+    # Fuera de [Q1 − 1,5·IQR, Q3 + 1,5·IQR]; los extremos (fuera de 3·IQR) están incluidos.
+    count: int = Field(ge=0)
+    extreme: int = Field(ge=0)
+    method: str
+
+
 class NumericStats(BaseModel):
     count: int
     minimum: str
@@ -72,6 +94,32 @@ class NumericStats(BaseModel):
     q3: str
     histogram: list[Bin]
     method: str
+    outliers: Outliers | None = None
+
+
+class ValueDomain(BaseModel):
+    """Dominio evidente de una columna numérica (Fase 23) y cuántos valores lo incumplen."""
+
+    kind: Literal["percent", "non_negative"]
+    lower: str
+    upper: str | None
+    outside: int = Field(ge=0)
+    reason: str
+
+
+class OrdinalHint(BaseModel):
+    """Enteros con pocos valores que parecen una escala ordenada. Es una candidata: sólo cambia la
+    clasificación si el usuario la confirma en el Diccionario."""
+
+    order: list[str]
+    reason: str
+
+
+class PersonalHint(BaseModel):
+    """Columna que parece contener datos personales (Fase 23)."""
+
+    kind: PersonalKind
+    reason: str
 
 
 class TemporalStats(BaseModel):
@@ -120,6 +168,11 @@ class ColumnInspection(BaseModel):
     temporal: TemporalStats | None = None
     categorical: CategoricalStats | None = None
     reading: str | None = None
+    # Fase 23 (`dataset-inspection-v2`).
+    dichotomous: bool = False
+    domain: ValueDomain | None = None
+    ordinal_candidate: OrdinalHint | None = None
+    personal: PersonalHint | None = None
 
 
 class Finding(BaseModel):
@@ -134,7 +187,7 @@ class Finding(BaseModel):
     sample_rows: list[int]
     description: str
     severity: Severity
-    source: Literal["dataset-inspection-v1", "automatic-quality-v1"]
+    source: Literal["dataset-inspection-v1", "dataset-inspection-v2", "automatic-quality-v1"]
 
 
 class PeriodCandidate(BaseModel):
@@ -157,6 +210,11 @@ class Summary(BaseModel):
     duplicate_rows: int
     memory_bytes: int | None
     groups: dict[Group, int]
+    # Fase 23: filas repetidas sin contar los identificadores (None si no hay identificadores
+    # o si no queda ninguna otra columna) y columnas excluidas para ese recuento.
+    duplicate_rows_without_ids: int | None = None
+    identifier_columns: list[str] = Field(default_factory=list)
+    personal_columns: list[str] = Field(default_factory=list)
 
 
 class FileInspection(BaseModel):
@@ -192,7 +250,7 @@ class InspectionScope(BaseModel):
     version_id: UUID
     table_sha256: str
     profile_sha256: str
-    rules: Literal["dataset-inspection-v1"] = "dataset-inspection-v1"
+    rules: RulesVersion = "dataset-inspection-v2"
     computed_at: datetime
 
 
@@ -218,6 +276,10 @@ class ColumnAnnotation(BaseModel):
     confirmed: bool
     version_id: UUID
     created_at: datetime
+    # Fase 23 (migración 0023): textos que el usuario declara como «sin dato» y su decisión sobre
+    # el aviso de datos personales (None: sin decidir; vale la detección automática).
+    null_tokens: list[str] = Field(default_factory=list)
+    personal: bool | None = None
 
 
 class DictionaryEntry(BaseModel):
@@ -238,11 +300,20 @@ class DictionaryEntry(BaseModel):
     notes: str | None = None
     inherited: bool = False
     updated_at: datetime | None = None
+    # Fase 23.
+    dichotomous: bool = False
+    ordinal_candidate: OrdinalHint | None = None
+    personal: bool = False
+    personal_kind: PersonalKind | None = None
+    personal_status: Literal["automatic", "confirmed", "rejected", "marked"] | None = None
+    null_tokens: list[str] = Field(default_factory=list)
 
 
 class AnnotationRequest(BaseModel):
     """Corrección de una columna. Sustituye a la anterior; todo vacío y sin confirmar vuelve a
-    la clasificación automática. Nunca cambia el archivo ni los cálculos."""
+    la clasificación automática. Nunca cambia el archivo: desde la Fase 23 la clasificación
+    corregida se usa en la comprensión (que se recalcula) y los textos declarados como nulos
+    crean una versión derivada."""
 
     model_config = ConfigDict(extra="forbid")
     column_id: UUID
@@ -251,6 +322,19 @@ class AnnotationRequest(BaseModel):
     time_format: TimeFormat | None = None
     notes: str | None = Field(default=None, max_length=500)
     confirmed: bool = False
+    null_tokens: list[str] = Field(default_factory=list, max_length=20)
+    personal: bool | None = None
+
+
+class Recalculation(BaseModel):
+    """Trabajo en marcha o terminado que provocó la última corrección (Fase 23)."""
+
+    state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    kind: Literal["comprehension", "null_cleaning"]
+    execution_id: UUID
+    # Sólo para `null_cleaning`: la versión derivada (existe cuando termina bien).
+    derived_version_id: UUID | None = None
+    reason: str | None = None
 
 
 class InspectionView(BaseModel):
@@ -261,3 +345,4 @@ class InspectionView(BaseModel):
     dictionary: list[DictionaryEntry] = Field(default_factory=list)
     # Distribución por clasificación vigente (con las correcciones del usuario).
     groups: dict[Group, int] = Field(default_factory=dict)
+    recalculation: Recalculation | None = None

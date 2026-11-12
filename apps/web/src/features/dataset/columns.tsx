@@ -6,6 +6,7 @@ import type { ColumnInspection, Inspection } from "./api";
 import {
   FREQUENCIES,
   NATURES,
+  PERSONAL_KINDS,
   ROLES,
   TYPES,
   formatNumber,
@@ -75,8 +76,13 @@ function ColumnDetail({
     [histogram],
   );
   const tokens = column.missing.tokens
-    .map((t) => `«${t.token}» × ${t.count}`)
+    .map(
+      (t) =>
+        `«${t.token}» × ${formatNumber(t.count)}${t.variants && t.variants.length > 1 ? ` (escrito ${t.variants.map((v) => `«${v}»`).join(", ")})` : ""}`,
+    )
     .join(", ");
+  const domain = column.domain;
+  const outliers = column.numeric?.outliers;
   return (
     <section
       className="dataset-column-detail"
@@ -94,9 +100,42 @@ function ColumnDetail({
           <span className="badge neutral" title="Rol analítico sugerido">
             {ROLES[column.role]}
           </span>
+          {column.dichotomous && (
+            <span className="badge neutral" title="Exactamente dos valores">
+              Dicotómica
+            </span>
+          )}
+          {column.ordinal_candidate && (
+            <span
+              className="badge review"
+              title={column.ordinal_candidate.reason}
+            >
+              Escala ordinal candidata
+            </span>
+          )}
+          {column.personal && (
+            <span className="badge warning" title={column.personal.reason}>
+              Datos personales
+            </span>
+          )}
         </div>
         <p className="muted">{column.nature_reason}</p>
       </header>
+      {column.personal && (
+        <p className="info-banner">
+          Parece contener datos personales (
+          {PERSONAL_KINDS[column.personal.kind]}): {column.personal.reason} Esta
+          columna no se envía a la IA ni se usa para agrupar. Si no lo es,
+          descártalo en el Diccionario.
+        </p>
+      )}
+      {column.ordinal_candidate && (
+        <p className="info-banner">
+          {column.ordinal_candidate.reason} Orden:{" "}
+          {column.ordinal_candidate.order.join(" < ")}. Sólo cuenta si lo
+          confirmas en el Diccionario.
+        </p>
+      )}
       <Facts
         items={[
           ["Valores", formatNumber(column.count)],
@@ -127,6 +166,16 @@ function ColumnDetail({
                 string,
                 React.ReactNode,
               ][])
+            : []),
+          ...(column.dichotomous && column.categorical
+            ? ([
+                [
+                  "Proporción",
+                  column.categorical.top
+                    .map((t) => `${t.value}: ${formatPercent(t.percent)}`)
+                    .join(" · "),
+                ],
+              ] as [string, React.ReactNode][])
             : []),
           ...(column.leading_zeros
             ? ([
@@ -164,6 +213,22 @@ function ColumnDetail({
                   ? "No aplica (un solo valor)"
                   : formatNumber(column.numeric.std),
               ],
+              ...(domain
+                ? ([
+                    [
+                      "Rango esperado",
+                      `${formatNumber(domain.lower)}${domain.upper != null ? ` a ${formatNumber(domain.upper)}` : " o más"} · ${domain.outside ? `${formatNumber(domain.outside)} fuera de rango` : "todos dentro"}`,
+                    ],
+                  ] as [string, React.ReactNode][])
+                : []),
+              ...(outliers
+                ? ([
+                    [
+                      "Valores atípicos",
+                      `${formatNumber(outliers.count)} fuera de [${formatNumber(outliers.mild_lower)}, ${formatNumber(outliers.mild_upper)}]${outliers.extreme ? `; ${formatNumber(outliers.extreme)} extremos` : ""}`,
+                    ],
+                  ] as [string, React.ReactNode][])
+                : []),
             ]}
           />
           <Chart
@@ -172,6 +237,8 @@ function ColumnDetail({
             option={option}
           />
           <p className="muted">{column.numeric.method}</p>
+          {outliers && <p className="muted">{outliers.method}</p>}
+          {domain && <p className="muted">{domain.reason}</p>}
         </section>
       )}
       {column.temporal && (

@@ -8,6 +8,10 @@ La comprensión junta tres fuentes y nunca las mezcla:
 - **datos**: cada relación (de la IA, de las reglas o declarada en la base) lleva la medida que
   la respalda o no.
 La valoración del usuario («Relevante» / «No relevante») es opcional y no bloquea nada.
+
+Fase 23 (`business-comprehension-v2`, ADR-040): las correcciones del Diccionario de la pestaña
+Dataset cambian el rol y la escala de sus columnas, y las columnas con datos personales se tratan
+como texto y nunca se envían a la IA.
 """
 
 from datetime import datetime
@@ -33,7 +37,7 @@ class ColumnScale(ComprehensionModel):
     scale: Scale
     order: list[str] = Field(default_factory=list)  # categorías ordenadas (ordinal)
     reason: str
-    order_source: Literal["rules", "ai"] | None = None
+    order_source: Literal["rules", "ai", "user"] | None = None
 
 
 class Association(ComprehensionModel):
@@ -87,7 +91,9 @@ class ComprehensionScope(ComprehensionModel):
 class Comprehension(ComprehensionModel):
     """Resultado del trabajo `comprehension` (operación `comprehension.understand@1`)."""
 
-    rules_version: Literal["business-comprehension-v1"] = "business-comprehension-v1"
+    rules_version: Literal["business-comprehension-v1", "business-comprehension-v2"] = (
+        "business-comprehension-v2"
+    )
     scope: ComprehensionScope
     ai_state: Literal["ready", "unavailable", "failed"]
     ai_reason: str | None = None
@@ -102,6 +108,10 @@ class Comprehension(ComprehensionModel):
     discarded: list[str] = Field(default_factory=list)  # textos de la IA retirados y por qué
     limitations: list[str]
     calls: list[dict[str, object]] = Field(default_factory=list)
+    # Fase 23: columnas cuya clasificación viene de una corrección del Diccionario y columnas con
+    # datos personales (tratadas como texto y fuera del contexto de la IA).
+    corrected_columns: list[str] = Field(default_factory=list)
+    personal_columns: list[str] = Field(default_factory=list)
 
 
 # --- IA: contexto y respuesta ------------------------------------------------------------------
