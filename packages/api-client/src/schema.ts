@@ -486,10 +486,33 @@ export interface paths {
         put?: never;
         /**
          * Judge
-         * @description Valoración opcional («Relevante» / «No relevante»): no bloquea ni recalcula; la
-         *     siguiente carga del mismo archivo la tiene en cuenta. Vale la última.
+         * @description Valoración opcional (validar o rechazar una relación): no bloquea. Desde la Fase 24
+         *     cuenta ya: se rehacen la exploración, el dashboard y el informe; la siguiente carga del mismo
+         *     archivo también la tiene en cuenta. Vale la última.
          */
         post: operations["judgeRelationship"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/comprehension/meanings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Describe
+         * @description Fase 24: significado de una columna escrito o confirmado por el usuario. Lo heredan las
+         *     versiones siguientes del mismo archivo y no cambia ningún cálculo. Sin texto y sin confirmar
+         *     vuelve al de la IA.
+         */
+        post: operations["describeColumn"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1703,15 +1726,29 @@ export interface components {
         };
         /**
          * ColumnMeaning
-         * @description Hipótesis de la IA sobre una columna (no se usa para calcular).
+         * @description Hipótesis de la IA sobre una columna (no se usa para calcular). Fase 24: con su confianza
+         *     (una columna con nombre de código nunca pasa de «baja») o escrita por el usuario.
          */
         ColumnMeaning: {
             /** Column */
             column: string;
+            /** Confidence */
+            confidence?: ("high" | "medium" | "low") | null;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
             /** Entity */
             entity?: string | null;
             /** Meaning */
             meaning: string;
+            /**
+             * Source
+             * @default ai
+             * @enum {string}
+             */
+            source: "ai" | "user";
         };
         /** ColumnProfile */
         ColumnProfile: {
@@ -1812,18 +1849,26 @@ export interface components {
             }[];
             /** Corrected Columns */
             corrected_columns?: string[];
+            /** Dimensions */
+            dimensions?: components["schemas"]["DimensionInfo"][];
             /** Discarded */
             discarded?: string[];
             /** Domain */
             domain?: string | null;
             /** Entities */
             entities?: components["schemas"]["Entity"][];
+            /** Formulas */
+            formulas?: components["schemas"]["Formula"][];
+            grain?: components["schemas"]["Grain"] | null;
             /** Limitations */
             limitations: string[];
             /** Matrix Columns */
             matrix_columns: string[];
             /** Meanings */
             meanings?: components["schemas"]["ColumnMeaning"][];
+            /** Measures */
+            measures?: components["schemas"]["MeasureInfo"][];
+            period?: components["schemas"]["Period"] | null;
             /** Personal Columns */
             personal_columns?: string[];
             /** Questions */
@@ -1832,10 +1877,10 @@ export interface components {
             relationships: components["schemas"]["Relationship"][];
             /**
              * Rules Version
-             * @default business-comprehension-v2
+             * @default business-comprehension-v3
              * @enum {string}
              */
-            rules_version: "business-comprehension-v1" | "business-comprehension-v2";
+            rules_version: "business-comprehension-v1" | "business-comprehension-v2" | "business-comprehension-v3";
             /** Scales */
             scales: components["schemas"]["ColumnScale"][];
             scope: components["schemas"]["ComprehensionScope"];
@@ -1869,6 +1914,11 @@ export interface components {
             feedback?: components["schemas"]["FeedbackItem"][];
             /** Reason */
             reason?: string | null;
+            /**
+             * Recalculating
+             * @default false
+             */
+            recalculating: boolean;
             /**
              * State
              * @enum {string}
@@ -2160,6 +2210,17 @@ export interface components {
             time_format?: ("day_month_year" | "month_day_year" | "year_month_day" | "year" | "month" | "year_month") | null;
             /** Updated At */
             updated_at?: string | null;
+        };
+        /** DimensionInfo */
+        DimensionInfo: {
+            /** Column */
+            column: string;
+            /** Distinct */
+            distinct: number;
+            /** Groupable */
+            groupable: boolean;
+            /** Reason */
+            reason: string;
         };
         /** Entity */
         Entity: {
@@ -2810,6 +2871,37 @@ export interface components {
             /** References */
             references: string;
         };
+        /**
+         * Formula
+         * @description Columna calculada a partir de otras, comprobada fila a fila sobre todas las filas.
+         */
+        Formula: {
+            /** Category */
+            category?: string | null;
+            /** Column */
+            column: string;
+            /** Expression */
+            expression: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "weighted_sum" | "product" | "threshold";
+            /** Matching Rows */
+            matching_rows: number;
+            /** Method */
+            method: string;
+            /** Rows */
+            rows: number;
+            /** Sources */
+            sources: string[];
+            /** Threshold */
+            threshold?: string | null;
+            /** Tolerance */
+            tolerance: string;
+            /** Weights */
+            weights?: string[];
+        };
         /** Frequency */
         Frequency: {
             /** Count */
@@ -2818,6 +2910,22 @@ export interface components {
             percent: string;
             /** Value */
             value: string;
+        };
+        /**
+         * Grain
+         * @description Qué representa una fila (Fase 24), por reglas: la clave única y la entidad que nombra.
+         */
+        Grain: {
+            /** Entity */
+            entity: string | null;
+            /** Key */
+            key: string[];
+            /** Reason */
+            reason: string;
+            /** Sentence */
+            sentence: string;
+            /** Unique */
+            unique: boolean;
         };
         /** IngestionSummary */
         IngestionSummary: {
@@ -3155,6 +3263,52 @@ export interface components {
             email: string;
             /** Password */
             password: string;
+        };
+        /**
+         * MeaningRequest
+         * @description Fase 24: significado escrito o confirmado por el usuario (metadato de la fuente y la
+         *     columna, heredado por las versiones siguientes). Sin texto y sin confirmar = vuelve al de la
+         *     IA. No cambia ningún cálculo.
+         */
+        MeaningRequest: {
+            /** Column */
+            column: string;
+            /**
+             * Confirmed
+             * @default false
+             */
+            confirmed: boolean;
+            /** Meaning */
+            meaning?: string | null;
+        };
+        /** MeasureInfo */
+        MeasureInfo: {
+            /**
+             * Additivity
+             * @enum {string}
+             */
+            additivity: "additive" | "semi_additive" | "non_additive" | "unknown";
+            /**
+             * Aggregation
+             * @enum {string}
+             */
+            aggregation: "sum" | "mean" | "weighted_mean";
+            /** Column */
+            column: string;
+            /**
+             * Derived
+             * @default false
+             */
+            derived: boolean;
+            /**
+             * Monetary
+             * @default false
+             */
+            monetary: boolean;
+            /** Reason */
+            reason: string;
+            /** Unit */
+            unit?: string | null;
         };
         /**
          * MeasureRelationship
@@ -3680,6 +3834,26 @@ export interface components {
             /** Value */
             value: number;
         };
+        /** Period */
+        Period: {
+            /** Columns */
+            columns: string[];
+            /** First */
+            first: string | null;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "date" | "year_month";
+            /** Last */
+            last: string | null;
+            /** Missing */
+            missing: number;
+            /** Note */
+            note: string;
+            /** Periods */
+            periods: number;
+        };
         /**
          * PeriodCandidate
          * @description Año + Mes que podrían formar un periodo: se informa, nunca se crea una fecha.
@@ -4042,7 +4216,9 @@ export interface components {
          * @description Relación candidata con la evidencia que la respalda o no.
          *
          *     `key` es estable entre versiones del mismo archivo (columnas ordenadas y tipo): con ella se
-         *     guarda la valoración del usuario.
+         *     guarda la valoración del usuario. Fase 24: `derived` (una columna calculada y una de sus
+         *     fuentes), `same_entity` (dos columnas que nombran lo mismo, 1:1) y `period` (columnas que
+         *     forman un periodo), con su familia y su estado.
          */
         Relationship: {
             /** Columns */
@@ -4053,6 +4229,12 @@ export interface components {
             /** Detail */
             detail: string;
             evidence?: components["schemas"]["Association"] | null;
+            /**
+             * Family
+             * @default statistical
+             * @enum {string}
+             */
+            family: "structural" | "statistical" | "temporal";
             /** Hypothesis */
             hypothesis?: string | null;
             /** Key */
@@ -4061,12 +4243,18 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "association" | "dependency" | "declared";
+            kind: "association" | "dependency" | "declared" | "derived" | "same_entity" | "period";
             /**
              * Origin
              * @enum {string}
              */
             origin: "ai" | "data" | "declared";
+            /**
+             * State
+             * @default pending
+             * @enum {string}
+             */
+            state: "pending" | "validated" | "rejected" | "ambiguous";
             /**
              * Status
              * @enum {string}
@@ -8269,6 +8457,133 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["FeedbackRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComprehensionView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    describeColumn: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["MeaningRequest"];
             };
         };
         responses: {

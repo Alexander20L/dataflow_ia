@@ -18,7 +18,12 @@ from dataflow.modules.comprehension.contracts import (
     Association,
     ColumnMeaning,
     ColumnScale,
+    DimensionInfo,
     Entity,
+    Formula,
+    Grain,
+    MeasureInfo,
+    Period,
     Relationship,
     Strength,
     Verdict,
@@ -321,10 +326,28 @@ def accept_ai(reply: AIComprehension, columns: Sequence[str]) -> tuple[AICompreh
         if meaning.column not in known:
             discarded.append(f"Significado de «{meaning.column[:60]}»: la columna no existe.")
             continue
+        if not meaning.meaning.strip():
+            # Fase 24: la IA dice que no lo sabe; se pide confirmación en vez de inventarlo.
+            meanings.append(
+                ColumnMeaning(
+                    column=meaning.column,
+                    meaning=UNKNOWN_MEANING,
+                    entity=meaning.entity,
+                    confidence="low",
+                )
+            )
+            continue
         described = text(meaning.meaning, f"Significado de «{meaning.column}»", 200)
         if described:
             meanings.append(
-                ColumnMeaning(column=meaning.column, meaning=described, entity=meaning.entity)
+                confident(
+                    ColumnMeaning(
+                        column=meaning.column,
+                        meaning=described,
+                        entity=meaning.entity,
+                        confidence=meaning.confidence,
+                    )
+                )
             )
     relationships = []
     for a, b, kind, hypothesis in reply.relationships[:15]:
@@ -422,19 +445,24 @@ def relationships(
     declared: Sequence[tuple[str, str]],
     verdicts: Mapping[str, Verdict],
     data_dependencies: Sequence[tuple[str, str]] = (),
+    structural_items: Sequence[Relationship] = (),
+    derived_pairs: set[frozenset[str]] | None = None,
 ) -> list[Relationship]:
     """Relaciones de la IA, de los datos (asociaciones fuertes) y declaradas en la base.
 
     Orden: las valoradas como relevantes, luego confirmadas, luego el resto; las marcadas como
-    «No relevante» se conservan al final (no se ocultan sin dejar rastro)."""
-    result: list[Relationship] = []
-    seen: set[str] = set()
+    «No relevante» se conservan al final (no se ocultan sin dejar rastro). Fase 24: van además
+    las estructurales y temporales (`structural_items`), y una asociación entre una columna
+    calculada y sus fuentes (`derived_pairs`) no se propone: es una fórmula, no un hallazgo."""
+    result: list[Relationship] = list(structural_items)
+    seen: set[str] = {r.key for r in structural_items}
+    formula_pairs = derived_pairs or set()
     for a, b, kind, hypothesis in ai:
         normalized = (
             "dependency" if kind in {"dependencia", "jerarquia", "dependency"} else ("association")
         )
         key = relationship_key(normalized, a, b)
-        if key in seen:
+        if key in seen or (normalized == "association" and frozenset((a, b)) in formula_pairs):
             continue
         seen.add(key)
         result.append(
@@ -462,6 +490,7 @@ def relationships(
         (x for x in associations if x.strength == "strong" and x.measure != "pearson"),
         key=lambda x: (-abs(Decimal(x.value)), x.columns),
     )
+    strong = [x for x in strong if frozenset(x.columns) not in formula_pairs]
     for item in strong[:DATA_RELATIONSHIPS]:
         a, b = item.columns
         key = relationship_key("association", a, b)
@@ -489,4 +518,276 @@ def relationships(
         )
     rank = {"relevant": 0, None: 1, "not_relevant": 2}
     status_rank = {"confirmed": 0, "not_testable": 1, "not_supported": 2}
-    return sorted(result, key=lambda r: (rank[r.verdict], status_rank[r.status]))
+    ordered = sorted(result, key=lambda r: (rank[r.verdict], status_rank[r.status]))
+    return [classify(r) for r in ordered]
+
+
+# --- Fase 24: grano, medidas, dimensiones, periodo y estado de las relaciones ---------------------
+
+ID_WORDS = frozenset(
+    {"id", "codigo", "cod", "code", "num", "nro", "numero", "key", "clave", "pk", "uuid"}
+)
+UNKNOWN_MEANING = "No se puede saber por el nombre ni por el perfil: confírmalo o escríbelo."
+FAMILY: dict[str, str] = {
+    "association": "statistical",
+    "dependency": "structural",
+    "declared": "structural",
+    "derived": "structural",
+    "same_entity": "structural",
+    "period": "temporal",
+}
+AGGREGATION_REASONS: dict[str, tuple[str, str]] = {
+    "additive": ("sum", "Sumable: el total tiene sentido."),
+    "semi_additive": ("sum", "Sumable dentro de un periodo; entre periodos se compara."),
+    "non_additive": ("mean", "No sumable (tasa, precio o promedio): se promedia."),
+    "unknown": ("mean", "Sumabilidad no comprobada: sólo el promedio simple."),
+}
+
+
+def words(name: str) -> list[str]:
+    """Palabras de un nombre de columna, sin tildes ni mayúsculas (snake, kebab y CamelCase)."""
+    spaced = re.sub(r"(?<=[a-z])(?=[A-Z])", " ", name)
+    return [w for w in re.split(r"[^a-z0-9]+", plain(spaced)) if w]
+
+
+def opaque(name: str) -> bool:
+    """Un nombre de código («ESTREG», «CDG_20», «X1»): ninguna palabra de 4 o más letras con
+    vocal, o todo en mayúsculas y corto. Su significado nunca pasa de confianza baja."""
+    letters = re.sub(r"[^A-Za-z]", "", name)
+    if letters and letters.isupper() and len(name) <= 10:
+        return True
+    return not any(len(w) >= 4 and re.search(r"[aeiou]", w) for w in words(name))
+
+
+def grain(keys: Sequence[tuple[list[str], bool]]) -> Grain:
+    """Qué representa una fila: la primera clave única (de la interpretación analítica) y la
+    entidad que nombra su identificador («estudiante_id» → estudiante)."""
+    unique = next((columns for columns, is_unique in keys if is_unique), None)
+    if unique is None:
+        return Grain(
+            sentence="Ninguna columna identifica cada fila: cada fila es un registro sin clave "
+            "propia.",
+            key=[],
+            entity=None,
+            unique=False,
+            reason="Ninguna columna ni combinación candidata es única en todas las filas.",
+        )
+    quoted = " y ".join(f"«{c}»" for c in unique)
+    if len(unique) == 1:
+        named = [w for w in words(unique[0]) if w not in ID_WORDS]
+        entity = " ".join(named) or None
+    else:
+        entity = None
+    sentence = (
+        f"Cada fila es un registro de {entity}, único por {quoted}."
+        if entity
+        else f"Cada fila es una combinación única de {quoted}."
+        if len(unique) > 1
+        else f"Cada fila es un registro único por {quoted}."
+    )
+    return Grain(
+        sentence=sentence,
+        key=list(unique),
+        entity=entity,
+        unique=True,
+        reason=f"{quoted} no se repite en ninguna fila."
+        + (" La entidad sale del nombre del identificador." if entity else ""),
+    )
+
+
+def measure_infos(
+    columns: Sequence[tuple[str, str, str | None, str | None, bool]], derived: set[str]
+) -> list[MeasureInfo]:
+    """`columns`: (nombre, rol, sumabilidad, unidad, ¿moneda?) de la interpretación analítica,
+    sólo las medidas vigentes. La agregación sale de la sumabilidad; nunca se suma lo que no se
+    demostró sumable."""
+    result = []
+    for name, role, additivity, unit, monetary in columns:
+        if role != "measure":
+            continue
+        kind = additivity if additivity in AGGREGATION_REASONS else "unknown"
+        aggregation, reason = AGGREGATION_REASONS[kind]
+        if name in derived:
+            reason += " Es una columna calculada a partir de otras."
+        result.append(
+            MeasureInfo(
+                column=name,
+                additivity=kind,
+                aggregation=aggregation,
+                unit=unit,
+                monetary=monetary,
+                derived=name in derived,
+                reason=reason,
+            )
+        )
+    return result
+
+
+def dimension_infos(
+    dimensions: Sequence[str], distinct: Mapping[str, int], derived: set[str]
+) -> list[DimensionInfo]:
+    result = []
+    for name in dimensions:
+        count = distinct.get(name, 0)
+        groupable = 2 <= count <= 50
+        reason = (
+            f"{count} categorías: sirve para agrupar."
+            if groupable
+            else "Un solo valor: no separa grupos."
+            if count < 2
+            else f"{count} categorías: demasiadas para agrupar en un gráfico."
+        )
+        if name in derived:
+            reason += " Se calcula con un umbral de otra columna."
+        result.append(
+            DimensionInfo(column=name, distinct=count, groupable=groupable, reason=reason)
+        )
+    return result
+
+
+def period_of(
+    kind: str | None,
+    columns: Sequence[str],
+    first: str | None,
+    last: str | None,
+    periods: int,
+    missing: int,
+) -> Period | None:
+    if kind not in {"date", "year_month"}:
+        return None
+    note = (
+        f"{' y '.join(columns)} forman un periodo mensual (no se creó ninguna fecha)."
+        if kind == "year_month"
+        else f"{columns[0]} es una fecha; se agrupa por mes."
+    )
+    if missing:
+        note += f" Faltan {missing} meses entre el primero y el último."
+    return Period(
+        kind=kind,
+        columns=list(columns),
+        first=first,
+        last=last,
+        periods=periods,
+        missing=missing,
+        note=note,
+    )
+
+
+def closure(formulas: Sequence[Formula]) -> dict[str, set[str]]:
+    """Fuentes de cada columna calculada, también las de sus fuentes calculadas."""
+    direct = {f.column: set(f.sources) for f in formulas}
+    result: dict[str, set[str]] = {}
+    for column in direct:
+        seen: set[str] = set()
+        pending = list(direct[column])
+        while pending:
+            source = pending.pop()
+            if source in seen or source == column:
+                continue
+            seen.add(source)
+            pending.extend(direct.get(source, set()))
+        result[column] = seen
+    return result
+
+
+def structural(
+    formulas: Sequence[Formula],
+    same_entities: Sequence[tuple[str, str, int]],
+    period: Period | None,
+    verdicts: Mapping[str, Verdict],
+) -> list[Relationship]:
+    """Relaciones estructurales y temporales comprobadas fila a fila: cada columna calculada con
+    cada una de sus fuentes, las columnas que nombran la misma entidad y el periodo."""
+    result = []
+    for formula in formulas:
+        for source in formula.sources:
+            key = relationship_key("derived", formula.column, source)
+            result.append(
+                Relationship(
+                    key=key,
+                    columns=(formula.column, source),
+                    kind="derived",
+                    origin="data",
+                    status="confirmed",
+                    detail=f"{formula.expression} (se cumple en las {formula.matching_rows} "
+                    "filas). Es una fórmula, no un hallazgo.",
+                    verdict=verdicts.get(key),
+                )
+            )
+    for a, b, distinct in same_entities:
+        key = relationship_key("same_entity", a, b)
+        result.append(
+            Relationship(
+                key=key,
+                columns=(a, b),
+                kind="same_entity",
+                origin="data",
+                status="confirmed",
+                detail=f"Cada uno de los {distinct} valores de {a} va siempre con el mismo {b} y "
+                "al revés: nombran la misma entidad.",
+                verdict=verdicts.get(key),
+            )
+        )
+    if period is not None and len(period.columns) == 2:
+        a, b = period.columns
+        key = relationship_key("period", a, b)
+        result.append(
+            Relationship(
+                key=key,
+                columns=(a, b),
+                kind="period",
+                origin="data",
+                status="confirmed",
+                detail=period.note,
+                verdict=verdicts.get(key),
+            )
+        )
+    return result
+
+
+def classify(relation: Relationship) -> Relationship:
+    """Familia y estado: la valoración del usuario manda; sin ella, «pendiente» si los datos la
+    respaldan con fuerza (o es estructural) y «ambigua» si no la respaldan del todo."""
+    family = FAMILY[relation.kind]
+    if relation.verdict == "relevant":
+        state = "validated"
+    elif relation.verdict == "not_relevant":
+        state = "rejected"
+    elif relation.status != "confirmed":
+        state = "ambiguous"
+    elif family == "statistical" and relation.evidence is not None:
+        state = "pending" if relation.evidence.strength == "strong" else "ambiguous"
+    else:
+        state = "pending"
+    return relation.model_copy(update={"family": family, "state": state})
+
+
+def confident(meaning: ColumnMeaning) -> ColumnMeaning:
+    """La confianza de la IA, limitada por las reglas: un nombre de código nunca pasa de baja."""
+    if opaque(meaning.column) and meaning.confidence != "low":
+        return meaning.model_copy(update={"confidence": "low"})
+    return meaning
+
+
+def with_user_meanings(
+    meanings: Sequence[ColumnMeaning], user: Mapping[str, tuple[str | None, bool]]
+) -> list[ColumnMeaning]:
+    """Significados vigentes: el del usuario (escrito o confirmado) sobre el de la IA."""
+    by_column = {m.column: m for m in meanings}
+    for column, (text, confirmed) in user.items():
+        current = by_column.get(column)
+        if text:
+            by_column[column] = ColumnMeaning(
+                column=column,
+                meaning=text,
+                entity=current.entity if current else None,
+                confidence="high",
+                source="user",
+                confirmed=True,
+            )
+        elif confirmed and current is not None:
+            by_column[column] = current.model_copy(update={"confirmed": True, "confidence": "high"})
+    order = [m.column for m in meanings] + [
+        c for c in by_column if c not in {m.column for m in meanings}
+    ]
+    return [by_column[c] for c in order]

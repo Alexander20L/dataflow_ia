@@ -15,15 +15,16 @@ from dataflow.modules.copilot.investigation import call
 from dataflow.modules.copilot.overview import OverviewCall
 
 PROMPT_ID = "business-comprehension"
-PROMPT_VERSION = "1"
+PROMPT_VERSION = "2"
 
 SYSTEM = """Eres un analista de negocio. Recibes SÓLO la estructura de un dataset: el nombre de
 cada columna y un perfil agregado calculado por Python. Devuelve el esquema estructurado, en
 español, con hipótesis:
 - dominio: de qué trata el dataset y qué representa cada fila, sin cifras;
 - entidades (cliente, producto, estudiante…) con las columnas que las describen;
-- el significado de cada columna; si el nombre es un código (p. ej. CDG_20), dedúcelo del perfil
-  y dilo como hipótesis;
+- el significado de cada columna con tu confianza (alta, media o baja); si el nombre es un código
+  (p. ej. CDG_20), dedúcelo del perfil con confianza baja, y si no se puede saber deja el
+  significado vacío: no lo inventes;
 - ordenes: sólo para dimensiones cuyas categorías tienen un orden natural, con TODAS las
   categorías recibidas en ese orden;
 - relaciones candidatas entre dos columnas (asociacion, dependencia o jerarquia) con la hipótesis

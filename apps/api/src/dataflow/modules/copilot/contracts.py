@@ -59,8 +59,15 @@ class ColumnaIA(OutputModel):
     """Significado de una columna según la IA (Fase 19): hipótesis, sin cifras."""
 
     columna: str = Field(max_length=200, description="Nombre exacto de una columna recibida.")
-    significado: str = Field(max_length=200)
+    significado: str = Field(
+        max_length=200, description="Hipótesis del significado; vacío si no se puede saber."
+    )
     entidad: str | None = Field(default=None, max_length=80)
+    # Fase 24 (prompt v2): confianza en la hipótesis.
+    confianza: Literal["alta", "media", "baja"] = Field(
+        default="media",
+        description="alta si el nombre es descriptivo; baja si es un código o una abreviatura.",
+    )
 
 
 class EntidadIA(OutputModel):

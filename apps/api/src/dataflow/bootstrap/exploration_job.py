@@ -14,6 +14,7 @@ from uuid import UUID, uuid4, uuid5
 from sqlalchemy.orm import Session
 
 from dataflow.modules.comprehension.contracts import Comprehension
+from dataflow.modules.comprehension.domain import classify
 from dataflow.modules.copilot.application import CopilotService
 from dataflow.modules.copilot.contracts import CallRecord
 from dataflow.modules.copilot.exploration import (
@@ -149,6 +150,64 @@ def enqueue_exploration(
     )
 
 
+def with_verdicts(comprehension: Comprehension, verdicts: dict[str, Any]) -> Comprehension:
+    """La comprensión con las valoraciones vigentes encima (y su estado recalculado)."""
+    if not verdicts:
+        return comprehension
+    return comprehension.model_copy(
+        update={
+            "relationships": [
+                classify(r.model_copy(update={"verdict": verdicts.get(r.key, r.verdict)}))
+                for r in comprehension.relationships
+            ]
+        }
+    )
+
+
+def request_exploration_update(
+    executions: Executions, owner: UUID, version: UUID, verdicts: dict[str, str]
+) -> Execution | None:
+    """Fase 24 (ADR-041): otra exploración de la versión con las valoraciones vigentes de las
+    relaciones; al publicarse se rehacen el dashboard y el informe. Sin exploración previa, o si
+    la última ya usa esas valoraciones, no hace nada. Lo anterior se conserva."""
+    runs = [r for r in executions.for_version(owner, version) if r.kind == "exploration"]
+    if not runs:
+        return None
+    base = runs[0]
+    assert base.plan and base.input_artifact_id and base.input_artifact_sha256
+    given = base.plan.content["input"]
+    snapshot = sorted([key, verdict] for key, verdict in verdicts.items())
+    if given.get("verdicts", []) == snapshot:
+        return None
+    content = {
+        **base.plan.content,
+        "input": {**given, "verdicts": snapshot},
+        "trigger": "feedback",
+    }
+    fingerprint = digest(
+        "exploration_update",
+        {"base_sha256": base.plan.content_sha256, "verdicts": snapshot, "count": len(runs)},
+    )
+    key = uuid5(version, f"exploration-update:{len(runs)}:{fingerprint}")
+    if executions.find_request(owner, base.project_id, "exploration", key, fingerprint):
+        return None
+    plan = PlanRevision(
+        uuid4(), uuid4(), 1, content, digest("plan", content), owner, datetime.now(UTC)
+    )
+    return executions.enqueue_followup(
+        owner,
+        base.project_id,
+        version,
+        key,
+        fingerprint,
+        plan,
+        str(uuid5(version, fingerprint)),  # correlación (36 caracteres)
+        base.input_artifact_id,
+        base.input_artifact_sha256,
+        kind="exploration",
+    )
+
+
 class ExplorationInput:
     """Comprueba que la comprensión, el perfil y la tabla fijados son los de la carga."""
 
@@ -220,6 +279,11 @@ class ExplorationStep:
         given = plan.content["input"]
         limits = ExplorationLimits.model_validate(step.parameters.get("limits", {}))
         comprehension = Comprehension.model_validate_json(self.objects.read(source.content))
+        # Fase 24: las validaciones hechas después de la comprensión (instantánea del plan)
+        # mandan sobre las que ella conocía: una relación rechazada no se explora.
+        comprehension = with_verdicts(
+            comprehension, {str(k): v for k, v in given.get("verdicts", [])}
+        )
         profile = DatasetProfile.model_validate_json(self.objects.read(reference(given["profile"])))
         table = self.objects.read(reference(given["table"]))
         analysis = profile.overview.analysis if profile.overview else None
@@ -263,7 +327,10 @@ class ExplorationStep:
             relations = [
                 (r.columns[0], r.columns[1], r.detail)
                 for r in comprehension.relationships
-                if r.status == "confirmed" and r.verdict != "not_relevant"
+                if r.status == "confirmed"
+                and r.verdict != "not_relevant"
+                # Fase 24: una fórmula, una misma entidad o un periodo no son hallazgos.
+                and r.kind not in {"derived", "same_entity", "period"}
             ]
             output, call, error = propose_queries(
                 provider,

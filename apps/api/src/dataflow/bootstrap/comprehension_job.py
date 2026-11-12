@@ -15,13 +15,15 @@ dashboard y otra versión del informe).
 """
 
 import json
+from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.exploration_job import request_exploration_update
 from dataflow.bootstrap.loads import same_load
 from dataflow.modules.comprehension.contracts import (
     AIColumn,
@@ -30,17 +32,44 @@ from dataflow.modules.comprehension.contracts import (
     Comprehension,
     ComprehensionScope,
     ComprehensionView,
+    DimensionInfo,
     Entity,
     FeedbackRequest,
+    Formula,
+    Grain,
+    MeaningRequest,
+    MeasureInfo,
+    Period,
+    Relationship,
+    Verdict,
 )
 from dataflow.modules.comprehension.domain import (
     accept_ai,
     classified_roles,
+    classify,
+    closure,
+    dimension_infos,
+    grain,
+    measure_infos,
+    period_of,
     relationships,
     scales,
+    structural,
+    with_user_meanings,
 )
-from dataflow.modules.comprehension.infrastructure import SQLFeedbackRepository
-from dataflow.modules.comprehension.measures import associations, dependencies, distinct_values
+from dataflow.modules.comprehension.infrastructure import (
+    SQLFeedbackRepository,
+    SQLMeaningRepository,
+)
+from dataflow.modules.comprehension.measures import (
+    associations,
+    dependencies,
+    distinct_counts,
+    distinct_values,
+    same_entities,
+    thresholds,
+    weighted_sums,
+)
 from dataflow.modules.copilot.application import CopilotService
 from dataflow.modules.copilot.comprehension import PROMPT_ID, PROMPT_VERSION, comprehend, context
 from dataflow.modules.copilot.contracts import CallRecord
@@ -64,12 +93,12 @@ from dataflow.modules.inspection.domain import classification, dictionary
 from dataflow.modules.inspection.engine import classify_table
 from dataflow.modules.inspection.infrastructure import SQLColumnAnnotations
 from dataflow.modules.projects.public import ProjectPermissions
-from dataflow.modules.understanding.contracts import DatasetProfile
+from dataflow.modules.understanding.contracts import AnalyticalInterpretation, DatasetProfile
 from dataflow.platform.canonical import digest
 from dataflow.platform.errors import ApplicationError
 
 STEP = "comprehension.understand"
-RULES = "business-comprehension-v2"
+RULES = "business-comprehension-v3"
 
 
 def source_key(file_name: str, plan: dict[str, Any]) -> str:
@@ -312,6 +341,121 @@ class ComprehensionInput:
         return StepInput("comprehension", profile.content, table.content.sha256)
 
 
+CONFIDENCE: dict[str, Literal["high", "medium", "low"]] = {
+    "alta": "high",
+    "media": "medium",
+    "baja": "low",
+}
+
+
+@dataclass
+class Understood:
+    """Fase 24: lo que la comprensión v3 añade por reglas sobre la tabla completa."""
+
+    grain: Grain | None = None
+    formulas: list[Formula] = field(default_factory=list)
+    measures: list[MeasureInfo] = field(default_factory=list)
+    dimensions: list[DimensionInfo] = field(default_factory=list)
+    period: Period | None = None
+    structural: list[Relationship] = field(default_factory=list)
+    pairs: set[frozenset[str]] = field(default_factory=set)
+
+
+def understand(
+    table: bytes,
+    analysis: AnalyticalInterpretation | None,
+    roles: list[tuple[str, str]],
+    dimensions: list[str],
+    hidden: set[str],
+    verdicts: dict[str, Verdict],
+) -> Understood:
+    """Grano, columnas calculadas (sumas ponderadas, productos ya comprobados por la
+    interpretación y umbrales), misma entidad 1:1, periodo, medidas y dimensiones."""
+    measures = [name for name, role in roles if role == "measure"]
+    counts = distinct_counts(table, dimensions)
+    dichotomous = [d for d in dimensions if counts.get(d) == 2]
+    formulas = weighted_sums(table, measures)
+    if analysis is not None:
+        for item in analysis.relationships:
+            if item.compared_rows and item.matching_rows == item.compared_rows:
+                formulas.append(
+                    Formula(
+                        column=item.target,
+                        kind="product",
+                        sources=list(item.factors),
+                        expression=f"{item.target} = {' × '.join(item.factors)}",
+                        rows=item.compared_rows,
+                        matching_rows=item.matching_rows,
+                        tolerance=item.tolerance,
+                        method="Producto comprobado fila a fila por la interpretación analítica.",
+                    )
+                )
+    taken = {f.column for f in formulas}
+    # Un umbral por columna dicotómica: si varias medidas la separan, la calculada primero (es la
+    # que la define); si no, la primera medida.
+    by_column: dict[str, Formula] = {}
+    for cut in thresholds(table, measures, dichotomous):
+        chosen = by_column.get(cut.column)
+        if cut.column in taken or (chosen and chosen.sources[0] in taken):
+            continue
+        if chosen is None or cut.sources[0] in taken:
+            by_column[cut.column] = cut
+    formulas += list(by_column.values())
+    derived = {f.column for f in formulas}
+    pairs = {
+        frozenset((target, source))
+        for target, sources in closure(formulas).items()
+        for source in sources
+    }
+    candidates = [
+        name
+        for name, role in roles
+        if role in {"identifier", "dimension", "text"} and name not in hidden
+    ]
+    period = None
+    if analysis is not None and analysis.time is not None:
+        axis = analysis.time
+        period = period_of(
+            axis.kind, axis.columns, axis.first, axis.last, axis.periods, axis.missing_count
+        )
+    current = dict(roles)
+    columns = (
+        [
+            (c.name, current.get(c.name, c.role), c.additivity, c.unit_label, c.monetary)
+            for c in analysis.columns
+        ]
+        if analysis
+        else []
+    )
+    return Understood(
+        grain=grain([(k.columns, k.unique) for k in analysis.keys]) if analysis else grain([]),
+        formulas=formulas,
+        measures=measure_infos(columns, derived),
+        dimensions=dimension_infos(dimensions, counts, derived),
+        period=period,
+        structural=structural(formulas, same_entities(table, candidates), period, verdicts),
+        pairs=pairs,
+    )
+
+
+def current(
+    result: Comprehension,
+    verdicts: dict[str, Verdict],
+    meanings: dict[str, tuple[str | None, bool]],
+) -> Comprehension:
+    """La comprensión publicada con las valoraciones y los significados vigentes del usuario
+    encima (Fase 24): lo calculado no cambia, sólo cómo se lee."""
+    return result.model_copy(
+        update={
+            "relationships": [
+                classify(r.model_copy(update={"verdict": verdicts.get(r.key, r.verdict)}))
+                for r in result.relationships
+            ],
+            "meanings": with_user_meanings(result.meanings, meanings),
+        }
+    )
+
+
 def ai_columns(
     profile: DatasetProfile,
     scale_of: dict[str, str],
@@ -388,6 +532,8 @@ class ComprehensionStep:
         corrected: list[str] = []
         personal: list[str] = []
         v2 = "column_ids" in given
+        # Fase 24: grano, fórmulas, misma entidad, periodo, medidas y dimensiones.
+        v3 = (plan.content["steps"][0].get("parameters") or {}).get("rules") == RULES
         if v2:
             # Fase 23: la clasificación de la pestaña Dataset con las correcciones fijadas.
             columns = classify_table(table, [UUID(i) for i in given["column_ids"]], profile)
@@ -462,7 +608,12 @@ class ComprehensionStep:
                     domain=output.dominio,
                     entities=[Entity(name=e.nombre, columns=e.columnas) for e in output.entidades],
                     meanings=[
-                        ColumnMeaning(column=c.columna, meaning=c.significado, entity=c.entidad)
+                        ColumnMeaning(
+                            column=c.columna,
+                            meaning=c.significado,
+                            entity=c.entidad,
+                            confidence=CONFIDENCE[c.confianza] if v3 else None,
+                        )
                         for c in output.columnas
                     ],
                     orders={o.columna: o.orden for o in output.ordenes},
@@ -483,8 +634,21 @@ class ComprehensionStep:
         if analysis is not None:
             dependency_pairs += [(d.determinant, d.dependent) for d in analysis.dependencies]
         checked = dependencies(table, dependency_pairs)
+        verdicts = {str(k): v for k, v in given.get("verdicts", [])}
+        understood = Understood()
+        if v3:
+            understood = understand(table, analysis, roles, dimensions, hidden, verdicts)
+            if understood.formulas:
+                limitations.append(
+                    "Las columnas calculadas a partir de otras ("
+                    + ", ".join(f"«{f.column}»" for f in understood.formulas)
+                    + ") se muestran como fórmulas: sus asociaciones con sus propias fuentes no "
+                    "se proponen como hallazgos."
+                )
         result = Comprehension(
-            rules_version=RULES if v2 else "business-comprehension-v1",
+            rules_version=RULES
+            if v3
+            else ("business-comprehension-v2" if v2 else "business-comprehension-v1"),
             scope=ComprehensionScope(
                 execution_id=lease.execution_id,
                 version_id=lease.version_id,
@@ -504,8 +668,10 @@ class ComprehensionStep:
                 found,
                 checked,
                 [(str(pair[0]), str(pair[1])) for pair in given.get("declared", [])],
-                {str(k): v for k, v in given.get("verdicts", [])},
+                verdicts,
                 [(d.determinant, d.dependent) for d in analysis.dependencies] if analysis else [],
+                understood.structural,
+                understood.pairs,
             ),
             questions=accepted.questions if accepted else [],
             discarded=discarded,
@@ -513,6 +679,11 @@ class ComprehensionStep:
             calls=calls,
             corrected_columns=corrected,
             personal_columns=personal,
+            grain=understood.grain,
+            formulas=understood.formulas,
+            measures=understood.measures,
+            dimensions=understood.dimensions,
+            period=understood.period,
         )
         prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
         stored = self.objects.put(f"{prefix}/comprehension.json", result.model_dump_json().encode())
@@ -574,7 +745,8 @@ def record_comprehension_calls(
 
 
 class ComprehensionAccess:
-    """Lectura de la comprensión y registro de valoraciones; nunca recalcula ni llama a la IA."""
+    """Lectura de la comprensión, valoraciones y significados del usuario; nunca llama a la
+    IA. Fase 24: una valoración rehace la exploración, el dashboard y el informe."""
 
     def __init__(
         self,
@@ -583,9 +755,11 @@ class ComprehensionAccess:
         executions: Executions,
         objects: ObjectStore,
         feedback: SQLFeedbackRepository,
+        meanings: SQLMeaningRepository | None = None,
     ) -> None:
         self.db, self.datasets, self.executions = db, datasets, executions
         self.objects, self.feedback = objects, feedback
+        self.meanings = meanings or SQLMeaningRepository(db)
 
     def run(self, owner: UUID, version: UUID) -> Execution:
         self.datasets.get(owner, version)
@@ -620,11 +794,24 @@ class ComprehensionAccess:
             return ComprehensionView(
                 state="failed", execution_id=run.id, reason=run.error_code or "cancelled"
             )
+        feedback = self.feedback.for_version(owner, version)
+        if result.rules_version == RULES:
+            assert run.plan
+            source = str(run.plan.content["input"]["source_key"])
+            result = current(
+                result,
+                {f.relationship_key: f.verdict for f in feedback},
+                self.meanings.for_source(owner, run.project_id, source),
+            )
         return ComprehensionView(
             state="ready",
             execution_id=run.id,
             comprehension=result,
-            feedback=self.feedback.for_version(owner, version),
+            feedback=feedback,
+            recalculating=any(
+                r.kind in {"exploration", "dashboard"} and r.state in {"queued", "running"}
+                for r in self.executions.for_version(owner, version)
+            ),
         )
 
     def judge(self, owner: UUID, version: UUID, request: FeedbackRequest) -> ComprehensionView:
@@ -641,13 +828,44 @@ class ComprehensionAccess:
             )
         ProjectPermissions(self.db).require(owner, run.project_id, writable=True)
         assert run.plan
+        source = str(run.plan.content["input"]["source_key"])
         self.feedback.add(
+            owner, run.project_id, version, source, request.relationship_key, request.verdict
+        )
+        if result.rules_version == RULES:
+            # Fase 24: la valoración cuenta ya (no sólo en la siguiente carga).
+            request_exploration_update(
+                self.executions,
+                owner,
+                version,
+                dict(self.feedback.for_source(owner, run.project_id, source)),
+            )
+        self.db.commit()
+        return self.view(owner, version)
+
+    def describe(self, owner: UUID, version: UUID, request: MeaningRequest) -> ComprehensionView:
+        """Fase 24: significado escrito o confirmado por el usuario. Es un metadato de la fuente
+        y la columna (lo heredan las versiones siguientes) y no cambia ningún cálculo."""
+        run = self.run(owner, version)
+        result = self.result(owner, run)
+        if result is None:
+            raise ApplicationError(
+                "COMPREHENSION_NOT_READY", "La comprensión todavía no está lista.", 409
+            )
+        if request.column not in {s.column for s in result.scales}:
+            raise ApplicationError("UNKNOWN_COLUMN", "La columna no existe en esta versión.", 404)
+        if request.meaning is not None and not request.meaning.strip() and not request.confirmed:
+            raise ApplicationError("MEANING_INVALID", "El significado está vacío.", 422)
+        ProjectPermissions(self.db).require(owner, run.project_id, writable=True)
+        assert run.plan
+        self.meanings.add(
             owner,
             run.project_id,
             version,
             str(run.plan.content["input"]["source_key"]),
-            request.relationship_key,
-            request.verdict,
+            request.column,
+            request.meaning,
+            request.confirmed,
         )
         self.db.commit()
         return self.view(owner, version)

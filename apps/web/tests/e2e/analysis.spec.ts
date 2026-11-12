@@ -135,14 +135,15 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
   await expect(quality).toContainText("Meses sin registros");
   await expect(quality).toContainText("Valores atípicos en Units_Sold");
   await expect(quality.getByRole("button")).toHaveCount(0);
-  // Fase 19: entendimiento del negocio (IA falsa) y valoración opcional de una relación.
-  const comprehension = page.getByRole("region", {
-    name: "Entendimiento del negocio",
-  });
+  // Fase 19 y 24: la comprensión (IA falsa) vive en su propia pestaña; rechazar una relación.
+  await page.getByRole("tab", { name: "Comprensión", exact: true }).click();
+  const comprehension = page.getByRole("region", { name: "Comprensión" });
   await expect(
     comprehension.getByText("Hipótesis de la IA").first(),
-  ).toBeVisible();
+  ).toBeVisible({ timeout: 30000 });
+  await comprehension.getByRole("tab", { name: "Columnas" }).click();
   await expect(comprehension).toContainText("De razón");
+  await comprehension.getByRole("tab", { name: "Relaciones" }).click();
   await expect(
     comprehension.getByRole("img", {
       name: "Mapa de calor de asociaciones entre columnas",
@@ -152,9 +153,11 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
     .getByRole("listitem", { name: /Relación Units_Sold – Customer_Name/ })
     .first();
   await expect(relation).toContainText("Los datos no la respaldan");
-  const notRelevant = relation.getByRole("button", { name: "No relevante" });
-  await notRelevant.click();
-  await expect(notRelevant).toHaveAttribute("aria-pressed", "true");
+  const reject = relation.getByRole("button", { name: "Rechazar" });
+  await reject.click();
+  await expect(reject).toHaveAttribute("aria-pressed", "true");
+  await expect(relation).toContainText("Rechazada");
+  await openAnalysis(page);
   // Fase 20: exploración guiada (reglas + IA falsa) con cifras calculadas sobre todas las filas.
   const exploration = page.getByRole("region", { name: "Exploración guiada" });
   await expect(

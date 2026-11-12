@@ -24,11 +24,17 @@ from dataflow.modules.reports.infrastructure import (
     ReportSaveRequest,
 )
 
+# Tablas creadas después de 0023 (Fase 24 en adelante).
+TABLES_AFTER_0023 = {
+    # 0024: significados de columnas escritos o confirmados por el usuario (Fase 24)
+    "column_meanings",
+}
+
 # Tablas creadas después de 0022 (Fase 23 en adelante).
 TABLES_AFTER_0022 = {
     # 0023: textos nulos declarados y decisión sobre datos personales (Fase 23)
     "column_annotation_details",
-}
+} | TABLES_AFTER_0023
 
 # Tablas creadas después de 0021 (Fase 22 en adelante).
 TABLES_AFTER_0021 = {
@@ -109,6 +115,12 @@ def modelled_at_0022(
     obj: object, name: str | None, type_: str, reflected: bool, other: object
 ) -> bool:
     return table_of(obj, name, type_) not in TABLES_AFTER_0022
+
+
+def modelled_at_0023(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0023
 
 
 def insert_dashboard(db: Session, owner: UUID, project: UUID) -> UUID:

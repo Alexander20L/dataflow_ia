@@ -2121,11 +2121,32 @@
       },
       "ColumnMeaning": {
         "additionalProperties": false,
-        "description": "Hipótesis de la IA sobre una columna (no se usa para calcular).",
+        "description": "Hipótesis de la IA sobre una columna (no se usa para calcular). Fase 24: con su confianza\n(una columna con nombre de código nunca pasa de «baja») o escrita por el usuario.",
         "properties": {
           "column": {
             "title": "Column",
             "type": "string"
+          },
+          "confidence": {
+            "anyOf": [
+              {
+                "enum": [
+                  "high",
+                  "medium",
+                  "low"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Confidence"
+          },
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
           },
           "entity": {
             "anyOf": [
@@ -2140,6 +2161,15 @@
           },
           "meaning": {
             "title": "Meaning",
+            "type": "string"
+          },
+          "source": {
+            "default": "ai",
+            "enum": [
+              "ai",
+              "user"
+            ],
+            "title": "Source",
             "type": "string"
           }
         },
@@ -2421,6 +2451,13 @@
             "title": "Corrected Columns",
             "type": "array"
           },
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/DimensionInfo"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
           "discarded": {
             "items": {
               "type": "string"
@@ -2446,6 +2483,23 @@
             "title": "Entities",
             "type": "array"
           },
+          "formulas": {
+            "items": {
+              "$ref": "#/components/schemas/Formula"
+            },
+            "title": "Formulas",
+            "type": "array"
+          },
+          "grain": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Grain"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "limitations": {
             "items": {
               "type": "string"
@@ -2466,6 +2520,23 @@
             },
             "title": "Meanings",
             "type": "array"
+          },
+          "measures": {
+            "items": {
+              "$ref": "#/components/schemas/MeasureInfo"
+            },
+            "title": "Measures",
+            "type": "array"
+          },
+          "period": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Period"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "personal_columns": {
             "items": {
@@ -2489,10 +2560,11 @@
             "type": "array"
           },
           "rules_version": {
-            "default": "business-comprehension-v2",
+            "default": "business-comprehension-v3",
             "enum": [
               "business-comprehension-v1",
-              "business-comprehension-v2"
+              "business-comprehension-v2",
+              "business-comprehension-v3"
             ],
             "title": "Rules Version",
             "type": "string"
@@ -2586,6 +2658,11 @@
               }
             ],
             "title": "Reason"
+          },
+          "recalculating": {
+            "default": false,
+            "title": "Recalculating",
+            "type": "boolean"
           },
           "state": {
             "enum": [
@@ -3358,6 +3435,35 @@
           "automatic_role"
         ],
         "title": "DictionaryEntry",
+        "type": "object"
+      },
+      "DimensionInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "distinct": {
+            "title": "Distinct",
+            "type": "integer"
+          },
+          "groupable": {
+            "title": "Groupable",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "distinct",
+          "groupable",
+          "reason"
+        ],
+        "title": "DimensionInfo",
         "type": "object"
       },
       "Entity": {
@@ -5337,6 +5443,93 @@
         "title": "ForeignKey",
         "type": "object"
       },
+      "Formula": {
+        "additionalProperties": false,
+        "description": "Columna calculada a partir de otras, comprobada fila a fila sobre todas las filas.",
+        "properties": {
+          "category": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Category"
+          },
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "expression": {
+            "title": "Expression",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "weighted_sum",
+              "product",
+              "threshold"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "matching_rows": {
+            "title": "Matching Rows",
+            "type": "integer"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "sources": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Sources",
+            "type": "array"
+          },
+          "threshold": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Threshold"
+          },
+          "tolerance": {
+            "title": "Tolerance",
+            "type": "string"
+          },
+          "weights": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Weights",
+            "type": "array"
+          }
+        },
+        "required": [
+          "column",
+          "kind",
+          "sources",
+          "expression",
+          "rows",
+          "matching_rows",
+          "tolerance",
+          "method"
+        ],
+        "title": "Formula",
+        "type": "object"
+      },
       "Frequency": {
         "properties": {
           "count": {
@@ -5359,6 +5552,51 @@
           "percent"
         ],
         "title": "Frequency",
+        "type": "object"
+      },
+      "Grain": {
+        "additionalProperties": false,
+        "description": "Qué representa una fila (Fase 24), por reglas: la clave única y la entidad que nombra.",
+        "properties": {
+          "entity": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity"
+          },
+          "key": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Key",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "sentence": {
+            "title": "Sentence",
+            "type": "string"
+          },
+          "unique": {
+            "title": "Unique",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "sentence",
+          "key",
+          "entity",
+          "unique",
+          "reason"
+        ],
+        "title": "Grain",
         "type": "object"
       },
       "IngestionSummary": {
@@ -6213,6 +6451,101 @@
           "password"
         ],
         "title": "LoginRequest",
+        "type": "object"
+      },
+      "MeaningRequest": {
+        "additionalProperties": false,
+        "description": "Fase 24: significado escrito o confirmado por el usuario (metadato de la fuente y la\ncolumna, heredado por las versiones siguientes). Sin texto y sin confirmar = vuelve al de la\nIA. No cambia ningún cálculo.",
+        "properties": {
+          "column": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "confirmed": {
+            "default": false,
+            "title": "Confirmed",
+            "type": "boolean"
+          },
+          "meaning": {
+            "anyOf": [
+              {
+                "maxLength": 300,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Meaning"
+          }
+        },
+        "required": [
+          "column"
+        ],
+        "title": "MeaningRequest",
+        "type": "object"
+      },
+      "MeasureInfo": {
+        "additionalProperties": false,
+        "properties": {
+          "additivity": {
+            "enum": [
+              "additive",
+              "semi_additive",
+              "non_additive",
+              "unknown"
+            ],
+            "title": "Additivity",
+            "type": "string"
+          },
+          "aggregation": {
+            "enum": [
+              "sum",
+              "mean",
+              "weighted_mean"
+            ],
+            "title": "Aggregation",
+            "type": "string"
+          },
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "derived": {
+            "default": false,
+            "title": "Derived",
+            "type": "boolean"
+          },
+          "monetary": {
+            "default": false,
+            "title": "Monetary",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          }
+        },
+        "required": [
+          "column",
+          "additivity",
+          "aggregation",
+          "reason"
+        ],
+        "title": "MeasureInfo",
         "type": "object"
       },
       "MeasureRelationship": {
@@ -7627,6 +7960,71 @@
         "title": "OverviewPoint",
         "type": "object"
       },
+      "Period": {
+        "additionalProperties": false,
+        "properties": {
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "kind": {
+            "enum": [
+              "date",
+              "year_month"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "missing": {
+            "title": "Missing",
+            "type": "integer"
+          },
+          "note": {
+            "title": "Note",
+            "type": "string"
+          },
+          "periods": {
+            "title": "Periods",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "kind",
+          "columns",
+          "first",
+          "last",
+          "periods",
+          "missing",
+          "note"
+        ],
+        "title": "Period",
+        "type": "object"
+      },
       "PeriodCandidate": {
         "description": "Año + Mes que podrían formar un periodo: se informa, nunca se crea una fecha.",
         "properties": {
@@ -8531,7 +8929,7 @@
       },
       "Relationship": {
         "additionalProperties": false,
-        "description": "Relación candidata con la evidencia que la respalda o no.\n\n`key` es estable entre versiones del mismo archivo (columnas ordenadas y tipo): con ella se\nguarda la valoración del usuario.",
+        "description": "Relación candidata con la evidencia que la respalda o no.\n\n`key` es estable entre versiones del mismo archivo (columnas ordenadas y tipo): con ella se\nguarda la valoración del usuario. Fase 24: `derived` (una columna calculada y una de sus\nfuentes), `same_entity` (dos columnas que nombran lo mismo, 1:1) y `period` (columnas que\nforman un periodo), con su familia y su estado.",
         "properties": {
           "columns": {
             "maxItems": 2,
@@ -8561,6 +8959,16 @@
               }
             ]
           },
+          "family": {
+            "default": "statistical",
+            "enum": [
+              "structural",
+              "statistical",
+              "temporal"
+            ],
+            "title": "Family",
+            "type": "string"
+          },
           "hypothesis": {
             "anyOf": [
               {
@@ -8580,7 +8988,10 @@
             "enum": [
               "association",
               "dependency",
-              "declared"
+              "declared",
+              "derived",
+              "same_entity",
+              "period"
             ],
             "title": "Kind",
             "type": "string"
@@ -8592,6 +9003,17 @@
               "declared"
             ],
             "title": "Origin",
+            "type": "string"
+          },
+          "state": {
+            "default": "pending",
+            "enum": [
+              "pending",
+              "validated",
+              "rejected",
+              "ambiguous"
+            ],
+            "title": "State",
             "type": "string"
           },
           "status": {
@@ -10540,7 +10962,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.30.0"
+    "version": "0.31.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -15453,7 +15875,7 @@
     },
     "/api/v1/versions/{version_id}/comprehension/feedback": {
       "post": {
-        "description": "Valoración opcional («Relevante» / «No relevante»): no bloquea ni recalcula; la\nsiguiente carga del mismo archivo la tiene en cuenta. Vale la última.",
+        "description": "Valoración opcional (validar o rechazar una relación): no bloquea. Desde la Fase 24\ncuenta ya: se rehacen la exploración, el dashboard y el informe; la siguiente carga del mismo\narchivo también la tiene en cuenta. Vale la última.",
         "operationId": "judgeRelationship",
         "parameters": [
           {
@@ -15621,6 +16043,181 @@
           }
         ],
         "summary": "Judge",
+        "tags": [
+          "Comprensión del negocio"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/comprehension/meanings": {
+      "post": {
+        "description": "Fase 24: significado de una columna escrito o confirmado por el usuario. Lo heredan las\nversiones siguientes del mismo archivo y no cambia ningún cálculo. Sin texto y sin confirmar\nvuelve al de la IA.",
+        "operationId": "describeColumn",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/MeaningRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComprehensionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Describe",
         "tags": [
           "Comprensión del negocio"
         ]
