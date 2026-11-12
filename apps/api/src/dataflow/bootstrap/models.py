@@ -45,6 +45,7 @@ from dataflow.modules.ingestion.legacy_records import (
     LegacyExecutionRecord,
     LegacyVersionRecord,
 )
+from dataflow.modules.inspection.infrastructure import ColumnAnnotationRecord
 from dataflow.modules.planning.infrastructure import (
     PlanningCreateRequest,
     PlanningValidationRecord,
@@ -114,6 +115,7 @@ __all__ = [
     "TextAuditRecord",
     "FeedbackRecord",
     "FindingFeedbackRecord",
+    "ColumnAnnotationRecord",
     "ActionLinkRecord",
     "CopilotRequest",
 ]

@@ -242,6 +242,9 @@ class Workbook:
             self.sheets.append(SheetInfo(name, path, hidden, tables))
         self._shared: list[str] | None = None
         self._dates: list[bool] | None = None
+        # Fase 22 (`source-facts-v1`): celdas con fórmula y con formato de fecha vistas al leer.
+        self.formula_refs: set[str] = set()
+        self.date_refs: set[str] = set()
 
     # --- partes del paquete -------------------------------------------------------------
     def read(self, name: str) -> bytes:
@@ -494,6 +497,8 @@ class Workbook:
                 value = child.text or ""
             elif name == "is":
                 inline = child
+        if formula is not None:
+            self.formula_refs.add(ref)
         if formula is not None and value is None:
             raise fail(
                 "XLSX_FORMULA_WITHOUT_VALUE",
@@ -524,6 +529,7 @@ class Workbook:
         else:
             style = int(cell.get("s") or 0)
             if style < len(self.dates) and self.dates[style] and value.strip():
+                self.date_refs.add(ref)
                 return excel_date(value.strip(), self.date1904, ref)
             text, too_precise = canonical_number(value.strip())
             if too_precise:
@@ -657,3 +663,78 @@ def read_xlsx(
     max_columns: int,
 ) -> ReadResult:
     return Workbook(content).read_table(sheet, table, header_row, max_rows, max_columns)
+
+
+@dataclass(frozen=True)
+class WorkbookFacts:
+    """Datos del libro para la pestaña Dataset (Fase 22, `source-facts-v1`)."""
+
+    sheets: list[SheetInfo]
+    sheet: str
+    table: str | None
+    used_range: str
+    header_row: int
+    empty_rows: int
+    empty_columns: list[str]
+    formula_cells: int
+    date_cells: int
+    inexact_numbers: int
+
+
+def workbook_facts(
+    content: bytes,
+    sheet: str | None,
+    table: str | None,
+    header_row: int,
+    max_rows: int,
+    max_columns: int,
+) -> WorkbookFacts:
+    """Rango leído, filas y columnas vacías dentro de él y celdas con fórmula o fecha de la
+    hoja o tabla fijada en el plan. Lee igual que `read_xlsx` (mismas validaciones)."""
+    book = Workbook(content)
+    result = book.read_table(sheet, table, header_row, max_rows, max_columns)
+    chosen, info = book.select(sheet, table)
+    rows, _, _, _ = book.cells(chosen, max(1, max_rows + 1) * max_columns)
+    top = result.header_row if info is None else info.first_row
+    if info is not None:
+        left, right = info.first_col, info.last_col
+        bottom = info.last_row - info.totals_rows
+    else:
+        filled = [c for c, v in rows.get(top, {}).items() if v is not None and v.strip()]
+        left, right = min(filled), max(filled)
+        bottom = max(
+            (
+                number
+                for number, cells in rows.items()
+                if number > top and any(cells.get(c) is not None for c in range(left, right + 1))
+            ),
+            default=top,
+        )
+    body = range(top + 1, bottom + 1)
+    empty_rows = sum(
+        1
+        for number in body
+        if all(rows.get(number, {}).get(c) is None for c in range(left, right + 1))
+    )
+    empty_columns = [
+        name
+        for offset, name in enumerate(result.headers)
+        if all(rows.get(number, {}).get(left + offset) is None for number in body)
+    ]
+
+    def inside(ref: str) -> bool:
+        row, column = parse_ref(ref)
+        return top < row <= bottom and left <= column <= right
+
+    return WorkbookFacts(
+        sheets=book.sheets,
+        sheet=result.sheet,
+        table=result.table,
+        used_range=f"{cell_name(top, left)}:{cell_name(bottom, right)}",
+        header_row=top,
+        empty_rows=empty_rows,
+        empty_columns=empty_columns,
+        formula_cells=sum(1 for ref in book.formula_refs if inside(ref)),
+        date_cells=sum(1 for ref in book.date_refs if inside(ref)),
+        inexact_numbers=result.warning_count,
+    )

@@ -255,7 +255,8 @@ def test_two_workers_claim_and_publish_independent_runs(
             return make_runner(
                 db,
                 store,
-                kinds=WORKER_KINDS - {"investigation", "comprehension", "exploration", "dashboard"},
+                kinds=WORKER_KINDS
+                - {"investigation", "comprehension", "exploration", "dashboard", "inspection"},
             ).run_once()
 
     with ThreadPoolExecutor(max_workers=2) as pool:

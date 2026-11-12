@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAnalysis } from "./helpers";
 
 // Fase 13B: un libro con portada y título se importa sin elegir hoja ni cabecera.
 test("Excel desde el asistente: el sistema elige la hoja y lo explica", async ({
@@ -29,6 +30,7 @@ test("Excel desde el asistente: el sistema elige la hoja y lo explica", async ({
     "libro_ventas",
   );
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAnalysis(page);
   const dashboard = page.getByRole("region", {
     name: "Dashboard automático",
     exact: true,

@@ -367,6 +367,7 @@ def test_import_investigates_with_the_fake_provider_and_explains_findings(
     assert runner.run_once()
     path = f"/api/v1/versions/{version['id']}/investigation"
     assert client.get(path).json()["state"] == "queued"
+    assert runner.run_once()  # inspección del dataset (Fase 22)
     assert runner.run_once()  # comprensión del negocio (Fase 19)
     assert runner.run_once()
     assert runner.run_once()  # exploración guiada (Fase 20)

@@ -1,6 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
+import { openAnalysis } from "./helpers";
 
 // Fase 14: dataset sintético de aceptación (Year + Month, Customer con dos nombres, un mes
 // faltante y sin moneda). Cero clics después de subir.
@@ -26,6 +27,7 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAnalysis(page);
   const dashboard = page.getByRole("region", {
     name: "Dashboard automático",
     exact: true,

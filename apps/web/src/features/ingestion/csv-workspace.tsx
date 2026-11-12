@@ -25,6 +25,7 @@ import { SourceReviewPanel } from "./source-review";
 import { InvestigationPanel } from "./investigation";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
+import { DatasetTab } from "@/features/dataset/dataset-tab";
 import {
   useCancelImport,
   useAutomaticAnalysis,
@@ -52,6 +53,51 @@ const states = {
   cancelled: "Cancelado",
 };
 
+const TABS = [
+  { id: "dataset", label: "Dataset" },
+  { id: "analysis", label: "Análisis" },
+] as const;
+
+/** Pestañas principales de la versión (Fase 22). Comprensión, Investigación, Dashboard e
+ * Informe siguen dentro de «Análisis» hasta que les toque su propia pestaña. */
+function MainTabs({
+  value,
+  onChange,
+}: {
+  value: "dataset" | "analysis";
+  onChange: (value: "dataset" | "analysis") => void;
+}) {
+  return (
+    <div
+      className="workspace-tabs"
+      role="tablist"
+      aria-label="Vistas de la versión"
+    >
+      {TABS.map((item, index) => (
+        <button
+          key={item.id}
+          id={`workspace-tab-${item.id}`}
+          type="button"
+          role="tab"
+          aria-selected={value === item.id}
+          aria-controls={`workspace-panel-${item.id}`}
+          tabIndex={value === item.id ? 0 : -1}
+          onClick={() => onChange(item.id)}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+            event.preventDefault();
+            const next = TABS[(index + 1) % TABS.length];
+            onChange(next.id);
+            document.getElementById(`workspace-tab-${next.id}`)?.focus();
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function CsvWorkspace({
   projectId,
   archived,
@@ -64,6 +110,8 @@ export function CsvWorkspace({
   const [selected, setSelected] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
+  // Fase 22: «Dataset» (inspección) y «Análisis» (todo lo automático anterior).
+  const [tab, setTab] = useState<"dataset" | "analysis">("dataset");
   const cancel = useCancelImport(projectId);
   const items = versions.data?.items ?? [];
   // La versión elegida puede no estar en la página cargada (p. ej. «Ver v1» con más de 20
@@ -323,65 +371,85 @@ export function CsvWorkspace({
             </div>
           ) : diagnostic.data?.profile.overview ? (
             <>
-              {automatic.data && (
-                <DeliverySummary
-                  key={`summary-${version.id}`}
-                  versionId={version.id}
-                  progress={progress.data}
-                  analysis={automatic.data}
-                />
+              <MainTabs value={tab} onChange={setTab} />
+              {tab === "dataset" ? (
+                <div
+                  id="workspace-panel-dataset"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-dataset"
+                >
+                  <DatasetTab
+                    key={`dataset-${version.id}`}
+                    versionId={version.id}
+                  />
+                </div>
+              ) : (
+                <div
+                  id="workspace-panel-analysis"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-analysis"
+                >
+                  {automatic.data && (
+                    <DeliverySummary
+                      key={`summary-${version.id}`}
+                      versionId={version.id}
+                      progress={progress.data}
+                      analysis={automatic.data}
+                    />
+                  )}
+                  {dashboard.data && (
+                    <DashboardPanel
+                      key={`dashboard-${version.id}`}
+                      view={dashboard.data}
+                      versionId={version.id}
+                    />
+                  )}
+                  {review.data && (
+                    <SourceReviewPanel
+                      key={`review-${version.id}`}
+                      review={review.data}
+                    />
+                  )}
+                  {comprehension.data && (
+                    <ComprehensionPanel
+                      key={`comprehension-${version.id}`}
+                      view={comprehension.data}
+                      versionId={version.id}
+                    />
+                  )}
+                  {exploration.data && (
+                    <ExplorationPanel
+                      key={`exploration-${version.id}`}
+                      view={exploration.data}
+                    />
+                  )}
+                  {automatic.data && (
+                    <AutomaticAnalysisView
+                      key={`analysis-${version.id}`}
+                      analysis={automatic.data}
+                    />
+                  )}
+                  {investigation.data ? (
+                    <InvestigationPanel
+                      key={`investigation-${version.id}`}
+                      view={investigation.data}
+                      versionId={version.id}
+                    />
+                  ) : null}
+                  <AutomaticOverview
+                    key={`overview-${version.id}`}
+                    overview={diagnostic.data.profile.overview}
+                    quality={diagnostic.data.quality}
+                    versionNumber={version.number}
+                  />
+                  {investigation.data === null ? (
+                    <OverviewAudit
+                      key={`audit-${version.id}`}
+                      versionId={version.id}
+                    />
+                  ) : null}
+                </div>
               )}
-              {dashboard.data && (
-                <DashboardPanel
-                  key={`dashboard-${version.id}`}
-                  view={dashboard.data}
-                  versionId={version.id}
-                />
-              )}
-              {review.data && (
-                <SourceReviewPanel
-                  key={`review-${version.id}`}
-                  review={review.data}
-                />
-              )}
-              {comprehension.data && (
-                <ComprehensionPanel
-                  key={`comprehension-${version.id}`}
-                  view={comprehension.data}
-                  versionId={version.id}
-                />
-              )}
-              {exploration.data && (
-                <ExplorationPanel
-                  key={`exploration-${version.id}`}
-                  view={exploration.data}
-                />
-              )}
-              {automatic.data && (
-                <AutomaticAnalysisView
-                  key={`analysis-${version.id}`}
-                  analysis={automatic.data}
-                />
-              )}
-              {investigation.data ? (
-                <InvestigationPanel
-                  key={`investigation-${version.id}`}
-                  view={investigation.data}
-                  versionId={version.id}
-                />
-              ) : null}
-              <AutomaticOverview
-                key={`overview-${version.id}`}
-                overview={diagnostic.data.profile.overview}
-                quality={diagnostic.data.quality}
-                versionNumber={version.number}
-              />
-              {investigation.data === null ? (
-                <OverviewAudit
-                  key={`audit-${version.id}`}
-                  versionId={version.id}
-                />
-              ) : null}
             </>
           ) : diagnostic.data ? (
             <RealResults

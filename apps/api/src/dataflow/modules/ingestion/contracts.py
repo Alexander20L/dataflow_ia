@@ -25,6 +25,17 @@ class PreviewPage(BaseModel):
     offset: int
 
 
+class RecordsPage(PreviewPage):
+    """Fase 22: página de registros con los identificadores de columna (mismo orden que
+    `columns`) y el orden y la búsqueda aplicados; `total` cuenta las filas que cumplen el
+    filtro y la búsqueda. `PreviewPage` no cambia."""
+
+    column_ids: list[str] = Field(default_factory=list)
+    sort: str | None = None
+    descending: bool = False
+    search: str | None = None
+
+
 class IngestionSummary(BaseModel):
     datasets: int
     versions: int
@@ -158,6 +169,40 @@ class SourceReading(BaseModel):
     convention: Literal["decimal_comma", "decimal_point_grouped"] | None = None
     converted: list[ConvertedColumn] = Field(default_factory=list)
     kept_as_text: list[KeptColumn] = Field(default_factory=list)
+
+
+class SheetFacts(BaseModel):
+    name: str
+    hidden: bool
+    tables: list[str]
+    selected: bool
+
+
+class SourceFacts(BaseModel):
+    """Datos del original que la pestaña Dataset muestra (Fase 22, `source-facts-v1`). Los
+    calcula el subproceso de ingesta, el único que abre el original con sus lectores; nunca
+    cambia lo que se leyó ni el archivo."""
+
+    rule: Literal["source-facts-v1"] = "source-facts-v1"
+    format: Literal["csv", "xlsx", "pdf", "other"]
+    size_bytes: int
+    # CSV: codificación y separador con que se leyó, líneas en blanco omitidas y registros.
+    encoding: str | None = None
+    separator: str | None = None
+    blank_lines: int | None = None
+    # Excel: hojas del libro, rango leído, filas y columnas vacías dentro del rango, celdas
+    # con fórmula (se lee su resultado guardado) y celdas con formato de fecha.
+    sheets: list[SheetFacts] = Field(default_factory=list)
+    sheet: str | None = None
+    table: str | None = None
+    used_range: str | None = None
+    header_row: int | None = None
+    empty_rows: int | None = None
+    empty_columns: list[str] = Field(default_factory=list)
+    formula_cells: int | None = None
+    date_cells: int | None = None
+    inexact_numbers: int | None = None
+    problems: list[str] = Field(default_factory=list)
 
 
 class ReadPdfParameters(BaseModel):

@@ -14,7 +14,12 @@ from pydantic import TypeAdapter
 from dataflow.integrations.sources.pdf_reader import read_table as pdf_read_table
 from dataflow.integrations.sources.pdf_reader import select as pdf_select
 from dataflow.integrations.sources.sqlserver_reader import connect, read_database
-from dataflow.integrations.sources.xlsx_reader import SELECTION_RULE_V2, Workbook, read_xlsx
+from dataflow.integrations.sources.xlsx_reader import (
+    SELECTION_RULE_V2,
+    Workbook,
+    read_xlsx,
+    workbook_facts,
+)
 from dataflow.modules.ingestion.contracts import (
     ConvertedColumn,
     ExcludedColumn,
@@ -24,11 +29,13 @@ from dataflow.modules.ingestion.contracts import (
     PdfChoice,
     PdfSelection,
     ReadPdfParameters,
+    SheetFacts,
     SnapshotTable,
+    SourceFacts,
     SourceReading,
     SqlSnapshot,
 )
-from dataflow.modules.ingestion.domain import ENGINE_VERSION
+from dataflow.modules.ingestion.domain import ENGINE_VERSION, detect_separator
 from dataflow.modules.quality.public import (
     Rule,
     RulesetReference,
@@ -77,7 +84,7 @@ def parse_csv(
         )
     if separator == "auto":
         try:
-            separator = csv.Sniffer().sniff(text[:65536], delimiters=",;\t").delimiter
+            separator = detect_separator(text)
         except csv.Error:
             separator = ","
     elif separator == "tab":
@@ -484,6 +491,66 @@ def quality_rules(
     (output / "quality_rules.json").write_text(report.model_dump_json(), encoding="utf-8")
 
 
+def source_facts(
+    source: Path, output: Path, parameters: dict[str, Any], max_rows: int, max_columns: int
+) -> None:
+    """Fase 22 (`source-facts-v1`): datos del original para la pestaña Dataset. Lee el original
+    con los parámetros fijados en el plan de la carga; no publica tablas ni cambia nada."""
+    content = source.read_bytes()
+    kind = parameters.get("format")
+    facts = SourceFacts(format="other", size_bytes=len(content))
+    if kind == "csv":
+        encoding = str(parameters.get("encoding") or "utf-8-sig")
+        separator = str(parameters.get("separator") or ",")
+        text = content.decode(encoding)
+        blank = 0
+        csv.field_size_limit(10000)
+        for record in csv.reader(io.StringIO(text, newline=""), delimiter=separator, strict=True):
+            if not record:
+                blank += 1
+        facts = SourceFacts(
+            format="csv",
+            size_bytes=len(content),
+            encoding=encoding,
+            separator=separator,
+            blank_lines=blank,
+        )
+    elif kind == "xlsx":
+        found = workbook_facts(
+            content,
+            parameters.get("sheet"),
+            parameters.get("table"),
+            int(parameters.get("header_row") or 1),
+            max_rows,
+            max_columns,
+        )
+        facts = SourceFacts(
+            format="xlsx",
+            size_bytes=len(content),
+            sheets=[
+                SheetFacts(
+                    name=sheet.name,
+                    hidden=sheet.hidden,
+                    tables=sheet.tables,
+                    selected=sheet.name == found.sheet,
+                )
+                for sheet in found.sheets
+            ],
+            sheet=found.sheet,
+            table=found.table,
+            used_range=found.used_range,
+            header_row=found.header_row,
+            empty_rows=found.empty_rows,
+            empty_columns=found.empty_columns,
+            formula_cells=found.formula_cells,
+            date_cells=found.date_cells,
+            inexact_numbers=found.inexact_numbers,
+        )
+    elif kind == "pdf":
+        facts = SourceFacts(format="pdf", size_bytes=len(content))
+    (output / "facts.json").write_text(facts.model_dump_json(), encoding="utf-8")
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument(
@@ -502,6 +569,7 @@ def main() -> None:
             "snapshot_sqlserver",
             "select_pdf",
             "read_pdf",
+            "source_facts",
         ],
         required=True,
     )
@@ -517,6 +585,7 @@ def main() -> None:
     parser.add_argument("--reference-json")
     parser.add_argument("--xlsx-json")
     parser.add_argument("--pdf-json")
+    parser.add_argument("--facts-json")
     args = parser.parse_args()
     try:
         if args.mode == "read":
@@ -527,6 +596,14 @@ def main() -> None:
                 args.max_rows,
                 args.max_columns,
                 args.encoding,
+            )
+        elif args.mode == "source_facts":
+            source_facts(
+                args.input,
+                args.output,
+                json.loads(args.facts_json),
+                args.max_rows,
+                args.max_columns,
             )
         elif args.mode == "snapshot_sqlserver":
             snapshot_sqlserver(args.input, args.output, args.max_rows, args.max_columns)

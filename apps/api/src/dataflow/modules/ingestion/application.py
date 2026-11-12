@@ -22,6 +22,7 @@ from dataflow.modules.ingestion.contracts import (
     PreviewPage,
     ReadPdfParameters,
     ReadXlsxParameters,
+    RecordsPage,
     SourceOrigin,
     SourceReading,
     SourceReview,
@@ -153,6 +154,10 @@ class PreviewReader(Protocol):
         offset: int,
         rule: str | None = None,
         column: str | None = None,
+        sort: str | None = None,
+        descending: bool = False,
+        search: str | None = None,
+        column_ids: list[str] | None = None,
     ) -> PreviewPage: ...
     def source_reading(self, content: bytes) -> SourceReading | None: ...
 
@@ -730,8 +735,18 @@ class IngestionService:
         raise ApplicationError("EVIDENCE_NOT_FOUND", "Esa cifra no existe en el análisis.", 404)
 
     def preview(
-        self, owner: UUID, version_id: UUID, limit: int, offset: int, issue_id: str | None = None
-    ) -> PreviewPage:
+        self,
+        owner: UUID,
+        version_id: UUID,
+        limit: int,
+        offset: int,
+        issue_id: str | None = None,
+        sort: UUID | None = None,
+        descending: bool = False,
+        search: str | None = None,
+    ) -> RecordsPage:
+        """Página de la tabla publicada. Fase 22: orden por el identificador de una columna
+        (nunca por un nombre que llegue en la petición) y búsqueda literal."""
         binding = self.datasets.binding(owner, version_id)
         self._ready(self.executions.get(owner, binding.execution_id))
         rule = column = None
@@ -748,12 +763,29 @@ class IngestionService:
                 raise ApplicationError("ISSUE_NOT_FOUND", "Incidencia no encontrada.", 404)
             rule, column = issue.rule, issue.column
         assert binding.table_artifact_id
-        return self.preview_reader.read(
-            self.objects.read(self.executions.artifact(owner, binding.table_artifact_id).content),
+        table = self.executions.artifact(owner, binding.table_artifact_id)
+        described = table.columns or []
+        ids = [str(item["id"]) for item in described]
+        sort_name = None
+        if sort is not None:
+            sort_name = next(
+                (str(item["name"]) for item in described if str(item["id"]) == str(sort)), None
+            )
+            if sort_name is None:
+                raise ApplicationError("UNKNOWN_COLUMN", "La columna no existe en la tabla.", 422)
+        page = self.preview_reader.read(
+            self.objects.read(table.content),
             limit,
             offset,
             rule,
             column,
+            sort_name,
+            descending,
+            search or None,
+            ids,
+        )
+        return RecordsPage(
+            **{**page.__dict__, "column_ids": ids, "sort": str(sort) if sort else None}
         )
 
     def original(self, owner: UUID, version_id: UUID) -> tuple[str, bytes]:

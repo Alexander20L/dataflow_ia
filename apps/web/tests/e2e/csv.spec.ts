@@ -1,5 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
+import { openAnalysis } from "./helpers";
 
 const csv = Buffer.from(
   "﻿id,importe,region,unidades\r\n001,10.50,Norte,1\r\n002,,Sur,2\r\n001,10.50,Norte,1\r\n003, ,Sur,4\r\n",
@@ -29,6 +30,7 @@ test("CSV real: dashboard automático, descarga íntegra y versiones independien
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await openAnalysis(page);
   const dashboard = page.getByRole("region", {
     name: "Dashboard automático",
     exact: true,

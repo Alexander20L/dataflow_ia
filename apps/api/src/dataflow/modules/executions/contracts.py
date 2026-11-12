@@ -22,6 +22,7 @@ RunKind = Literal[
     "comprehension",
     "exploration",
     "dashboard",
+    "inspection",
 ]
 RunState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
 ArtifactKind = Literal[
@@ -41,6 +42,7 @@ ArtifactKind = Literal[
     "comprehension",
     "exploration",
     "dashboard",
+    "inspection",
 ]
 
 
@@ -205,6 +207,7 @@ InputKind = Literal[
     "comprehension",
     "exploration",
     "dashboard",
+    "inspection",
 ]
 
 
