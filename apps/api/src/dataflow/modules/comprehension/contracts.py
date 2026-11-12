@@ -12,6 +12,12 @@ La valoración del usuario («Relevante» / «No relevante») es opcional y no b
 Fase 23 (`business-comprehension-v2`, ADR-040): las correcciones del Diccionario de la pestaña
 Dataset cambian el rol y la escala de sus columnas, y las columnas con datos personales se tratan
 como texto y nunca se envían a la IA.
+
+Fase 24 (`business-comprehension-v3`, ADR-041): grano del dataset, columnas calculadas a partir de
+otras (fórmulas ponderadas, productos y umbrales), misma entidad 1:1, periodo, medidas y
+dimensiones con su justificación, tres familias de relaciones (estructural, estadística y temporal)
+con estado (pendiente, validada, rechazada o ambigua) y significados con confianza que el usuario
+puede editar. Validar o rechazar una relación rehace la exploración, el dashboard y el informe.
 """
 
 from datetime import datetime
@@ -24,6 +30,11 @@ Scale = Literal["nominal", "ordinal", "interval", "ratio", "identifier", "text",
 Measure = Literal["pearson", "spearman", "cramers_v", "eta", "dependency"]
 Strength = Literal["negligible", "weak", "moderate", "strong"]
 Verdict = Literal["relevant", "not_relevant"]
+# Fase 24: cómo se lee una relación. «relevant» = validada y «not_relevant» = rechazada por el
+# usuario; sin valoración, «ambigua» si los datos no la respaldan del todo y «pendiente» si sí.
+RelationState = Literal["pending", "validated", "rejected", "ambiguous"]
+RelationFamily = Literal["structural", "statistical", "temporal"]
+Confidence = Literal["high", "medium", "low"]
 
 
 class ComprehensionModel(BaseModel):
@@ -52,11 +63,15 @@ class Association(ComprehensionModel):
 
 
 class ColumnMeaning(ComprehensionModel):
-    """Hipótesis de la IA sobre una columna (no se usa para calcular)."""
+    """Hipótesis de la IA sobre una columna (no se usa para calcular). Fase 24: con su confianza
+    (una columna con nombre de código nunca pasa de «baja») o escrita por el usuario."""
 
     column: str
     meaning: str
     entity: str | None = None
+    confidence: Confidence | None = None
+    source: Literal["ai", "user"] = "ai"
+    confirmed: bool = False
 
 
 class Entity(ComprehensionModel):
@@ -68,17 +83,74 @@ class Relationship(ComprehensionModel):
     """Relación candidata con la evidencia que la respalda o no.
 
     `key` es estable entre versiones del mismo archivo (columnas ordenadas y tipo): con ella se
-    guarda la valoración del usuario."""
+    guarda la valoración del usuario. Fase 24: `derived` (una columna calculada y una de sus
+    fuentes), `same_entity` (dos columnas que nombran lo mismo, 1:1) y `period` (columnas que
+    forman un periodo), con su familia y su estado."""
 
     key: str
     columns: tuple[str, str]
-    kind: Literal["association", "dependency", "declared"]
+    kind: Literal["association", "dependency", "declared", "derived", "same_entity", "period"]
     origin: Literal["ai", "data", "declared"]
     hypothesis: str | None = None
     status: Literal["confirmed", "not_supported", "not_testable"]
     evidence: Association | None = None
     detail: str
-    verdict: Verdict | None = None  # valoración del usuario en una versión anterior
+    verdict: Verdict | None = None  # valoración del usuario (en esta versión o una anterior)
+    family: RelationFamily = "statistical"
+    state: RelationState = "pending"
+
+
+class Grain(ComprehensionModel):
+    """Qué representa una fila (Fase 24), por reglas: la clave única y la entidad que nombra."""
+
+    sentence: str
+    key: list[str]
+    entity: str | None
+    unique: bool
+    reason: str
+
+
+class Formula(ComprehensionModel):
+    """Columna calculada a partir de otras, comprobada fila a fila sobre todas las filas."""
+
+    column: str
+    kind: Literal["weighted_sum", "product", "threshold"]
+    sources: list[str]
+    weights: list[str] = Field(default_factory=list)  # weighted_sum: un peso por fuente
+    threshold: str | None = None  # threshold: valor desde el que se da `category`
+    category: str | None = None
+    expression: str
+    rows: int
+    matching_rows: int
+    tolerance: str
+    method: str
+
+
+class MeasureInfo(ComprehensionModel):
+    column: str
+    additivity: Literal["additive", "semi_additive", "non_additive", "unknown"]
+    aggregation: Literal["sum", "mean", "weighted_mean"]
+    unit: str | None = None
+    monetary: bool = False
+    derived: bool = False
+    reason: str
+
+
+class DimensionInfo(ComprehensionModel):
+    column: str
+    distinct: int
+    groupable: bool
+    reason: str
+
+
+class Period(ComprehensionModel):
+    kind: Literal["date", "year_month"]
+    columns: list[str]
+    first: str | None
+    last: str | None
+    periods: int
+    missing: int
+    note: str
 
 
 class ComprehensionScope(ComprehensionModel):
@@ -91,9 +163,9 @@ class ComprehensionScope(ComprehensionModel):
 class Comprehension(ComprehensionModel):
     """Resultado del trabajo `comprehension` (operación `comprehension.understand@1`)."""
 
-    rules_version: Literal["business-comprehension-v1", "business-comprehension-v2"] = (
-        "business-comprehension-v2"
-    )
+    rules_version: Literal[
+        "business-comprehension-v1", "business-comprehension-v2", "business-comprehension-v3"
+    ] = "business-comprehension-v3"
     scope: ComprehensionScope
     ai_state: Literal["ready", "unavailable", "failed"]
     ai_reason: str | None = None
@@ -112,6 +184,12 @@ class Comprehension(ComprehensionModel):
     # datos personales (tratadas como texto y fuera del contexto de la IA).
     corrected_columns: list[str] = Field(default_factory=list)
     personal_columns: list[str] = Field(default_factory=list)
+    # Fase 24 (`business-comprehension-v3`).
+    grain: Grain | None = None
+    formulas: list[Formula] = Field(default_factory=list)
+    measures: list[MeasureInfo] = Field(default_factory=list)
+    dimensions: list[DimensionInfo] = Field(default_factory=list)
+    period: Period | None = None
 
 
 # --- IA: contexto y respuesta ------------------------------------------------------------------
@@ -157,6 +235,16 @@ class FeedbackRequest(ComprehensionModel):
     verdict: Verdict
 
 
+class MeaningRequest(ComprehensionModel):
+    """Fase 24: significado escrito o confirmado por el usuario (metadato de la fuente y la
+    columna, heredado por las versiones siguientes). Sin texto y sin confirmar = vuelve al de la
+    IA. No cambia ningún cálculo."""
+
+    column: str = Field(min_length=1, max_length=200)
+    meaning: str | None = Field(default=None, max_length=300)
+    confirmed: bool = False
+
+
 class FeedbackItem(ComprehensionModel):
     relationship_key: str
     verdict: Verdict
@@ -169,3 +257,5 @@ class ComprehensionView(ComprehensionModel):
     reason: str | None = None
     comprehension: Comprehension | None = None
     feedback: list[FeedbackItem] = Field(default_factory=list)  # valoraciones de esta versión
+    # Fase 24: la exploración, el dashboard y el informe se rehacen tras una valoración.
+    recalculating: bool = False

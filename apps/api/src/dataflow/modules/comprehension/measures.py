@@ -17,7 +17,7 @@ from decimal import Decimal
 
 import polars as pl
 
-from dataflow.modules.comprehension.contracts import Association, Measure
+from dataflow.modules.comprehension.contracts import Association, Formula, Measure
 from dataflow.modules.comprehension.domain import strength
 
 MIN_ROWS = 10
@@ -199,3 +199,186 @@ def distinct_values(content: bytes, dimensions: Sequence[str]) -> dict[str, list
         )
         result[name] = [str(value) for value in counts.get_column("v").to_list()]
     return result
+
+
+# --- Fase 24: columnas calculadas y misma entidad ----------------------------------------------
+
+MAX_SOURCES = 6  # fuentes por fórmula (ADR-041)
+WEIGHT_STEP = Decimal("0.05")  # los pesos se aceptan en múltiplos de 0,05
+
+
+def decimals(series: pl.Series) -> int:
+    """Decimales escritos en los valores de una columna leída (texto canónico), como mucho 6."""
+    text = series.drop_nulls().cast(pl.String)
+    if text.len() == 0:
+        return 0
+    fraction = text.str.extract(r"\.(\d+)$", 1).str.len_chars().fill_null(0)
+    longest = fraction.max()
+    return min(int(longest) if isinstance(longest, int) else 0, 6)
+
+
+def solve(matrix: list[list[float]], vector: list[float]) -> list[float] | None:
+    """Sistema lineal pequeño por eliminación gaussiana con pivote parcial (None si es
+    singular). Sin dependencias nuevas: el proyecto no usa numpy."""
+    n = len(vector)
+    rows = [row[:] + [vector[i]] for i, row in enumerate(matrix)]
+    for col in range(n):
+        pivot = max(range(col, n), key=lambda r: abs(rows[r][col]))
+        if abs(rows[pivot][col]) < 1e-9:
+            return None
+        rows[col], rows[pivot] = rows[pivot], rows[col]
+        for r in range(n):
+            if r != col:
+                factor = rows[r][col] / rows[col][col]
+                rows[r] = [a - factor * b for a, b in zip(rows[r], rows[col], strict=True)]
+    return [rows[i][n] / rows[i][i] for i in range(n)]
+
+
+def step(weight: float) -> Decimal:
+    return (Decimal(repr(weight)) / WEIGHT_STEP).quantize(Decimal(1)) * WEIGHT_STEP
+
+
+def weighted_sums(content: bytes, measures: Sequence[str]) -> list[Formula]:
+    """Medidas que son, fila a fila, una suma ponderada de otras: pesos positivos en múltiplos de
+    0,05 (de 0,05 a 1) y error máximo de medio dígito del último decimal escrito. Se ajusta por
+    mínimos cuadrados sin término constante y se comprueba con los pesos redondeados en TODAS las
+    filas con valor en la medida y en sus fuentes."""
+    names = list(measures)[:MAX_MEASURES]
+    if len(names) < 3:
+        return []
+    data, alias = frame(content, names)
+    numbers = pl.DataFrame([number(data.get_column(alias[n])).alias(alias[n]) for n in names])
+    found: list[Formula] = []
+    for target in names:
+        sources = [n for n in names if n != target][: MAX_SOURCES + 3]
+        cols = [alias[n] for n in [target, *sources]]
+        complete = numbers.select(cols).drop_nulls()
+        if complete.height < max(MIN_ROWS, len(sources) + 2):
+            continue
+        y = complete.get_column(alias[target])
+        if y.n_unique() < 2:
+            continue
+        xs = [complete.get_column(alias[s]) for s in sources]
+        gram = [[float((a * b).sum()) for b in xs] for a in xs]
+        right = [float((a * y).sum()) for a in xs]
+        weights = solve(gram, right)
+        if weights is None:
+            continue
+        kept = [(s, step(w)) for s, w in zip(sources, weights, strict=True) if step(w) != 0]
+        if not 2 <= len(kept) <= MAX_SOURCES or any(not 0 < w <= 1 for _, w in kept):
+            continue
+        tolerance = Decimal(5) / Decimal(10) ** (decimals(data.get_column(alias[target])) + 1)
+        estimate = complete.get_column(alias[kept[0][0]]) * float(kept[0][1])
+        for source, weight in kept[1:]:
+            estimate = estimate + complete.get_column(alias[source]) * float(weight)
+        error = (y - estimate).abs()
+        matching = int((error <= float(tolerance) + 1e-9).sum())
+        if matching != complete.height:
+            continue
+        terms = " + ".join(f"{format(w.normalize(), 'f').replace('.', ',')}·{s}" for s, w in kept)
+        found.append(
+            Formula(
+                column=target,
+                kind="weighted_sum",
+                sources=[s for s, _ in kept],
+                weights=[format(w.normalize(), "f") for _, w in kept],
+                expression=f"{target} = {terms}",
+                rows=complete.height,
+                matching_rows=matching,
+                tolerance=format(tolerance, "f"),
+                method="Mínimos cuadrados sin constante; pesos redondeados a múltiplos de 0,05 y "
+                "comprobados fila a fila con la tolerancia del último decimal escrito.",
+            )
+        )
+    return found
+
+
+def canonical_number(value: float) -> str:
+    """Número sin ceros de más ni notación científica (10.5 → «10.5», 11.0 → «11»)."""
+    text = format(Decimal(repr(value)).normalize(), "f")
+    return text[:-2] if text.endswith(".0") else text
+
+
+def thresholds(
+    content: bytes, measures: Sequence[str], dichotomous: Sequence[str]
+) -> list[Formula]:
+    """Columnas de dos valores que se deciden por un umbral de una medida: todos los valores de
+    una categoría quedan por debajo de todos los de la otra. El umbral es el menor valor
+    observado de la categoría alta (nunca uno inventado)."""
+    chosen = list(measures)[:MAX_MEASURES]
+    if not chosen or not dichotomous:
+        return []
+    names = list(dict.fromkeys([*chosen, *dichotomous]))
+    data, alias = frame(content, names)
+    found: list[Formula] = []
+    for category in dichotomous:
+        for measure in chosen:
+            if measure == category:
+                continue
+            pair = pl.DataFrame(
+                {
+                    "y": number(data.get_column(alias[measure])),
+                    "g": data.get_column(alias[category]).cast(pl.String),
+                }
+            ).drop_nulls()
+            if pair.height < MIN_ROWS or pair["g"].n_unique() != 2:
+                continue
+            ranges = sorted(
+                pair.group_by("g")
+                .agg(pl.col("y").min().alias("lo"), pl.col("y").max().alias("hi"))
+                .iter_rows(),
+                key=lambda r: (r[1], r[2]),
+            )
+            (low_name, _, low_max), (high_name, high_min, _) = ranges
+            if not low_max < high_min:
+                continue
+            cut = canonical_number(float(high_min))
+            found.append(
+                Formula(
+                    column=category,
+                    kind="threshold",
+                    sources=[measure],
+                    threshold=cut,
+                    category=str(high_name),
+                    expression=f"{category} = «{high_name}» cuando {measure} ≥ "
+                    f"{cut.replace('.', ',')}; si no, «{low_name}»",
+                    rows=pair.height,
+                    matching_rows=pair.height,
+                    tolerance="0",
+                    method="Los rangos de la medida en las dos categorías no se solapan en ninguna "
+                    "fila; el umbral es el menor valor observado de la categoría alta.",
+                )
+            )
+    return found
+
+
+def same_entities(content: bytes, candidates: Sequence[str]) -> list[tuple[str, str, int]]:
+    """Pares de columnas que nombran lo mismo (1:1): ambas se repiten y cada valor de una tiene un
+    único valor de la otra, en los dos sentidos. Una columna única por fila no cuenta (sería
+    trivial). Devuelve (A, B, valores distintos)."""
+    names = list(candidates)[:12]
+    if len(names) < 2:
+        return []
+    data, alias = frame(content, names)
+    found: list[tuple[str, str, int]] = []
+    for i, a in enumerate(names):
+        for b in names[i + 1 :]:
+            pair = data.select(
+                pl.col(alias[a]).alias("a"), pl.col(alias[b]).alias("b")
+            ).drop_nulls()
+            if pair.height < MIN_ROWS:
+                continue
+            distinct = pair["a"].n_unique()
+            if distinct < 2 or distinct == pair.height or pair["b"].n_unique() != distinct:
+                continue
+            if pair.unique().height == distinct:
+                found.append((a, b, distinct))
+    return found
+
+
+def distinct_counts(content: bytes, names: Sequence[str]) -> dict[str, int]:
+    """Valores distintos (no nulos) de cada columna."""
+    if not names:
+        return {}
+    data, alias = frame(content, names)
+    return {name: int(data.get_column(alias[name]).drop_nulls().n_unique()) for name in names}

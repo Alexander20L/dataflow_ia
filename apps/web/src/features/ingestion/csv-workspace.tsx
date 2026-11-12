@@ -17,7 +17,6 @@ import { number } from "@/lib/utils";
 import { useApp } from "@/lib/providers";
 import { AutomaticAnalysisView } from "./automatic-analysis";
 import { AutomaticOverview } from "./automatic-overview";
-import { ComprehensionPanel } from "./comprehension";
 import { DeliverySummary } from "./delivery-summary";
 import { DashboardPanel } from "./dashboard";
 import { ExplorationPanel } from "./exploration";
@@ -25,6 +24,7 @@ import { SourceReviewPanel } from "./source-review";
 import { InvestigationPanel } from "./investigation";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
+import { ComprehensionTab } from "@/features/comprehension/comprehension-tab";
 import { DatasetTab } from "@/features/dataset/dataset-tab";
 import {
   useCancelImport,
@@ -32,7 +32,6 @@ import {
   useInvestigation,
   useProgress,
   useSourceReview,
-  useComprehension,
   useDashboard,
   useExploration,
   useDiagnostic,
@@ -55,17 +54,20 @@ const states = {
 
 const TABS = [
   { id: "dataset", label: "Dataset" },
+  { id: "comprehension", label: "Comprensión" },
   { id: "analysis", label: "Análisis" },
 ] as const;
+type MainTab = (typeof TABS)[number]["id"];
 
-/** Pestañas principales de la versión (Fase 22). Comprensión, Investigación, Dashboard e
- * Informe siguen dentro de «Análisis» hasta que les toque su propia pestaña. */
+/** Pestañas principales de la versión: Dataset (Fase 22), Comprensión (Fase 24) y Análisis.
+ * Investigación, Dashboard e Informe siguen dentro de «Análisis» hasta que les toque su propia
+ * pestaña. */
 function MainTabs({
   value,
   onChange,
 }: {
-  value: "dataset" | "analysis";
-  onChange: (value: "dataset" | "analysis") => void;
+  value: MainTab;
+  onChange: (value: MainTab) => void;
 }) {
   return (
     <div
@@ -111,7 +113,7 @@ export function CsvWorkspace({
   const [uploading, setUploading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
   // Fase 22: «Dataset» (inspección) y «Análisis» (todo lo automático anterior).
-  const [tab, setTab] = useState<"dataset" | "analysis">("dataset");
+  const [tab, setTab] = useState<MainTab>("dataset");
   const cancel = useCancelImport(projectId);
   const items = versions.data?.items ?? [];
   // La versión elegida puede no estar en la página cargada (p. ej. «Ver v1» con más de 20
@@ -152,7 +154,6 @@ export function CsvWorkspace({
   const investigation = useInvestigation(version);
   const progress = useProgress(version);
   const review = useSourceReview(version);
-  const comprehension = useComprehension(version);
   const exploration = useExploration(version);
   const dashboard = useDashboard(version);
   if (versions.isPending || loadingOutside)
@@ -385,6 +386,17 @@ export function CsvWorkspace({
                     onKeepVersion={() => setSelected(version.id)}
                   />
                 </div>
+              ) : tab === "comprehension" ? (
+                <div
+                  id="workspace-panel-comprehension"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-comprehension"
+                >
+                  <ComprehensionTab
+                    key={`comprehension-${version.id}`}
+                    versionId={version.id}
+                  />
+                </div>
               ) : (
                 <div
                   id="workspace-panel-analysis"
@@ -410,13 +422,6 @@ export function CsvWorkspace({
                     <SourceReviewPanel
                       key={`review-${version.id}`}
                       review={review.data}
-                    />
-                  )}
-                  {comprehension.data && (
-                    <ComprehensionPanel
-                      key={`comprehension-${version.id}`}
-                      view={comprehension.data}
-                      versionId={version.id}
                     />
                   )}
                   {exploration.data && (

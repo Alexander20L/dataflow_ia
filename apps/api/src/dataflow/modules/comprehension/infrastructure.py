@@ -1,4 +1,5 @@
-"""Valoraciones del usuario sobre las relaciones (Fase 19, migración 0020).
+"""Valoraciones del usuario sobre las relaciones (Fase 19, migración 0020) y significados
+escritos por el usuario (Fase 24, migración 0024).
 
 Registro inmutable y sólo de añadir: cada valoración es una fila nueva y vale la última. Se
 agrupan por proyecto y fuente (`source_key`: archivo y hoja o tabla) para que la siguiente carga
@@ -8,7 +9,7 @@ del mismo archivo las tenga en cuenta.
 from datetime import UTC, datetime
 from uuid import UUID, uuid4
 
-from sqlalchemy import DateTime, ForeignKey, String, Uuid, select
+from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid, select
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
@@ -92,3 +93,78 @@ class SQLFeedbackRepository:
             .order_by(FeedbackRecord.created_at, FeedbackRecord.id)
         )
         return {row.relationship_key: row.verdict for row in rows}  # type: ignore[misc]
+
+
+class MeaningRecord(Base):
+    """Fase 24 (migración 0024): significado escrito o confirmado por el usuario."""
+
+    __tablename__ = "column_meanings"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    version_id: Mapped[UUID] = mapped_column(ForeignKey("dataset_version_records.id"), index=True)
+    source_key: Mapped[str] = mapped_column(String(700), index=True)
+    column_name: Mapped[str] = mapped_column(String(200))
+    meaning: Mapped[str | None] = mapped_column(String(300), nullable=True)
+    confirmed: Mapped[bool] = mapped_column(Boolean)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SQLMeaningRepository:
+    """Registro inmutable y sólo de añadir: vale el último de cada columna de la misma fuente,
+    también en versiones posteriores. Uno vacío y sin confirmar vuelve al de la IA."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def add(
+        self,
+        owner: UUID,
+        project: UUID,
+        version: UUID,
+        source_key: str,
+        column: str,
+        meaning: str | None,
+        confirmed: bool,
+    ) -> None:
+        self.db.add(
+            MeaningRecord(
+                id=uuid4(),
+                owner_id=owner,
+                project_id=project,
+                version_id=version,
+                source_key=source_key,
+                column_name=column,
+                meaning=meaning.strip() if meaning and meaning.strip() else None,
+                confirmed=confirmed,
+                created_at=datetime.now(UTC),
+            )
+        )
+        self.db.flush()
+
+    def for_source(
+        self, owner: UUID, project: UUID, source_key: str
+    ) -> dict[str, tuple[str | None, bool]]:
+        """Último significado de cada columna (texto, ¿confirmado?). Sin la tabla (esquema
+        anterior a 0024, durante un despliegue) no hay ninguno."""
+        try:
+            with self.db.begin_nested():
+                rows = list(
+                    self.db.scalars(
+                        select(MeaningRecord)
+                        .where(
+                            MeaningRecord.owner_id == owner,
+                            MeaningRecord.project_id == project,
+                            MeaningRecord.source_key == source_key,
+                        )
+                        .order_by(MeaningRecord.created_at, MeaningRecord.id)
+                    )
+                )
+        except ProgrammingError:
+            return {}
+        latest = {row.column_name: row for row in rows}
+        return {
+            name: (row.meaning, row.confirmed)
+            for name, row in latest.items()
+            if row.meaning or row.confirmed
+        }

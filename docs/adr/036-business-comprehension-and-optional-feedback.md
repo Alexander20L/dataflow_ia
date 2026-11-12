@@ -7,6 +7,10 @@ usuario): el recorrido sigue siendo automático y la valoración del usuario es 
 bloquea nada**. Se apoya en [ADR-031](031-analytical-interpretation-and-quality.md) y
 [ADR-033](033-bounded-investigation-and-ai-proposals.md).
 
+> **Vigencia:** [ADR-041](041-comprehension-tab-grain-formulas-and-validations.md) (Fase 24)
+> modifica la valoración: desde entonces validar o rechazar una relación cuenta ya (rehace la
+> exploración, el dashboard y el informe), además de en la siguiente carga.
+
 ## Contexto
 
 La interpretación de la Fase 14 decide el papel de cada columna con reglas sobre nombres y

@@ -7,7 +7,7 @@ from dataflow.modules.analytics.infrastructure import (
 )
 from dataflow.modules.audit.infrastructure import AuditRecord
 from dataflow.modules.cleaning.repository import CleaningApprovalRecord
-from dataflow.modules.comprehension.infrastructure import FeedbackRecord
+from dataflow.modules.comprehension.infrastructure import FeedbackRecord, MeaningRecord
 from dataflow.modules.copilot.infrastructure import (
     ActionLinkRecord,
     AICallRecord,
@@ -117,6 +117,7 @@ __all__ = [
     "MessageRecord",
     "TextAuditRecord",
     "FeedbackRecord",
+    "MeaningRecord",
     "FindingFeedbackRecord",
     "ColumnAnnotationDetailRecord",
     "ColumnAnnotationRecord",

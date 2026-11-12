@@ -5560,3 +5560,15 @@ tbody tr:hover {
   align-items: center;
   gap: 8px 12px;
 }
+/* Fase 24: pestaña Comprensión. */
+.comprehension-grain {
+  font-size: 15px;
+  font-weight: 600;
+  margin: 4px 0;
+}
+.comprehension-relations .chip-options {
+  margin: 8px 0 12px;
+}
+.comprehension-relations > section {
+  margin-top: 16px;
+}
