@@ -3,6 +3,7 @@
 import { useQuery } from "@tanstack/react-query";
 import type { components } from "@dataflow/api-client";
 import { api, requireData } from "@/lib/api";
+import { capDecimalsInText } from "@/lib/numbers";
 
 type Segment = components["schemas"]["Segment"];
 
@@ -28,9 +29,9 @@ export function OverviewAudit({ versionId }: { versionId: string }) {
           href={`/api/v1/versions/${versionId}/overview-audit/evidence/${segment.evidence_id}`}
           target="_blank"
           rel="noreferrer"
-          aria-label={`De dónde sale ${segment.text}`}
+          aria-label={`De dónde sale ${capDecimalsInText(segment.text)}`}
         >
-          {segment.text}
+          {capDecimalsInText(segment.text)}
         </a>
       ) : segment.kind === "unverified" ? (
         <mark

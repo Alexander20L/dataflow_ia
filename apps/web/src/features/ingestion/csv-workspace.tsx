@@ -25,7 +25,10 @@ import { InvestigationPanel } from "./investigation";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
 import { ComprehensionTab } from "@/features/comprehension/comprehension-tab";
-import { DatasetTab } from "@/features/dataset/dataset-tab";
+import {
+  DatasetTab,
+  type DatasetSubview,
+} from "@/features/dataset/dataset-tab";
 import {
   useCancelImport,
   useAutomaticAnalysis,
@@ -114,6 +117,7 @@ export function CsvWorkspace({
   const [cancelling, setCancelling] = useState(false);
   // Fase 22: «Dataset» (inspección) y «Análisis» (todo lo automático anterior).
   const [tab, setTab] = useState<MainTab>("dataset");
+  const [datasetSubview, setDatasetSubview] = useState<DatasetSubview>();
   const cancel = useCancelImport(projectId);
   const items = versions.data?.items ?? [];
   // La versión elegida puede no estar en la página cargada (p. ej. «Ver v1» con más de 20
@@ -372,7 +376,13 @@ export function CsvWorkspace({
             </div>
           ) : diagnostic.data?.profile.overview ? (
             <>
-              <MainTabs value={tab} onChange={setTab} />
+              <MainTabs
+                value={tab}
+                onChange={(next) => {
+                  setDatasetSubview(undefined);
+                  setTab(next);
+                }}
+              />
               {tab === "dataset" ? (
                 <div
                   id="workspace-panel-dataset"
@@ -384,6 +394,7 @@ export function CsvWorkspace({
                     versionId={version.id}
                     onOpenVersion={(id) => setSelected(id)}
                     onKeepVersion={() => setSelected(version.id)}
+                    initialSubview={datasetSubview}
                   />
                 </div>
               ) : tab === "comprehension" ? (
@@ -395,6 +406,10 @@ export function CsvWorkspace({
                   <ComprehensionTab
                     key={`comprehension-${version.id}`}
                     versionId={version.id}
+                    onOpenDictionary={() => {
+                      setDatasetSubview("dictionary");
+                      setTab("dataset");
+                    }}
                   />
                 </div>
               ) : (
@@ -732,9 +747,7 @@ function RealResults({
         </div>
         <div>
           <small>Completitud de celdas</small>
-          <strong>
-            {quality.completeness_percent.toLocaleString("es-ES")} %
-          </strong>
+          <strong>{number(quality.completeness_percent)} %</strong>
         </div>
       </div>
       <>

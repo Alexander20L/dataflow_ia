@@ -69,6 +69,8 @@ class ReportSource(DeliveryModel):
     # Fase 21: dashboard que fija el orden y valoraciones del usuario aplicadas (hash canónico).
     dashboard_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     feedback_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    # Fase 24B: significados del usuario aplicados al describir las columnas (hash canónico).
+    meanings_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
 
 
 class ReportDocument(DeliveryModel):

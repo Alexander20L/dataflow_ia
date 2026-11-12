@@ -1,11 +1,12 @@
 import { clsx, type ClassValue } from "clsx";
 import { twMerge } from "tailwind-merge";
+import { localeNumber } from "./numbers";
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
-export const number = (value: number) =>
-  new Intl.NumberFormat("es-ES").format(value);
+/** Formato «es-ES» con 3 decimales como mucho (ver `capDecimals`). */
+export const number = (value: number) => localeNumber(value);
 export const currency = (value: number) =>
   new Intl.NumberFormat("es-ES", {
     style: "currency",

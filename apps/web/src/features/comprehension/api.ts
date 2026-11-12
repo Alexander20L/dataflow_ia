@@ -59,11 +59,16 @@ export function useDescribe(versionId: string) {
       column: string;
       meaning?: string | null;
       confirmed?: boolean;
+      unknown?: boolean;
     }) =>
       requireData(
         await api.POST("/api/v1/versions/{version_id}/comprehension/meanings", {
           params: { path: { version_id: versionId } },
-          body: { ...body, confirmed: body.confirmed ?? false },
+          body: {
+            ...body,
+            confirmed: body.confirmed ?? false,
+            unknown: body.unknown ?? false,
+          },
         }),
       ),
     onSuccess: (view) =>

@@ -1,6 +1,7 @@
 "use client";
 
 import type { components } from "@dataflow/api-client";
+import { capDecimals, capDecimalsInText } from "@/lib/numbers";
 import { InsightCard } from "./automatic-analysis";
 import type { InvestigationView as View } from "./api";
 
@@ -36,9 +37,9 @@ function Segments({
             href={`/api/v1/versions/${versionId}/investigation/evidence/${segment.evidence_id}`}
             target="_blank"
             rel="noreferrer"
-            aria-label={`De dónde sale ${segment.text}`}
+            aria-label={`De dónde sale ${capDecimalsInText(segment.text)}`}
           >
-            {segment.text}
+            {capDecimalsInText(segment.text)}
           </a>
         ) : segment.kind === "unverified" ? (
           <mark
@@ -225,7 +226,7 @@ export function InvestigationPanel({
             <p>
               Terminó porque {STOPPED[result.stopped] ?? result.stopped}.{" "}
               {result.iterations} iteraciones · {result.consumption.ai_calls}{" "}
-              llamadas a la IA · US$ {result.consumption.cost_usd}.
+              llamadas a la IA · US$ {capDecimals(result.consumption.cost_usd)}.
             </p>
             <ul>
               {result.limitations.map((text) => (

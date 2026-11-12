@@ -2,6 +2,7 @@
 
 import type { components } from "@dataflow/api-client";
 import { Chart, seriesOption } from "@/components/ui/chart";
+import { capDecimals, localeNumber } from "@/lib/numbers";
 
 type Overview = components["schemas"]["AutomaticOverview"];
 type Analysis = components["schemas"]["AnalyticalInterpretation"];
@@ -36,7 +37,8 @@ const severities = {
   info: "Observación",
 };
 
-function exactNumber(value: string) {
+function exactNumber(raw: string) {
+  const value = capDecimals(raw);
   const negative = value.startsWith("-");
   const [integer, fraction] = (negative ? value.slice(1) : value).split(".");
   const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -116,7 +118,7 @@ function AnalysisSummary({ analysis }: { analysis: Analysis }) {
               <li key={item.target}>
                 {item.target} ≈ {item.factors.join(" × ")} en{" "}
                 {item.matching_rows} de {item.compared_rows} filas (tolerancia{" "}
-                {item.tolerance}).
+                {capDecimals(item.tolerance)}).
               </li>
             ))}
           </ul>
@@ -171,8 +173,8 @@ function DataQuality({ quality }: { quality: Quality }) {
       <p>
         {analytical.blocking} limitan análisis · {analytical.warnings}{" "}
         advertencias · {analytical.observations} observaciones · completitud{" "}
-        {quality.completeness_percent.toLocaleString("es-ES")} %. Nada se
-        corrigió automáticamente.
+        {localeNumber(quality.completeness_percent)} %. Nada se corrigió
+        automáticamente.
       </p>
       {analytical.findings.length ? (
         <ul className="quality-findings">

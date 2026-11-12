@@ -75,7 +75,10 @@ from dataflow.modules.cleaning.steps import (
     PreviewFinalizer,
     TrimWhitespaceStep,
 )
-from dataflow.modules.comprehension.infrastructure import SQLFeedbackRepository
+from dataflow.modules.comprehension.infrastructure import (
+    SQLFeedbackRepository,
+    SQLMeaningRepository,
+)
 from dataflow.modules.copilot.application import CopilotConfig, CopilotService
 from dataflow.modules.copilot.infrastructure import SQLCopilotRepository
 from dataflow.modules.curation.public import SQLFindingFeedback
@@ -516,7 +519,9 @@ def make_runner(
                     FollowUpComputer(objects, objects.root),
                     make_copilot(db, provider, ai_config),
                 ),
-                "delivery.report@1": ReportStep(objects, executions, SQLFindingFeedback(db)),
+                "delivery.report@1": ReportStep(
+                    objects, executions, SQLFindingFeedback(db), SQLMeaningRepository(db)
+                ),
                 "delivery.dashboard@1": DashboardStep(
                     objects, make_copilot(db, provider, ai_config)
                 ),

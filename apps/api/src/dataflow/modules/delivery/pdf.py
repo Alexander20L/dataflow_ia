@@ -22,6 +22,7 @@ from reportlab.platypus import KeepTogether, Paragraph, SimpleDocTemplate, Space
 from reportlab.platypus.flowables import Flowable
 
 from dataflow.modules.delivery.contracts import ReportBlock, ReportChart, ReportDocument
+from dataflow.modules.delivery.numbers import cap_decimals
 
 ACCENT = colors.HexColor("#4f46e5")
 MUTED = colors.HexColor("#64748b")
@@ -41,7 +42,8 @@ BADGE = ParagraphStyle("badge", parent=META, textColor=ACCENT)
 
 
 def text(value: str) -> str:
-    return escape(value).replace("\n", "<br/>")
+    """Texto para el PDF. Fase 24B: cada cifra se lee con tres decimales como mucho."""
+    return escape(cap_decimals(value)).replace("\n", "<br/>")
 
 
 def render_pdf(document: ReportDocument) -> bytes:
@@ -132,6 +134,11 @@ def table(headers: list[str], rows: list[list[str]]) -> Table:
     return result
 
 
+def axis_label(value: float) -> str:
+    """Etiqueta del eje de valores con tres decimales como mucho (Fase 24B)."""
+    return cap_decimals(format(Decimal(repr(value)).normalize(), "f"))
+
+
 def chart(spec: ReportChart) -> Drawing | None:
     try:
         values = [float(Decimal(value)) for value in spec.values]
@@ -153,6 +160,7 @@ def chart(spec: ReportChart) -> Drawing | None:
     plot.categoryAxis.labels.angle = 30 if len(values) > 8 else 0
     plot.categoryAxis.labels.boxAnchor = "ne" if len(values) > 8 else "n"
     plot.valueAxis.labels.fontSize = 6
+    plot.valueAxis.labelTextFormat = axis_label
     plot.valueAxis.valueMin = min(0.0, *values)
     drawing.add(plot)
     return drawing

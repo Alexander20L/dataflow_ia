@@ -15,6 +15,7 @@ dashboard y otra versión del informe).
 """
 
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -23,6 +24,7 @@ from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.dashboard_job import request_report_update
 from dataflow.bootstrap.exploration_job import request_exploration_update
 from dataflow.bootstrap.loads import same_load
 from dataflow.modules.comprehension.contracts import (
@@ -41,6 +43,7 @@ from dataflow.modules.comprehension.contracts import (
     MeasureInfo,
     Period,
     Relationship,
+    UserMeaning,
     Verdict,
 )
 from dataflow.modules.comprehension.domain import (
@@ -441,7 +444,7 @@ def understand(
 def current(
     result: Comprehension,
     verdicts: dict[str, Verdict],
-    meanings: dict[str, tuple[str | None, bool]],
+    meanings: Mapping[str, UserMeaning],
 ) -> Comprehension:
     """La comprensión publicada con las valoraciones y los significados vigentes del usuario
     encima (Fase 24): lo calculado no cambia, sólo cómo se lee."""
@@ -613,6 +616,7 @@ class ComprehensionStep:
                             meaning=c.significado,
                             entity=c.entidad,
                             confidence=CONFIDENCE[c.confianza] if v3 else None,
+                            reason=(c.justificacion.strip() or None) if v3 else None,
                         )
                         for c in output.columnas
                     ],
@@ -856,6 +860,12 @@ class ComprehensionAccess:
             raise ApplicationError("UNKNOWN_COLUMN", "La columna no existe en esta versión.", 404)
         if request.meaning is not None and not request.meaning.strip() and not request.confirmed:
             raise ApplicationError("MEANING_INVALID", "El significado está vacío.", 422)
+        if request.unknown and (request.confirmed or (request.meaning or "").strip()):
+            raise ApplicationError(
+                "MEANING_INVALID",
+                "Una columna desconocida no lleva significado ni confirmación.",
+                422,
+            )
         ProjectPermissions(self.db).require(owner, run.project_id, writable=True)
         assert run.plan
         self.meanings.add(
@@ -866,6 +876,10 @@ class ComprehensionAccess:
             request.column,
             request.meaning,
             request.confirmed,
+            request.unknown,
         )
+        # Fase 24B: el informe describe las columnas con el significado vigente; se pide otra
+        # versión (la anterior se conserva). Ningún cálculo cambia.
+        request_report_update(self.executions, owner, version, "meaning")
         self.db.commit()
         return self.view(owner, version)

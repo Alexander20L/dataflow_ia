@@ -12,6 +12,7 @@ import {
   pieOption,
   seriesOption,
 } from "@/components/ui/chart";
+import { capDecimalsInText } from "@/lib/numbers";
 import { exactNumber } from "./automatic-analysis";
 import { useJudgeFinding } from "./api";
 import type { DashboardView, FindingVerdict } from "./api";
@@ -293,7 +294,9 @@ export function DashboardPanel({
                         {TYPES[widget.type]}
                       </span>
                     </header>
-                    {found.insight && <p>{found.insight.statement}</p>}
+                    {found.insight && (
+                      <p>{capDecimalsInText(found.insight.statement)}</p>
+                    )}
                     {found.result?.reason && <p>{found.result.reason}</p>}
                     <Visual widget={widget} data={found} />
                     <footer>

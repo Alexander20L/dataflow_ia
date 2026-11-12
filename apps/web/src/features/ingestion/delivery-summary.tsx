@@ -7,6 +7,7 @@ import {
   LoaderCircle,
   XCircle,
 } from "lucide-react";
+import { capDecimalsInText } from "@/lib/numbers";
 import { useReport } from "./api";
 import type { AutomaticAnalysis, VersionProgress } from "./api";
 
@@ -95,7 +96,8 @@ export function DeliverySummary({
           <ul>
             {key.map((insight) => (
               <li key={insight.id}>
-                <strong>{insight.title}.</strong> {insight.statement}
+                <strong>{insight.title}.</strong>{" "}
+                {capDecimalsInText(insight.statement)}
               </li>
             ))}
           </ul>

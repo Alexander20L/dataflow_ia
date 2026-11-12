@@ -1,4 +1,5 @@
 import type { components } from "@dataflow/api-client";
+import { capDecimals } from "@/lib/numbers";
 
 type Schemas = components["schemas"];
 export type TechnicalType = Schemas["ColumnInspection"]["technical_type"];
@@ -111,10 +112,11 @@ export const FORMATS: Record<string, string> = {
   other: "Otro",
 };
 
-/** Número con separador de miles español; los textos exactos del servidor no se redondean. */
+/** Número con separador de miles español y 3 decimales como mucho (`capDecimals`, sólo
+ * presentación: los textos exactos del servidor se redondean al mostrarlos, nunca al guardarlos). */
 export function formatNumber(value: string | number | null | undefined) {
   if (value == null) return "—";
-  const text = String(value);
+  const text = capDecimals(value);
   const negative = text.startsWith("-");
   const [integer, fraction] = (negative ? text.slice(1) : text).split(".");
   const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ".");

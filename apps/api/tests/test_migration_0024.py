@@ -9,6 +9,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from migration_support import modelled_at_0024
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
@@ -70,7 +71,9 @@ def test_0024_is_additive_and_column_meanings_are_append_only(
 
         with Session(engine, expire_on_commit=False) as db:
             with engine.connect() as connection:
-                context = MigrationContext.configure(connection, opts={})
+                context = MigrationContext.configure(
+                    connection, opts={"include_object": modelled_at_0024}
+                )
                 diff = compare_metadata(context, Base.metadata)
             assert diff == [], diff
             repository = SQLMeaningRepository(db)
@@ -81,7 +84,7 @@ def test_0024_is_additive_and_column_meanings_are_append_only(
             repository.add(owner, project.id, version.id, source, "b", None, False)
             db.commit()
             # Vale el último; uno vacío y sin confirmar devuelve la columna al de la IA.
-            assert repository.for_source(owner, project.id, source) == {"a": (None, True)}
+            assert repository.for_source(owner, project.id, source) == {"a": (None, True, False)}
             assert repository.for_source(owner, project.id, "otro.csv|{}") == {}
             for statement in [
                 "UPDATE column_meanings SET meaning = 'x'",

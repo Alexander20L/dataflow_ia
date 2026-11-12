@@ -1,5 +1,6 @@
 """Valoraciones del usuario sobre las relaciones (Fase 19, migración 0020) y significados
-escritos por el usuario (Fase 24, migración 0024).
+escritos por el usuario (Fase 24, migración 0024) o marcados como desconocidos (Fase 24B,
+migración 0025).
 
 Registro inmutable y sólo de añadir: cada valoración es una fila nueva y vale la última. Se
 agrupan por proyecto y fuente (`source_key`: archivo y hoja o tabla) para que la siguiente carga
@@ -13,7 +14,7 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid, select
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from dataflow.modules.comprehension.contracts import FeedbackItem, Verdict
+from dataflow.modules.comprehension.contracts import FeedbackItem, UserMeaning, Verdict
 from dataflow.platform.database import Base
 
 
@@ -110,9 +111,18 @@ class MeaningRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
 
+class MeaningMarkRecord(Base):
+    """Fase 24B (migración 0025): el usuario marca la columna como desconocida. Completa un
+    significado de `column_meanings` (tabla nueva en vez de una columna nueva)."""
+
+    __tablename__ = "column_meaning_marks"
+    meaning_id: Mapped[UUID] = mapped_column(ForeignKey("column_meanings.id"), primary_key=True)
+    unknown: Mapped[bool] = mapped_column(Boolean)
+
+
 class SQLMeaningRepository:
     """Registro inmutable y sólo de añadir: vale el último de cada columna de la misma fuente,
-    también en versiones posteriores. Uno vacío y sin confirmar vuelve al de la IA."""
+    también en versiones posteriores. Uno vacío, sin confirmar y sin marcar vuelve al de la IA."""
 
     def __init__(self, db: Session) -> None:
         self.db = db
@@ -126,27 +136,29 @@ class SQLMeaningRepository:
         column: str,
         meaning: str | None,
         confirmed: bool,
+        unknown: bool = False,
     ) -> None:
-        self.db.add(
-            MeaningRecord(
-                id=uuid4(),
-                owner_id=owner,
-                project_id=project,
-                version_id=version,
-                source_key=source_key,
-                column_name=column,
-                meaning=meaning.strip() if meaning and meaning.strip() else None,
-                confirmed=confirmed,
-                created_at=datetime.now(UTC),
-            )
+        record = MeaningRecord(
+            id=uuid4(),
+            owner_id=owner,
+            project_id=project,
+            version_id=version,
+            source_key=source_key,
+            column_name=column,
+            meaning=meaning.strip() if meaning and meaning.strip() and not unknown else None,
+            confirmed=confirmed,
+            created_at=datetime.now(UTC),
         )
+        self.db.add(record)
         self.db.flush()
+        if unknown:
+            self.db.add(MeaningMarkRecord(meaning_id=record.id, unknown=True))
+            self.db.flush()
 
-    def for_source(
-        self, owner: UUID, project: UUID, source_key: str
-    ) -> dict[str, tuple[str | None, bool]]:
-        """Último significado de cada columna (texto, ¿confirmado?). Sin la tabla (esquema
-        anterior a 0024, durante un despliegue) no hay ninguno."""
+    def for_source(self, owner: UUID, project: UUID, source_key: str) -> dict[str, UserMeaning]:
+        """Último significado de cada columna (texto, ¿confirmado?, ¿desconocida?). Sin la
+        tabla (esquema anterior a 0024, durante un despliegue) no hay ninguno; sin la de 0025,
+        ninguna columna está marcada como desconocida."""
         try:
             with self.db.begin_nested():
                 rows = list(
@@ -163,8 +175,23 @@ class SQLMeaningRepository:
         except ProgrammingError:
             return {}
         latest = {row.column_name: row for row in rows}
+        marked: set[UUID] = set()
+        if latest:
+            try:
+                with self.db.begin_nested():
+                    marked = {
+                        mark.meaning_id
+                        for mark in self.db.scalars(
+                            select(MeaningMarkRecord).where(
+                                MeaningMarkRecord.meaning_id.in_([r.id for r in latest.values()]),
+                                MeaningMarkRecord.unknown.is_(True),
+                            )
+                        )
+                    }
+            except ProgrammingError:
+                marked = set()
         return {
-            name: (row.meaning, row.confirmed)
+            name: UserMeaning(row.meaning, row.confirmed, row.id in marked)
             for name, row in latest.items()
-            if row.meaning or row.confirmed
+            if row.meaning or row.confirmed or row.id in marked
         }

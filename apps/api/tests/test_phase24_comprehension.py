@@ -24,6 +24,7 @@ from dataflow.modules.comprehension.contracts import (
     ColumnMeaning,
     Formula,
     Relationship,
+    UserMeaning,
 )
 from dataflow.modules.comprehension.domain import (
     UNKNOWN_MEANING,
@@ -151,7 +152,10 @@ def test_ai_confidence_is_capped_for_code_names_and_unknown_is_admitted() -> Non
     assert found["CDG_20"].meaning == UNKNOWN_MEANING and found["CDG_20"].confidence == "low"
     mixed = with_user_meanings(
         accepted.meanings,
-        {"ESTREG": ("Estado de matrícula", False), "nota_final": (None, True)},
+        {
+            "ESTREG": UserMeaning("Estado de matrícula", False),
+            "nota_final": UserMeaning(None, True),
+        },
     )
     by = {m.column: m for m in mixed}
     assert by["ESTREG"].source == "user" and by["ESTREG"].meaning == "Estado de matrícula"

@@ -2,11 +2,14 @@
 
 import { useMemo, useState, type FormEvent, type KeyboardEvent } from "react";
 import type { EChartsCoreOption } from "echarts/core";
-import { Check, LoaderCircle, Pencil, X } from "lucide-react";
+import { BookOpen, Check, LoaderCircle, Pencil, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Chart } from "@/components/ui/chart";
 import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
+import { capDecimals, capDecimalsInText } from "@/lib/numbers";
+import { useInspection } from "@/features/dataset/api";
+import { NATURES, TYPES } from "@/features/dataset/labels";
 import {
   useComprehensionView,
   useDescribe,
@@ -40,7 +43,14 @@ type Subview = (typeof SUBVIEWS)[number]["id"];
 /** Fase 24: pestaña Comprensión. Qué representa cada fila, qué columnas son fórmulas de otras,
  * cómo se relacionan y qué significa cada una. Las reglas calculan sobre todas las filas; la IA
  * sólo propone nombres y significados con su confianza. */
-export function ComprehensionTab({ versionId }: { versionId: string }) {
+export function ComprehensionTab({
+  versionId,
+  onOpenDictionary,
+}: {
+  versionId: string;
+  /** Fase 24B: el rol se cambia en el Diccionario de la pestaña Dataset. */
+  onOpenDictionary?: () => void;
+}) {
   const query = useComprehensionView(versionId);
   const [subview, setSubview] = useState<Subview>("summary");
   if (query.isPending)
@@ -134,7 +144,11 @@ export function ComprehensionTab({ versionId }: { versionId: string }) {
         {subview === "summary" ? (
           <Summary result={result} />
         ) : subview === "columns" ? (
-          <Columns result={result} versionId={versionId} />
+          <Columns
+            result={result}
+            versionId={versionId}
+            onOpenDictionary={onOpenDictionary}
+          />
         ) : (
           <Relations view={view} result={result} versionId={versionId} />
         )}
@@ -197,7 +211,7 @@ function Summary({ result }: { result: Comprehension }) {
           <ul className="dataset-notes">
             {formulas.map((f) => (
               <li key={f.column}>
-                <strong>{f.expression}</strong>
+                <strong>{capDecimalsInText(f.expression)}</strong>
                 <br />
                 <small className="muted">
                   Se cumple en {f.matching_rows} de {f.rows} filas. {f.method}
@@ -251,11 +265,19 @@ function Summary({ result }: { result: Comprehension }) {
 function Columns({
   result,
   versionId,
+  onOpenDictionary,
 }: {
   result: Comprehension;
   versionId: string;
+  onOpenDictionary?: () => void;
 }) {
   const [editing, setEditing] = useState<string | null>(null);
+  // Fase 24B: tipo técnico y naturaleza de la pestaña Dataset (ya calculados, con tus
+  // correcciones del Diccionario); aquí no se recalculan.
+  const inspection = useInspection(versionId);
+  const entries = new Map(
+    (inspection.data?.dictionary ?? []).map((e) => [e.name, e]),
+  );
   const meanings = new Map<string, ColumnMeaning>(
     (result.meanings ?? []).map((m) => [m.column, m]),
   );
@@ -268,14 +290,23 @@ function Columns({
       <p className="muted">
         La escala y el uso de cada columna salen de las reglas (con tus
         correcciones del Diccionario). El significado es una hipótesis de la IA
-        con su confianza; puedes escribirlo o confirmarlo: no cambia ningún
-        cálculo y lo heredan las versiones siguientes.
+        con su confianza y su justificación; puedes escribirlo, confirmarlo o
+        marcar la columna como desconocida: no cambia ningún cálculo, lo heredan
+        las versiones siguientes y el informe lo usa.
       </p>
+      {onOpenDictionary && (
+        <p>
+          <Button size="sm" variant="outline" onClick={onOpenDictionary}>
+            <BookOpen size={14} aria-hidden /> Cambiar el rol en el Diccionario
+          </Button>
+        </p>
+      )}
       <div className="table-scroll">
         <table className="data-table comprehension-columns">
           <thead>
             <tr>
               <th scope="col">Columna</th>
+              <th scope="col">Tipo y naturaleza</th>
               <th scope="col">Escala</th>
               <th scope="col">Uso en el análisis</th>
               <th scope="col">Significado</th>
@@ -287,9 +318,21 @@ function Columns({
               const meaning = meanings.get(s.column);
               const measure = measures.get(s.column);
               const dimension = dimensions.get(s.column);
+              const entry = entries.get(s.column);
               return (
                 <tr key={s.column}>
                   <th scope="row">{s.column}</th>
+                  <td>
+                    {entry ? (
+                      <>
+                        {TYPES[entry.technical_type]}
+                        <br />
+                        <small className="muted">{NATURES[entry.nature]}</small>
+                      </>
+                    ) : (
+                      <span className="muted">—</span>
+                    )}
+                  </td>
                   <td title={s.reason}>
                     {SCALES[s.scale]}
                     {(s.order ?? []).length > 0 && (
@@ -327,13 +370,25 @@ function Columns({
                         <span
                           className={`badge ${meaning.source === "user" ? "completed" : meaning.confidence === "low" ? "warning" : "neutral"}`}
                         >
-                          {meaning.source === "user"
-                            ? "Escrito por ti"
-                            : meaning.confirmed
-                              ? "Confirmado por ti"
-                              : (CONFIDENCES[meaning.confidence ?? ""] ??
-                                "Hipótesis de la IA")}
+                          {meaning.unknown
+                            ? "Marcada por ti"
+                            : meaning.source === "user"
+                              ? "Escrito por ti"
+                              : meaning.confirmed
+                                ? "Confirmado por ti"
+                                : (CONFIDENCES[meaning.confidence ?? ""] ??
+                                  "Hipótesis de la IA")}
                         </span>
+                        {meaning.reason &&
+                          meaning.source === "ai" &&
+                          !meaning.unknown && (
+                            <>
+                              <br />
+                              <small className="muted">
+                                Por qué: {meaning.reason}
+                              </small>
+                            </>
+                          )}
                       </>
                     ) : (
                       <span className="muted">—</span>
@@ -385,7 +440,7 @@ function MeaningEditor({
 }) {
   const describe = useDescribe(versionId);
   const [text, setText] = useState(
-    meaning?.source === "user" ? meaning.meaning : "",
+    meaning?.source === "user" && !meaning.unknown ? meaning.meaning : "",
   );
   const save = (event: FormEvent) => {
     event.preventDefault();
@@ -399,6 +454,7 @@ function MeaningEditor({
       {meaning && meaning.source === "ai" && (
         <p className="muted">
           IA: {meaning.meaning} ({CONFIDENCES[meaning.confidence ?? ""] ?? "—"})
+          {meaning.reason ? `. Por qué: ${meaning.reason}` : ""}
         </p>
       )}
       <label htmlFor="meaning-text">
@@ -435,6 +491,21 @@ function MeaningEditor({
             Confirmar el de la IA
           </Button>
         )}
+        {!meaning?.unknown && (
+          <Button
+            type="button"
+            variant="outline"
+            disabled={describe.isPending}
+            onClick={() =>
+              describe.mutate(
+                { column, meaning: null, confirmed: false, unknown: true },
+                { onSuccess: onDone },
+              )
+            }
+          >
+            Marcar como desconocida
+          </Button>
+        )}
         {(meaning?.source === "user" || meaning?.confirmed) && (
           <Button
             type="button"
@@ -465,7 +536,7 @@ function heatmap(result: Comprehension): EChartsCoreOption | null {
     const [a, b] = item.columns;
     const entry = {
       value: Math.abs(Number(item.value)),
-      label: `${item.measure} ${item.value}`,
+      label: `${item.measure} ${capDecimals(item.value)}`,
     };
     best.set(`${a}|${b}`, entry);
     best.set(`${b}|${a}`, entry);
@@ -617,7 +688,7 @@ function RelationItem({
         <span className="badge neutral">{ORIGINS[r.origin]}</span>{" "}
         <span className="relation-status">{STATUS[r.status]}</span>
         {r.hypothesis && <p>{r.hypothesis}</p>}
-        <small>{r.detail}</small>
+        <small>{capDecimalsInText(r.detail)}</small>
       </div>
       <div className="relation-actions" role="group" aria-label="Validación">
         <button

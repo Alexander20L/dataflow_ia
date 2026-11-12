@@ -1,12 +1,15 @@
 "use client";
 
 import { Chart, seriesOption } from "@/components/ui/chart";
+import { capDecimals, capDecimalsInText } from "@/lib/numbers";
 import type { AutomaticAnalysis } from "./api";
 
 export type Insight = AutomaticAnalysis["insights"][number];
 
-export function exactNumber(value: string | null | undefined) {
-  if (value == null) return "—";
+/** Cifra del servidor con 3 decimales como mucho (`capDecimals`), sin ceros finales. */
+export function exactNumber(raw: string | null | undefined) {
+  if (raw == null) return "—";
+  const value = capDecimals(raw);
   const negative = value.startsWith("-");
   const [integer, fraction] = (negative ? value.slice(1) : value).split(".");
   const grouped = integer.replace(/\B(?=(\d{3})+(?!\d))/g, ".");
@@ -25,7 +28,7 @@ export function InsightCard({
     <article className="automatic-insight" aria-label={insight.title}>
       {badge && <span className="insight-badge">{badge}</span>}
       <h3>{insight.title}</h3>
-      <p>{insight.statement}</p>
+      <p>{capDecimalsInText(insight.statement)}</p>
       {insight.figures.length > 0 && (
         <dl className="insight-figures">
           {insight.figures.map((figure) => (

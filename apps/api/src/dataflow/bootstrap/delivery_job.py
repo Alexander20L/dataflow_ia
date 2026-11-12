@@ -10,6 +10,8 @@ from uuid import UUID, uuid4, uuid5
 
 from dataflow.modules.analytics.contracts import AutomaticAnalysis
 from dataflow.modules.comprehension.contracts import Comprehension
+from dataflow.modules.comprehension.domain import with_user_meanings
+from dataflow.modules.comprehension.infrastructure import SQLMeaningRepository
 from dataflow.modules.curation.public import SQLFindingFeedback
 from dataflow.modules.datasets.public import Datasets, ObjectStore, StoredObject
 from dataflow.modules.delivery.contracts import (
@@ -205,8 +207,42 @@ class ReportStep:
         objects: ObjectStore,
         executions: Executions,
         feedback: SQLFindingFeedback | None = None,
+        meanings: SQLMeaningRepository | None = None,
     ) -> None:
         self.objects, self.executions, self.feedback = objects, executions, feedback
+        self.meanings = meanings
+
+    def described(
+        self, lease: Lease, comprehension: Comprehension
+    ) -> tuple[Comprehension, str | None]:
+        """Fase 24B: la comprensión con los significados vigentes del usuario (escritos,
+        confirmados o marcados como desconocidos) y su hash; lo calculado no cambia."""
+        if self.meanings is None:
+            return comprehension, None
+        run = next(
+            (
+                r
+                for r in self.executions.for_version(lease.owner_id, lease.version_id)
+                if r.id == comprehension.scope.execution_id
+            ),
+            None,
+        )
+        source = run.plan.content["input"].get("source_key") if run and run.plan else None
+        if not source:
+            return comprehension, None
+        user = self.meanings.for_source(lease.owner_id, lease.execution.project_id, str(source))
+        if not user:
+            return comprehension, None
+        applied = sorted(
+            [column, text or "", confirmed, unknown]
+            for column, (text, confirmed, unknown) in user.items()
+        )
+        return (
+            comprehension.model_copy(
+                update={"meanings": with_user_meanings(comprehension.meanings, user)}
+            ),
+            digest("column_meanings", {"meanings": applied}),
+        )
 
     def dashboard(self, lease: Lease) -> tuple[Dashboard, str] | None:
         """Fase 21: el dashboard terminado de la versión (se reclama antes que el informe)."""
@@ -273,6 +309,16 @@ class ReportStep:
         explored = self.exploration(lease)
         designed = self.dashboard(lease)
         verdicts, marks_sha256 = self.marks(lease) if designed else ({}, None)
+        comprehension, meanings_sha256 = (
+            self.described(
+                lease,
+                Comprehension.model_validate_json(
+                    self.objects.read(reference(given["comprehension"]))
+                ),
+            )
+            if given.get("comprehension")
+            else (None, None)
+        )
         document = build_report(
             ReportSource(
                 project_id=lease.execution.project_id,
@@ -287,15 +333,14 @@ class ReportStep:
                 exploration_sha256=explored[1] if explored else None,
                 dashboard_sha256=designed[1] if designed else None,
                 feedback_sha256=marks_sha256,
+                meanings_sha256=meanings_sha256,
             ),
             analysis,
             investigation,
             quality,
             datetime.now(UTC).replace(microsecond=0),
             SourceReview.model_validate(given["review"]) if given.get("review") else None,
-            Comprehension.model_validate_json(self.objects.read(reference(given["comprehension"])))
-            if given.get("comprehension")
-            else None,
+            comprehension,
             explored[0] if explored else None,
             designed[0] if designed else None,
             verdicts,
