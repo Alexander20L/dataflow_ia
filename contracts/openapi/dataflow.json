@@ -1799,6 +1799,32 @@
         "title": "CategoricalStats",
         "type": "object"
       },
+      "CategoryFilter": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "maxLength": 300,
+            "minLength": 1,
+            "title": "Column",
+            "type": "string"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 50,
+            "minItems": 1,
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "column",
+          "values"
+        ],
+        "title": "CategoryFilter",
+        "type": "object"
+      },
       "ColumnChange": {
         "properties": {
           "after": {
@@ -2835,6 +2861,79 @@
         "title": "Criterion",
         "type": "object"
       },
+      "CustomSection": {
+        "additionalProperties": false,
+        "properties": {
+          "title": {
+            "maxLength": 200,
+            "minLength": 1,
+            "title": "Title",
+            "type": "string"
+          },
+          "widgets": {
+            "items": {
+              "$ref": "#/components/schemas/CustomWidget"
+            },
+            "maxItems": 80,
+            "minItems": 1,
+            "title": "Widgets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "title",
+          "widgets"
+        ],
+        "title": "CustomSection",
+        "type": "object"
+      },
+      "CustomWidget": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_id": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Evidence Id"
+          },
+          "item": {
+            "maxLength": 700,
+            "minLength": 1,
+            "title": "Item",
+            "type": "string"
+          },
+          "title": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Title"
+          },
+          "type": {
+            "maxLength": 20,
+            "minLength": 1,
+            "title": "Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "item",
+          "type"
+        ],
+        "title": "CustomWidget",
+        "type": "object"
+      },
       "Dashboard": {
         "additionalProperties": false,
         "properties": {
@@ -2866,6 +2965,13 @@
             "title": "Calls",
             "type": "array"
           },
+          "computed": {
+            "items": {
+              "$ref": "#/components/schemas/ExploreResult"
+            },
+            "title": "Computed",
+            "type": "array"
+          },
           "decisions": {
             "items": {
               "$ref": "#/components/schemas/DesignDecision"
@@ -2881,15 +2987,67 @@
             "title": "Designed By",
             "type": "string"
           },
+          "filters": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/FilterOptions"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "indicators": {
+            "items": {
+              "$ref": "#/components/schemas/Indicator"
+            },
+            "title": "Indicators",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/DashboardItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "notice": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Notice"
+          },
           "operation": {
-            "const": "delivery.dashboard@1",
             "default": "delivery.dashboard@1",
+            "enum": [
+              "delivery.dashboard@1",
+              "delivery.dashboard@2"
+            ],
             "title": "Operation",
             "type": "string"
           },
+          "partial": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Partial"
+          },
           "rules_version": {
-            "const": "dashboard-design-v1",
             "default": "dashboard-design-v1",
+            "enum": [
+              "dashboard-design-v1",
+              "dashboard-design-v2"
+            ],
             "title": "Rules Version",
             "type": "string"
           },
@@ -2912,6 +3070,17 @@
           "title": {
             "title": "Title",
             "type": "string"
+          },
+          "total_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Rows"
           }
         },
         "required": [
@@ -2922,6 +3091,247 @@
           "sections"
         ],
         "title": "Dashboard",
+        "type": "object"
+      },
+      "DashboardCustomization": {
+        "additionalProperties": false,
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "dashboard_execution_id": {
+            "format": "uuid",
+            "title": "Dashboard Execution Id",
+            "type": "string"
+          },
+          "revision": {
+            "title": "Revision",
+            "type": "integer"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/CustomSection"
+            },
+            "title": "Sections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "revision",
+          "dashboard_execution_id",
+          "sections",
+          "created_at"
+        ],
+        "title": "DashboardCustomization",
+        "type": "object"
+      },
+      "DashboardCustomizationRequest": {
+        "additionalProperties": false,
+        "description": "Guarda la versión personalizada: secciones en su orden, sólo los gráficos visibles (los\nocultos no van), los indicadores destacados y los títulos. `expected_revision` es la\nrevisión que se editó (0 si no había ninguna).",
+        "properties": {
+          "expected_revision": {
+            "minimum": 0.0,
+            "title": "Expected Revision",
+            "type": "integer"
+          },
+          "sections": {
+            "items": {
+              "$ref": "#/components/schemas/CustomSection"
+            },
+            "maxItems": 8,
+            "title": "Sections",
+            "type": "array"
+          }
+        },
+        "required": [
+          "expected_revision",
+          "sections"
+        ],
+        "title": "DashboardCustomizationRequest",
+        "type": "object"
+      },
+      "DashboardFilterRequest": {
+        "additionalProperties": false,
+        "description": "Filtros del dashboard (Fase 26): un rango de meses («AAAA-MM», ambos incluidos) y valores\nde hasta tres dimensiones.",
+        "properties": {
+          "categories": {
+            "items": {
+              "$ref": "#/components/schemas/CategoryFilter"
+            },
+            "maxItems": 3,
+            "title": "Categories",
+            "type": "array"
+          },
+          "period_from": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-\\d{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period From"
+          },
+          "period_to": {
+            "anyOf": [
+              {
+                "pattern": "^\\d{4}-\\d{2}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Period To"
+          }
+        },
+        "title": "DashboardFilterRequest",
+        "type": "object"
+      },
+      "DashboardFilterResult": {
+        "additionalProperties": false,
+        "description": "Los elementos recalculados con los filtros sobre todas las filas que los cumplen. No se\nguarda: las evidencias se derivan de los filtros y se pueden reproducir.",
+        "properties": {
+          "filters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "indicators": {
+            "items": {
+              "$ref": "#/components/schemas/Indicator"
+            },
+            "title": "Indicators",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/FilteredItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "rows": {
+            "title": "Rows",
+            "type": "integer"
+          },
+          "total_rows": {
+            "title": "Total Rows",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "filters",
+          "rows",
+          "total_rows",
+          "items",
+          "indicators"
+        ],
+        "title": "DashboardFilterResult",
+        "type": "object"
+      },
+      "DashboardItem": {
+        "additionalProperties": false,
+        "description": "Elemento publicado que el dashboard puede mostrar (sin cifras: sólo su forma).\nFase 26: también indicadores, distribuciones y relaciones que calcula el dashboard.",
+        "properties": {
+          "classification": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
+          "figures": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Figures",
+            "type": "array"
+          },
+          "filterable": {
+            "default": false,
+            "title": "Filterable",
+            "type": "boolean"
+          },
+          "groups": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Groups"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "title": "Kind",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "insight",
+              "exploration",
+              "computed"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          },
+          "trace": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/Trace"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "widgets": {
+            "items": {
+              "enum": [
+                "kpi",
+                "bar",
+                "line",
+                "heatmap",
+                "pie",
+                "table",
+                "histogram",
+                "scatter"
+              ],
+              "type": "string"
+            },
+            "title": "Widgets",
+            "type": "array"
+          }
+        },
+        "required": [
+          "id",
+          "origin",
+          "title",
+          "kind",
+          "widgets",
+          "figures"
+        ],
+        "title": "DashboardItem",
         "type": "object"
       },
       "DashboardScope": {
@@ -3002,6 +3412,21 @@
                 "type": "null"
               }
             ]
+          },
+          "custom": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DashboardCustomization"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "custom_dropped": {
+            "default": 0,
+            "title": "Custom Dropped",
+            "type": "integer"
           },
           "dashboard": {
             "anyOf": [
@@ -3103,7 +3528,9 @@
               "line",
               "heatmap",
               "pie",
-              "table"
+              "table",
+              "histogram",
+              "scatter"
             ],
             "title": "Type",
             "type": "string"
@@ -3479,6 +3906,33 @@
           "automatic_role"
         ],
         "title": "DictionaryEntry",
+        "type": "object"
+      },
+      "DimensionFilter": {
+        "additionalProperties": false,
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "more": {
+            "default": 0,
+            "title": "More",
+            "type": "integer"
+          },
+          "values": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Values",
+            "type": "array"
+          }
+        },
+        "required": [
+          "column",
+          "values"
+        ],
+        "title": "DimensionFilter",
         "type": "object"
       },
       "DimensionInfo": {
@@ -4802,7 +5256,9 @@
               "correlation_by_group",
               "evolution",
               "period_change",
-              "outliers"
+              "outliers",
+              "distribution",
+              "scatter"
             ],
             "title": "Kind",
             "type": "string"
@@ -5314,6 +5770,69 @@
         "title": "Filter",
         "type": "object"
       },
+      "FilterOptions": {
+        "additionalProperties": false,
+        "properties": {
+          "dimensions": {
+            "items": {
+              "$ref": "#/components/schemas/DimensionFilter"
+            },
+            "title": "Dimensions",
+            "type": "array"
+          },
+          "months": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Months",
+            "type": "array"
+          },
+          "period_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Period Columns",
+            "type": "array"
+          }
+        },
+        "title": "FilterOptions",
+        "type": "object"
+      },
+      "FilteredItem": {
+        "additionalProperties": false,
+        "properties": {
+          "item": {
+            "title": "Item",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "result": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ExploreResult"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "item"
+        ],
+        "title": "FilteredItem",
+        "type": "object"
+      },
       "Finding": {
         "properties": {
           "affected_rows": {
@@ -5767,6 +6286,157 @@
           "reason"
         ],
         "title": "Grain",
+        "type": "object"
+      },
+      "Indicator": {
+        "additionalProperties": false,
+        "description": "Indicador del resumen ejecutivo (Fase 26): nombre, valor, unidad declarada, periodo de\nreferencia, comparación y procedencia. Nunca inventa monedas ni unidades.",
+        "properties": {
+          "comparison": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/IndicatorComparison"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "highlight": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Highlight"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "item": {
+            "title": "Item",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "reference": {
+            "title": "Reference",
+            "type": "string"
+          },
+          "trace": {
+            "$ref": "#/components/schemas/Trace"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "id",
+          "item",
+          "name",
+          "value",
+          "reference",
+          "evidence_id",
+          "trace"
+        ],
+        "title": "Indicator",
+        "type": "object"
+      },
+      "IndicatorComparison": {
+        "additionalProperties": false,
+        "description": "Último mes con datos frente al anterior: sólo cuando hay una base válida (al menos dos\nmeses con datos); las cifras salen del motor.",
+        "properties": {
+          "change": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          },
+          "change_percent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Percent"
+          },
+          "current": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Current"
+          },
+          "evidence_id": {
+            "title": "Evidence Id",
+            "type": "string"
+          },
+          "label": {
+            "title": "Label",
+            "type": "string"
+          },
+          "previous": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Previous"
+          }
+        },
+        "required": [
+          "label",
+          "previous",
+          "current",
+          "change",
+          "change_percent",
+          "evidence_id"
+        ],
+        "title": "IndicatorComparison",
         "type": "object"
       },
       "IngestionSummary": {
@@ -10991,6 +11661,130 @@
         "title": "TokenCount",
         "type": "object"
       },
+      "Trace": {
+        "additionalProperties": false,
+        "description": "Origen reproducible de un gráfico (Fase 26): la investigación o el cálculo que lo produce\ny sus parámetros.",
+        "properties": {
+          "aggregation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Aggregation"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "filters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "grouping": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Grouping",
+            "type": "array"
+          },
+          "investigation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Investigation"
+          },
+          "measure": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Measure"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "operation": {
+            "title": "Operation",
+            "type": "string"
+          },
+          "period_columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Period Columns",
+            "type": "array"
+          },
+          "question": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Question"
+          },
+          "rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows"
+          },
+          "source": {
+            "enum": [
+              "investigation",
+              "analysis",
+              "dashboard"
+            ],
+            "title": "Source",
+            "type": "string"
+          },
+          "total_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Rows"
+          }
+        },
+        "required": [
+          "source",
+          "operation",
+          "method"
+        ],
+        "title": "Trace",
+        "type": "object"
+      },
       "UpdateProjectRequest": {
         "additionalProperties": false,
         "properties": {
@@ -11585,7 +12379,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.33.0"
+    "version": "0.34.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -17011,6 +17805,181 @@
         ]
       }
     },
+    "/api/v1/versions/{version_id}/dashboard/custom": {
+      "post": {
+        "description": "Fase 26: guarda la versión personalizada del dashboard (secciones, orden, gráficos\nvisibles, indicadores destacados y títulos) como una revisión nueva. La versión automática\nno cambia. 409 si la revisión esperada no es la vigente.",
+        "operationId": "saveDashboardCustomization",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardCustomizationRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Save Dashboard Customization",
+        "tags": [
+          "Entrega"
+        ]
+      }
+    },
     "/api/v1/versions/{version_id}/dashboard/feedback": {
       "post": {
         "description": "Marca opcional de un elemento («keep», «drop» o «none»). No recalcula nada: reordena el\ndashboard y encola una versión nueva del informe con ese orden.",
@@ -17181,6 +18150,181 @@
           }
         ],
         "summary": "Judge Finding",
+        "tags": [
+          "Entrega"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/dashboard/filter": {
+      "post": {
+        "description": "Fase 26: recalcula, con el motor exacto y sobre todas las filas que cumplen los filtros\n(meses y valores de dimensiones), los indicadores y los gráficos que dependen de ellos. No\nguarda nada ni cambia el dashboard.",
+        "operationId": "filterDashboard",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DashboardFilterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DashboardFilterResult"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Filter Dashboard",
         "tags": [
           "Entrega"
         ]

@@ -539,6 +539,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/versions/{version_id}/dashboard/custom": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save Dashboard Customization
+         * @description Fase 26: guarda la versión personalizada del dashboard (secciones, orden, gráficos
+         *     visibles, indicadores destacados y títulos) como una revisión nueva. La versión automática
+         *     no cambia. 409 si la revisión esperada no es la vigente.
+         */
+        post: operations["saveDashboardCustomization"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/versions/{version_id}/dashboard/feedback": {
         parameters: {
             query?: never;
@@ -554,6 +576,28 @@ export interface paths {
          *     dashboard y encola una versión nueva del informe con ese orden.
          */
         post: operations["judgeFinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/dashboard/filter": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Filter Dashboard
+         * @description Fase 26: recalcula, con el motor exacto y sobre todas las filas que cumplen los filtros
+         *     (meses y valores de dimensiones), los indicadores y los gráficos que dependen de ellos. No
+         *     guarda nada ni cambia el dashboard.
+         */
+        post: operations["filterDashboard"];
         delete?: never;
         options?: never;
         head?: never;
@@ -1657,6 +1701,13 @@ export interface components {
             /** Top */
             top: components["schemas"]["Frequency"][];
         };
+        /** CategoryFilter */
+        CategoryFilter: {
+            /** Column */
+            column: string;
+            /** Values */
+            values: string[];
+        };
         /** ColumnChange */
         ColumnChange: {
             /** After */
@@ -2035,6 +2086,24 @@ export interface components {
              */
             name: "magnitude" | "business" | "quality" | "consistency" | "evidence" | "limitations";
         };
+        /** CustomSection */
+        CustomSection: {
+            /** Title */
+            title: string;
+            /** Widgets */
+            widgets: components["schemas"]["CustomWidget"][];
+        };
+        /** CustomWidget */
+        CustomWidget: {
+            /** Evidence Id */
+            evidence_id?: string | null;
+            /** Item */
+            item: string;
+            /** Title */
+            title?: string | null;
+            /** Type */
+            type: string;
+        };
         /** Dashboard */
         Dashboard: {
             /** Ai Reason */
@@ -2048,6 +2117,8 @@ export interface components {
             calls?: {
                 [key: string]: unknown;
             }[];
+            /** Computed */
+            computed?: components["schemas"]["ExploreResult"][];
             /** Decisions */
             decisions?: components["schemas"]["DesignDecision"][];
             /**
@@ -2055,18 +2126,27 @@ export interface components {
              * @enum {string}
              */
             designed_by: "ai" | "rules";
+            filters?: components["schemas"]["FilterOptions"] | null;
+            /** Indicators */
+            indicators?: components["schemas"]["Indicator"][];
+            /** Items */
+            items?: components["schemas"]["DashboardItem"][];
+            /** Notice */
+            notice?: string | null;
             /**
              * Operation
              * @default delivery.dashboard@1
-             * @constant
+             * @enum {string}
              */
-            operation: "delivery.dashboard@1";
+            operation: "delivery.dashboard@1" | "delivery.dashboard@2";
+            /** Partial */
+            partial?: string | null;
             /**
              * Rules Version
              * @default dashboard-design-v1
-             * @constant
+             * @enum {string}
              */
-            rules_version: "dashboard-design-v1";
+            rules_version: "dashboard-design-v1" | "dashboard-design-v2";
             /**
              * Schema Version
              * @default 1
@@ -2078,6 +2158,99 @@ export interface components {
             sections: components["schemas"]["DashboardSection"][];
             /** Title */
             title: string;
+            /** Total Rows */
+            total_rows?: number | null;
+        };
+        /** DashboardCustomization */
+        DashboardCustomization: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Dashboard Execution Id
+             * Format: uuid
+             */
+            dashboard_execution_id: string;
+            /** Revision */
+            revision: number;
+            /** Sections */
+            sections: components["schemas"]["CustomSection"][];
+        };
+        /**
+         * DashboardCustomizationRequest
+         * @description Guarda la versión personalizada: secciones en su orden, sólo los gráficos visibles (los
+         *     ocultos no van), los indicadores destacados y los títulos. `expected_revision` es la
+         *     revisión que se editó (0 si no había ninguna).
+         */
+        DashboardCustomizationRequest: {
+            /** Expected Revision */
+            expected_revision: number;
+            /** Sections */
+            sections: components["schemas"]["CustomSection"][];
+        };
+        /**
+         * DashboardFilterRequest
+         * @description Filtros del dashboard (Fase 26): un rango de meses («AAAA-MM», ambos incluidos) y valores
+         *     de hasta tres dimensiones.
+         */
+        DashboardFilterRequest: {
+            /** Categories */
+            categories?: components["schemas"]["CategoryFilter"][];
+            /** Period From */
+            period_from?: string | null;
+            /** Period To */
+            period_to?: string | null;
+        };
+        /**
+         * DashboardFilterResult
+         * @description Los elementos recalculados con los filtros sobre todas las filas que los cumplen. No se
+         *     guarda: las evidencias se derivan de los filtros y se pueden reproducir.
+         */
+        DashboardFilterResult: {
+            /** Filters */
+            filters: string[];
+            /** Indicators */
+            indicators: components["schemas"]["Indicator"][];
+            /** Items */
+            items: components["schemas"]["FilteredItem"][];
+            /** Rows */
+            rows: number;
+            /** Total Rows */
+            total_rows: number;
+        };
+        /**
+         * DashboardItem
+         * @description Elemento publicado que el dashboard puede mostrar (sin cifras: sólo su forma).
+         *     Fase 26: también indicadores, distribuciones y relaciones que calcula el dashboard.
+         */
+        DashboardItem: {
+            /** Classification */
+            classification?: string | null;
+            /** Figures */
+            figures: string[];
+            /**
+             * Filterable
+             * @default false
+             */
+            filterable: boolean;
+            /** Groups */
+            groups?: number | null;
+            /** Id */
+            id: string;
+            /** Kind */
+            kind: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "insight" | "exploration" | "computed";
+            /** Title */
+            title: string;
+            trace?: components["schemas"]["Trace"] | null;
+            /** Widgets */
+            widgets: ("kpi" | "bar" | "line" | "heatmap" | "pie" | "table" | "histogram" | "scatter")[];
         };
         /** DashboardScope */
         DashboardScope: {
@@ -2112,6 +2285,12 @@ export interface components {
          */
         DashboardView: {
             arrangement?: components["schemas"]["Arrangement"] | null;
+            custom?: components["schemas"]["DashboardCustomization"] | null;
+            /**
+             * Custom Dropped
+             * @default 0
+             */
+            custom_dropped: number;
             dashboard?: components["schemas"]["Dashboard"] | null;
             /** Execution Id */
             execution_id?: string | null;
@@ -2141,7 +2320,7 @@ export interface components {
              * Type
              * @enum {string}
              */
-            type: "kpi" | "bar" | "line" | "heatmap" | "pie" | "table";
+            type: "kpi" | "bar" | "line" | "heatmap" | "pie" | "table" | "histogram" | "scatter";
         };
         /** DatasetProfile */
         DatasetProfile: {
@@ -2275,6 +2454,18 @@ export interface components {
             time_format?: ("day_month_year" | "month_day_year" | "year_month_day" | "year" | "month" | "year_month") | null;
             /** Updated At */
             updated_at?: string | null;
+        };
+        /** DimensionFilter */
+        DimensionFilter: {
+            /** Column */
+            column: string;
+            /**
+             * More
+             * @default 0
+             */
+            more: number;
+            /** Values */
+            values: string[];
         };
         /** DimensionInfo */
         DimensionInfo: {
@@ -2720,7 +2911,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "aggregate" | "crosstab" | "ratio" | "top" | "correlation_by_group" | "evolution" | "period_change" | "outliers";
+            kind: "aggregate" | "crosstab" | "ratio" | "top" | "correlation_by_group" | "evolution" | "period_change" | "outliers" | "distribution" | "scatter";
             /** Limit */
             limit?: number | null;
             /** Measure */
@@ -2865,6 +3056,23 @@ export interface components {
             operator: "eq" | "neq" | "in" | "not_in" | "gt" | "gte" | "lt" | "lte" | "between" | "is_null" | "is_not_null";
             /** Values */
             values?: string[];
+        };
+        /** FilterOptions */
+        FilterOptions: {
+            /** Dimensions */
+            dimensions?: components["schemas"]["DimensionFilter"][];
+            /** Months */
+            months?: string[];
+            /** Period Columns */
+            period_columns?: string[];
+        };
+        /** FilteredItem */
+        FilteredItem: {
+            /** Item */
+            item: string;
+            /** Reason */
+            reason?: string | null;
+            result?: components["schemas"]["ExploreResult"] | null;
         };
         /** Finding */
         Finding: {
@@ -3032,6 +3240,50 @@ export interface components {
             sentence: string;
             /** Unique */
             unique: boolean;
+        };
+        /**
+         * Indicator
+         * @description Indicador del resumen ejecutivo (Fase 26): nombre, valor, unidad declarada, periodo de
+         *     referencia, comparación y procedencia. Nunca inventa monedas ni unidades.
+         */
+        Indicator: {
+            comparison?: components["schemas"]["IndicatorComparison"] | null;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Highlight */
+            highlight?: string | null;
+            /** Id */
+            id: string;
+            /** Item */
+            item: string;
+            /** Name */
+            name: string;
+            /** Reference */
+            reference: string;
+            trace: components["schemas"]["Trace"];
+            /** Unit */
+            unit?: string | null;
+            /** Value */
+            value: string | null;
+        };
+        /**
+         * IndicatorComparison
+         * @description Último mes con datos frente al anterior: sólo cuando hay una base válida (al menos dos
+         *     meses con datos); las cifras salen del motor.
+         */
+        IndicatorComparison: {
+            /** Change */
+            change: string | null;
+            /** Change Percent */
+            change_percent: string | null;
+            /** Current */
+            current: string | null;
+            /** Evidence Id */
+            evidence_id: string;
+            /** Label */
+            label: string;
+            /** Previous */
+            previous: string | null;
         };
         /** IngestionSummary */
         IngestionSummary: {
@@ -4983,6 +5235,42 @@ export interface components {
             token: string;
             /** Variants */
             variants?: string[];
+        };
+        /**
+         * Trace
+         * @description Origen reproducible de un gráfico (Fase 26): la investigación o el cálculo que lo produce
+         *     y sus parámetros.
+         */
+        Trace: {
+            /** Aggregation */
+            aggregation?: string | null;
+            /** Columns */
+            columns?: string[];
+            /** Filters */
+            filters?: string[];
+            /** Grouping */
+            grouping?: string[];
+            /** Investigation */
+            investigation?: string | null;
+            /** Measure */
+            measure?: string | null;
+            /** Method */
+            method: string;
+            /** Operation */
+            operation: string;
+            /** Period Columns */
+            period_columns?: string[];
+            /** Question */
+            question?: string | null;
+            /** Rows */
+            rows?: number | null;
+            /**
+             * Source
+             * @enum {string}
+             */
+            source: "investigation" | "analysis" | "dashboard";
+            /** Total Rows */
+            total_rows?: number | null;
         };
         /** UpdateProjectRequest */
         UpdateProjectRequest: {
@@ -9075,6 +9363,133 @@ export interface operations {
             };
         };
     };
+    saveDashboardCustomization: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardCustomizationRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     judgeFinding: {
         parameters: {
             query?: never;
@@ -9099,6 +9514,133 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DashboardView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    filterDashboard: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardFilterRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DashboardFilterResult"];
                 };
             };
             /** @description Bad Request */

@@ -6,8 +6,17 @@ from uuid import UUID
 from fastapi import APIRouter, Response
 
 from dataflow.bootstrap.dependencies import CurrentIdentity, Dashboards, Delivery
-from dataflow.modules.curation.contracts import FindingFeedbackRequest
-from dataflow.modules.delivery.contracts import DashboardView, Progress, ReportView
+from dataflow.modules.curation.contracts import (
+    DashboardCustomizationRequest,
+    FindingFeedbackRequest,
+)
+from dataflow.modules.delivery.contracts import (
+    DashboardFilterRequest,
+    DashboardFilterResult,
+    DashboardView,
+    Progress,
+    ReportView,
+)
 
 router = APIRouter(prefix="/api/v1", tags=["Entrega"])
 
@@ -64,3 +73,37 @@ def judge_finding(
     """Marca opcional de un elemento («keep», «drop» o «none»). No recalcula nada: reordena el
     dashboard y encola una versión nueva del informe con ese orden."""
     return service.judge(identity.user.id, version_id, request)
+
+
+@router.post(
+    "/versions/{version_id}/dashboard/filter",
+    response_model=DashboardFilterResult,
+    operation_id="filterDashboard",
+)
+def filter_dashboard(
+    version_id: UUID,
+    request: DashboardFilterRequest,
+    identity: CurrentIdentity,
+    service: Dashboards,
+) -> DashboardFilterResult:
+    """Fase 26: recalcula, con el motor exacto y sobre todas las filas que cumplen los filtros
+    (meses y valores de dimensiones), los indicadores y los gráficos que dependen de ellos. No
+    guarda nada ni cambia el dashboard."""
+    return service.filter(identity.user.id, version_id, request)
+
+
+@router.post(
+    "/versions/{version_id}/dashboard/custom",
+    response_model=DashboardView,
+    operation_id="saveDashboardCustomization",
+)
+def save_dashboard_customization(
+    version_id: UUID,
+    request: DashboardCustomizationRequest,
+    identity: CurrentIdentity,
+    service: Dashboards,
+) -> DashboardView:
+    """Fase 26: guarda la versión personalizada del dashboard (secciones, orden, gráficos
+    visibles, indicadores destacados y títulos) como una revisión nueva. La versión automática
+    no cambia. 409 si la revisión esperada no es la vigente."""
+    return service.customize(identity.user.id, version_id, request)

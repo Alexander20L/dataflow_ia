@@ -527,6 +527,10 @@ def make_runner(
                 "delivery.dashboard@1": DashboardStep(
                     objects, make_copilot(db, provider, ai_config)
                 ),
+                # Fase 26: indicadores, filtros, origen y versión personalizada.
+                "delivery.dashboard@2": DashboardStep(
+                    objects, make_copilot(db, provider, ai_config)
+                ),
                 "exploration.explore@1": ExplorationStep(
                     objects, make_copilot(db, provider, ai_config)
                 ),

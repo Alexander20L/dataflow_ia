@@ -18,12 +18,12 @@ import { useApp } from "@/lib/providers";
 import { AutomaticAnalysisView } from "./automatic-analysis";
 import { AutomaticOverview } from "./automatic-overview";
 import { DeliverySummary } from "./delivery-summary";
-import { DashboardPanel } from "./dashboard";
 import { SourceReviewPanel } from "./source-review";
 import { InvestigationPanel } from "./investigation";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
 import { ComprehensionTab } from "@/features/comprehension/comprehension-tab";
+import { DashboardTab } from "@/features/dashboard/dashboard-tab";
 import { InvestigationTab } from "@/features/investigation/investigation-tab";
 import {
   DatasetTab,
@@ -35,7 +35,6 @@ import {
   useInvestigation,
   useProgress,
   useSourceReview,
-  useDashboard,
   useDiagnostic,
   usePreview,
   useUploadFile,
@@ -58,6 +57,7 @@ const TABS = [
   { id: "dataset", label: "Dataset" },
   { id: "comprehension", label: "Comprensión" },
   { id: "investigation", label: "Investigación" },
+  { id: "dashboard", label: "Dashboard" },
   { id: "analysis", label: "Análisis" },
 ] as const;
 type MainTab = (typeof TABS)[number]["id"];
@@ -158,7 +158,6 @@ export function CsvWorkspace({
   const investigation = useInvestigation(version);
   const progress = useProgress(version);
   const review = useSourceReview(version);
-  const dashboard = useDashboard(version);
   if (versions.isPending || loadingOutside)
     return (
       <div className="loading-screen" aria-label="Cargando versiones">
@@ -422,6 +421,21 @@ export function CsvWorkspace({
                     versionId={version.id}
                   />
                 </div>
+              ) : tab === "dashboard" ? (
+                <div
+                  id="workspace-panel-dashboard"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-dashboard"
+                >
+                  <DashboardTab
+                    key={`dashboard-tab-${version.id}`}
+                    versionId={version.id}
+                    onOpenRecords={() => {
+                      setDatasetSubview("records");
+                      setTab("dataset");
+                    }}
+                  />
+                </div>
               ) : (
                 <div
                   id="workspace-panel-analysis"
@@ -434,13 +448,6 @@ export function CsvWorkspace({
                       versionId={version.id}
                       progress={progress.data}
                       analysis={automatic.data}
-                    />
-                  )}
-                  {dashboard.data && (
-                    <DashboardPanel
-                      key={`dashboard-${version.id}`}
-                      view={dashboard.data}
-                      versionId={version.id}
                     />
                   )}
                   {review.data && (
