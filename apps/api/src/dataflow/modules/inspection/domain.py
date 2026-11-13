@@ -120,8 +120,29 @@ NON_NEGATIVE_WORDS = frozenset(
         "duration",
         "asistencia",
         "attendance",
+        # Fase 28
+        "dias",
+        "ausencia",
+        "ausencias",
+        "faltas",
+        "tardanzas",
+        "antiguedad",
     }
 )
+# Fase 28: escalas de valoración (se reconocen por el nombre y se acotan por los valores).
+RATING_WORDS = frozenset(
+    {
+        "evaluacion",
+        "puntuacion",
+        "puntaje",
+        "calificacion",
+        "valoracion",
+        "satisfaccion",
+        "rating",
+        "score",
+    }
+)
+RATING_SCALES = [(1, 5), (0, 5), (1, 10), (0, 10)]
 ORDINAL_WORDS = frozenset(
     {
         "ciclo",
@@ -334,10 +355,21 @@ def domain_kind(name: str) -> tuple[str, str] | None:
     found = set(words(name))
     if found & PERCENT_WORDS or "%" in name:
         return "percent", "El nombre indica un porcentaje: se espera un valor entre 0 y 100."
+    if found & RATING_WORDS:
+        word = sorted(found & RATING_WORDS)[0]
+        return "rating", f"El nombre indica una escala de valoración («{word}»)"
     if found & NON_NEGATIVE_WORDS:
         word = sorted(found & NON_NEGATIVE_WORDS)[0]
         return "non_negative", f"El nombre indica una cantidad («{word}»): no se espera negativa."
     return None
+
+
+def rating_scale(minimum: float, maximum: float) -> tuple[int, int] | None:
+    """La escala de valoración más estrecha que contiene todos los valores (1–5, 0–5, 1–10 u
+    0–10); None si los valores no caben en ninguna."""
+    return next(
+        ((low, high) for low, high in RATING_SCALES if low <= minimum and maximum <= high), None
+    )
 
 
 def ordinal_hint(

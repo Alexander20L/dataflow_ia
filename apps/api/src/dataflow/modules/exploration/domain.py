@@ -11,6 +11,7 @@ from typing import get_args
 
 from dataflow.modules.comprehension.contracts import Comprehension
 from dataflow.modules.exploration.contracts import (
+    RULE_KINDS,
     Aggregation,
     ExploreQuery,
     QueryKind,
@@ -64,6 +65,12 @@ class Catalog:
         self.groupable = {d.column for d in comprehension.dimensions if d.groupable} or set(
             self.dimensions
         )
+        # Fase 28 (`explore-v3`): columnas de dos valores (tasas) y fechas que describen al
+        # registro (cohortes por año).
+        self.dichotomous = [
+            d.column for d in comprehension.dimensions if d.distinct == 2 and d.column in scales
+        ]
+        self.dated = [d.column for d in comprehension.dated_attributes]
 
     def kinds(self) -> dict[str, str]:
         """Catálogo de tipos que se ofrece a la IA (los temporales sólo con periodo)."""
@@ -100,6 +107,13 @@ def title(query: ExploreQuery) -> str:
         base = f"Distribución de {query.measure}"
     elif query.kind == "scatter":
         base = f"Relación entre {query.measure} y {query.measure_b}"
+    elif query.kind == "rate":
+        category = (
+            f"«{query.target_value}»" if query.target_value else "la categoría menos frecuente"
+        )
+        base = f"Proporción de {category} en {query.target}" + (f" por {dims}" if dims else "")
+    elif query.kind == "cohort":
+        base = f"Registros por año de {query.target}"
     elif query.kind == "top":
         what = (
             "registros"
@@ -120,6 +134,8 @@ def validate(
     raw: RawQuery, catalog: Catalog, done: set[str]
 ) -> tuple[ExploreQuery | None, str | None]:
     """Convierte una propuesta en consulta válida o explica por qué se rechaza."""
+    if raw.kind in RULE_KINDS:
+        return validate_rule_kind(raw, catalog, done)
     if raw.kind not in get_args(QueryKind) or raw.kind not in {**KINDS, **TEMPORAL}:
         return None, f"«{raw.kind}» no es un tipo de consulta del catálogo."
     dims = list(raw.dimensions)
@@ -199,6 +215,39 @@ def validate(
         if kind == "period_change"
         else None,
     )
+    if query.key in done:
+        return None, "Ya se exploró."
+    return query, None
+
+
+def validate_rule_kind(
+    raw: RawQuery, catalog: Catalog, done: set[str]
+) -> tuple[ExploreQuery | None, str | None]:
+    """Fase 28: `rate` (proporción de una categoría de una columna de dos valores, en total o
+    por una dimensión) y `cohort` (registros por año de una fecha que describe al registro)."""
+    if (
+        raw.measure is not None
+        or raw.measure_b is not None
+        or raw.aggregation not in {None, "count"}
+    ):
+        return None, "Este tipo no lleva medida ni agregación."
+    if raw.filter_column is not None or raw.filter_value is not None:
+        return None, "Este tipo no admite filtros."
+    dims = list(raw.dimensions)
+    if raw.kind == "rate":
+        if raw.target not in catalog.dichotomous:
+            return None, f"«{raw.target}» no es una columna de dos valores."
+        if len(dims) > 1 or (dims and (dims[0] not in catalog.dimensions or dims[0] == raw.target)):
+            return None, "Una tasa se calcula en total o por otra dimensión."
+        query = ExploreQuery(
+            kind="rate", dimensions=dims, target=raw.target, target_value=raw.target_value
+        )
+    else:
+        if raw.target not in catalog.dated:
+            return None, f"«{raw.target}» no es una fecha que describa al registro."
+        if dims:
+            return None, "Una cohorte no lleva dimensiones."
+        query = ExploreQuery(kind="cohort", aggregation="count", target=raw.target)
     if query.key in done:
         return None, "Ya se exploró."
     return query, None

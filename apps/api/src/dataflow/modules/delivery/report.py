@@ -665,7 +665,9 @@ def rules_conclusions(
         if item.item in results:
             result = results[item.item]
             first = result.rows[0] if result.rows else None
-            figure = first.figures[-1] if first and first.figures else None
+            # La tasa (Fase 28) lleva la proporción primero; el resto, la cifra principal al final.
+            position = 0 if result.query.kind == "rate" else -1
+            figure = first.figures[position] if first and first.figures else None
             group = f" en {' · '.join(first.groups)}" if first and first.groups else ""
             conclusions.append(
                 f"{result.title}: {figure.label}{group} = {es(figure.value)} "
@@ -683,6 +685,8 @@ def rules_conclusions(
                 "casos reales.",
                 "correlation_by_group": "Validar con conocimiento del negocio la asociación "
                 "encontrada: no implica una causa.",
+                "rate": "Revisar los grupos con la tasa más alta y comprobar que tienen casos "
+                "suficientes antes de actuar: una diferencia de tasas no explica su causa.",
             }.get(kind, "Evaluar la dependencia de los grupos que concentran el resultado.")
             if text not in recommendations:
                 recommendations.append(text)

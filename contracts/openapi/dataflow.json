@@ -1944,6 +1944,32 @@
             "title": "Count",
             "type": "integer"
           },
+          "date_role": {
+            "anyOf": [
+              {
+                "enum": [
+                  "events",
+                  "attribute"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Role"
+          },
+          "date_role_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Date Role Reason"
+          },
           "dichotomous": {
             "default": false,
             "title": "Dichotomous",
@@ -2494,6 +2520,13 @@
             "title": "Corrected Columns",
             "type": "array"
           },
+          "dated_attributes": {
+            "items": {
+              "$ref": "#/components/schemas/DatedAttribute"
+            },
+            "title": "Dated Attributes",
+            "type": "array"
+          },
           "dimensions": {
             "items": {
               "$ref": "#/components/schemas/DimensionInfo"
@@ -2603,11 +2636,12 @@
             "type": "array"
           },
           "rules_version": {
-            "default": "business-comprehension-v3",
+            "default": "business-comprehension-v4",
             "enum": [
               "business-comprehension-v1",
               "business-comprehension-v2",
-              "business-comprehension-v3"
+              "business-comprehension-v3",
+              "business-comprehension-v4"
             ],
             "title": "Rules Version",
             "type": "string"
@@ -3612,6 +3646,68 @@
           "columns"
         ],
         "title": "DatasetProfile",
+        "type": "object"
+      },
+      "DatedAttribute": {
+        "additionalProperties": false,
+        "description": "Fase 28 (`date-role-v1`): una fecha que describe a cada registro (p. ej. la fecha de\ningreso de un empleado). No es una línea de tiempo: no hay evolución mensual, sólo registros\npor año.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "first": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "First"
+          },
+          "last": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Last"
+          },
+          "per_year": {
+            "items": {
+              "maxItems": 2,
+              "minItems": 2,
+              "prefixItems": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ],
+              "type": "array"
+            },
+            "title": "Per Year",
+            "type": "array"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "column",
+          "first",
+          "last",
+          "per_year",
+          "reason"
+        ],
+        "title": "DatedAttribute",
         "type": "object"
       },
       "DesignDecision": {
@@ -4844,7 +4940,8 @@
             "default": "exploration.explore@1",
             "enum": [
               "exploration.explore@1",
-              "exploration.explore@2"
+              "exploration.explore@2",
+              "exploration.explore@3"
             ],
             "title": "Operation",
             "type": "string"
@@ -4879,7 +4976,8 @@
             "default": "explore-v1",
             "enum": [
               "explore-v1",
-              "investigation-v2"
+              "investigation-v2",
+              "investigation-v3"
             ],
             "title": "Rules Version",
             "type": "string"
@@ -5259,7 +5357,9 @@
               "period_change",
               "outliers",
               "distribution",
-              "scatter"
+              "scatter",
+              "rate",
+              "cohort"
             ],
             "title": "Kind",
             "type": "string"
@@ -5298,6 +5398,28 @@
               }
             ],
             "title": "Measure B"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target"
+          },
+          "target_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Target Value"
           }
         },
         "required": [
@@ -5904,6 +6026,7 @@
             "enum": [
               "dataset-inspection-v1",
               "dataset-inspection-v2",
+              "dataset-inspection-v3",
               "automatic-quality-v1"
             ],
             "title": "Source",
@@ -6665,10 +6788,11 @@
             "type": "string"
           },
           "rules": {
-            "default": "dataset-inspection-v2",
+            "default": "dataset-inspection-v3",
             "enum": [
               "dataset-inspection-v1",
-              "dataset-inspection-v2"
+              "dataset-inspection-v2",
+              "dataset-inspection-v3"
             ],
             "title": "Rules",
             "type": "string"
@@ -12527,7 +12651,8 @@
           "kind": {
             "enum": [
               "percent",
-              "non_negative"
+              "non_negative",
+              "rating"
             ],
             "title": "Kind",
             "type": "string"
@@ -13063,7 +13188,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.35.0"
+    "version": "0.36.0"
   },
   "openapi": "3.1.0",
   "paths": {

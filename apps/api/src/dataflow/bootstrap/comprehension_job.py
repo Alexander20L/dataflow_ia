@@ -34,6 +34,7 @@ from dataflow.modules.comprehension.contracts import (
     Comprehension,
     ComprehensionScope,
     ComprehensionView,
+    DatedAttribute,
     DimensionInfo,
     Entity,
     FeedbackRequest,
@@ -69,6 +70,8 @@ from dataflow.modules.comprehension.measures import (
     dependencies,
     distinct_counts,
     distinct_values,
+    month_counts,
+    per_year,
     same_entities,
     thresholds,
     weighted_sums,
@@ -99,9 +102,12 @@ from dataflow.modules.projects.public import ProjectPermissions
 from dataflow.modules.understanding.contracts import AnalyticalInterpretation, DatasetProfile
 from dataflow.platform.canonical import digest
 from dataflow.platform.errors import ApplicationError
+from dataflow.platform.timing import date_role, explain
 
 STEP = "comprehension.understand"
-RULES = "business-comprehension-v3"
+RULES = "business-comprehension-v4"
+V3 = "business-comprehension-v3"
+GROUNDED = {V3, RULES}  # versiones con grano, fórmulas y significados (Fase 24)
 
 
 def source_key(file_name: str, plan: dict[str, Any]) -> str:
@@ -361,6 +367,7 @@ class Understood:
     dimensions: list[DimensionInfo] = field(default_factory=list)
     period: Period | None = None
     structural: list[Relationship] = field(default_factory=list)
+    dated: list[DatedAttribute] = field(default_factory=list)
     pairs: set[frozenset[str]] = field(default_factory=set)
 
 
@@ -371,6 +378,7 @@ def understand(
     dimensions: list[str],
     hidden: set[str],
     verdicts: dict[str, Verdict],
+    v4: bool = False,
 ) -> Understood:
     """Grano, columnas calculadas (sumas ponderadas, productos ya comprobados por la
     interpretación y umbrales), misma entidad 1:1, periodo, medidas y dimensiones."""
@@ -416,11 +424,30 @@ def understand(
         if role in {"identifier", "dimension", "text"} and name not in hidden
     ]
     period = None
+    dated: list[DatedAttribute] = []
+    found_grain = grain([(k.columns, k.unique) for k in analysis.keys]) if analysis else grain([])
     if analysis is not None and analysis.time is not None:
         axis = analysis.time
-        period = period_of(
-            axis.kind, axis.columns, axis.first, axis.last, axis.periods, axis.missing_count
-        )
+        per_month = month_counts(table, axis.kind, axis.columns)
+        # Fase 28: una fecha que describe a la entidad no es una línea de tiempo.
+        # La clave de una entidad no incluye el periodo: con una fila por mes (clave Año + Mes)
+        # la tabla es una serie temporal, no un padrón.
+        entity = any(k.unique and not set(k.columns) & set(axis.columns) for k in analysis.keys)
+        role = date_role(entity, list(per_month.values())) if v4 else "events"
+        if role == "attribute":
+            dated.append(
+                DatedAttribute(
+                    column=axis.columns[0],
+                    first=axis.first,
+                    last=axis.last,
+                    per_year=per_year(per_month),
+                    reason=explain(role, axis.columns[0], list(per_month.values())),
+                )
+            )
+        else:
+            period = period_of(
+                axis.kind, axis.columns, axis.first, axis.last, axis.periods, axis.missing_count
+            )
     current = dict(roles)
     columns = (
         [
@@ -431,7 +458,8 @@ def understand(
         else []
     )
     return Understood(
-        grain=grain([(k.columns, k.unique) for k in analysis.keys]) if analysis else grain([]),
+        grain=found_grain,
+        dated=dated,
         formulas=formulas,
         measures=measure_infos(columns, derived),
         dimensions=dimension_infos(dimensions, counts, derived),
@@ -536,7 +564,8 @@ class ComprehensionStep:
         personal: list[str] = []
         v2 = "column_ids" in given
         # Fase 24: grano, fórmulas, misma entidad, periodo, medidas y dimensiones.
-        v3 = (plan.content["steps"][0].get("parameters") or {}).get("rules") == RULES
+        rules_asked = (plan.content["steps"][0].get("parameters") or {}).get("rules")
+        v3 = rules_asked in GROUNDED
         if v2:
             # Fase 23: la clasificación de la pestaña Dataset con las correcciones fijadas.
             columns = classify_table(table, [UUID(i) for i in given["column_ids"]], profile)
@@ -641,7 +670,9 @@ class ComprehensionStep:
         verdicts = {str(k): v for k, v in given.get("verdicts", [])}
         understood = Understood()
         if v3:
-            understood = understand(table, analysis, roles, dimensions, hidden, verdicts)
+            understood = understand(
+                table, analysis, roles, dimensions, hidden, verdicts, rules_asked == RULES
+            )
             if understood.formulas:
                 limitations.append(
                     "Las columnas calculadas a partir de otras ("
@@ -650,7 +681,7 @@ class ComprehensionStep:
                     "se proponen como hallazgos."
                 )
         result = Comprehension(
-            rules_version=RULES
+            rules_version=(rules_asked if rules_asked in GROUNDED else V3)
             if v3
             else ("business-comprehension-v2" if v2 else "business-comprehension-v1"),
             scope=ComprehensionScope(
@@ -688,6 +719,7 @@ class ComprehensionStep:
             measures=understood.measures,
             dimensions=understood.dimensions,
             period=understood.period,
+            dated_attributes=understood.dated,
         )
         prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
         stored = self.objects.put(f"{prefix}/comprehension.json", result.model_dump_json().encode())
@@ -799,7 +831,7 @@ class ComprehensionAccess:
                 state="failed", execution_id=run.id, reason=run.error_code or "cancelled"
             )
         feedback = self.feedback.for_version(owner, version)
-        if result.rules_version == RULES:
+        if result.rules_version in GROUNDED:
             assert run.plan
             source = str(run.plan.content["input"]["source_key"])
             result = current(
@@ -836,7 +868,7 @@ class ComprehensionAccess:
         self.feedback.add(
             owner, run.project_id, version, source, request.relationship_key, request.verdict
         )
-        if result.rules_version == RULES:
+        if result.rules_version in GROUNDED:
             # Fase 24: la valoración cuenta ya (no sólo en la siguiente carga).
             request_exploration_update(
                 self.executions,

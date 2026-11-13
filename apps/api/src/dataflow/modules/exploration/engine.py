@@ -113,6 +113,10 @@ def compute(
         return compute_distribution(content, query, execution)
     if query.kind == "scatter":
         return compute_scatter(content, query, execution)
+    if query.kind == "rate":
+        return compute_rate(content, query, execution)
+    if query.kind == "cohort":
+        return compute_cohort(content, query, execution)
     names = [
         *query.dimensions,
         *[m for m in (query.measure, query.measure_b) if m],
@@ -226,7 +230,12 @@ def build(
         figures = figures[: query.limit]
     total_groups = len(figures)
     kept = figures[:MAX_GROUPS]
-    first = {"evolution": ["Periodo"], "distribution": ["Intervalo"], "scatter": ["Fila"]}
+    first = {
+        "evolution": ["Periodo"],
+        "distribution": ["Intervalo"],
+        "scatter": ["Fila"],
+        "cohort": ["Año"],
+    }
     headers = [
         *first.get(query.kind, query.dimensions),
         *[label for label, _ in (kept[0][2] if kept else [])],
@@ -610,3 +619,87 @@ def subset(
     buffer = io.BytesIO()
     filtered.write_parquet(buffer)
     return buffer.getvalue(), filtered.height, total
+
+
+# --- Fase 28 (explore-v3): tasas y cohortes ------------------------------------------------------
+
+TWO = Decimal("0.01")
+YEAR = re.compile(r"^(\d{4})")
+
+
+def compute_rate(content: bytes, query: ExploreQuery, execution: str) -> ExploreResult | str:
+    """Proporción de una categoría de una columna de dos valores, en total o por grupo. Sin
+    categoría pedida se cuenta la menos frecuente (en empate, la primera en orden alfabético),
+    que suele ser el caso que interesa (bajas, rechazos, impagos)."""
+    assert query.target
+    data = columns(content, [query.target, *query.dimensions])
+    target = data[query.target]
+    present = [str(v) for v in target if v is not None]
+    values = sorted(set(present))
+    if len(values) != 2:
+        return f"{query.target} no tiene exactamente dos valores."
+    category = query.target_value or min(values, key=lambda v: (present.count(v), v))
+    if category not in values:
+        return f"{query.target} no tiene el valor «{category}»."
+    groups: dict[tuple[str, ...], list[int]] = defaultdict(list)
+    for i, value in enumerate(target):
+        if value is None:
+            continue
+        labels = tuple(data[d][i] for d in query.dimensions)
+        if any(label is None for label in labels):
+            continue
+        groups[tuple(str(label) for label in labels)].append(i)
+    if not groups:
+        return "Ninguna fila tiene valor en las columnas pedidas."
+    figures: Figures = []
+    for labels, members in groups.items():
+        cases = sum(1 for i in members if str(target[i]) == category)
+        share = (Decimal(cases) * 100 / len(members)).quantize(TWO)
+        # La proporción va primero: es la cifra que dibujan los gráficos y la que ordena.
+        figures.append(
+            (
+                labels,
+                len(members),
+                [
+                    (f"Proporción de «{category}» (%)", share),
+                    (f"Casos «{category}»", Decimal(cases)),
+                ],
+            )
+        )
+    figures.sort(key=lambda item: (-(item[2][0][1] or Decimal(0)), item[0]))
+    result = build(
+        query,
+        execution,
+        f"Casos con {query.target} = «{category}» sobre las filas con valor en "
+        f"{query.target}{' y en ' + ', '.join(query.dimensions) if query.dimensions else ''}; "
+        "porcentaje redondeado a 2 decimales.",
+        figures,
+        ordered=False,
+    )
+    return result.model_copy(
+        update={"title": title(query.model_copy(update={"target_value": category}))}
+    )
+
+
+def compute_cohort(content: bytes, query: ExploreQuery, execution: str) -> ExploreResult | str:
+    """Registros por año de una fecha que describe al registro (p. ej. ingresos por año)."""
+    assert query.target
+    data = columns(content, [query.target])
+    years: dict[str, int] = defaultdict(int)
+    for value in data[query.target]:
+        found = YEAR.match(str(value)) if value is not None else None
+        if found:
+            years[found.group(1)] += 1
+    if not years:
+        return f"{query.target} no tiene años reconocibles."
+    figures: Figures = [
+        ((year,), count, [("Registros", Decimal(count))]) for year, count in sorted(years.items())
+    ]
+    return build(
+        query,
+        execution,
+        f"Conteo exacto de registros por año de {query.target} (los años sin registros no "
+        "aparecen).",
+        figures,
+        ordered=False,
+    )

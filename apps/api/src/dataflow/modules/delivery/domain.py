@@ -588,7 +588,7 @@ def exploration_section(
     # Fase 25 (`investigation-v2`): cada resultado dice su pregunta, los registros considerados
     # y lo que se excluyó (p. ej. registros sin valor).
     nodes = {n.key: n for n in exploration.nodes if n.key}
-    investigated = exploration.rules_version == "investigation-v2"
+    investigated = exploration.rules_version in {"investigation-v2", "investigation-v3"}
     blocks = [
         ReportBlock(
             title=result.title,

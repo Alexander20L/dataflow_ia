@@ -14,7 +14,7 @@ origen de cada gráfico; los filtros; y la validación de la versión personaliz
 
 import re
 from collections.abc import Iterable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from decimal import Decimal
 
 from dataflow.modules.analytics.contracts import AutomaticEvidence, AutomaticInsight
@@ -148,6 +148,11 @@ def result_item(result: ExploreResult) -> DashboardItem:
         widgets = ["histogram", "bar"]
     if query.kind == "scatter" and len(result.rows) >= 2:
         widgets = ["scatter"]
+    # Fase 28: la tasa por grupo es un ranking de porcentajes; la cohorte, registros por año.
+    if query.kind == "rate" and dimensions == 1 and len(result.rows) >= 2:
+        widgets = ["bar"]
+    if query.kind == "cohort" and len(result.rows) >= 2:
+        widgets = ["bar", "line"]
     widgets.append("table")
     return DashboardItem(
         id=result_key(result),
@@ -378,11 +383,14 @@ OPERATIONS = {
     "outliers": "Valores atípicos",
     "distribution": "Histograma",
     "scatter": "Dispersión",
+    "rate": "Proporción de una categoría",
+    "cohort": "Registros por año",
 }
 AGGREGATION_WORDS = {"sum": "suma", "mean": "promedio", "median": "mediana", "count": "conteo"}
 CLASS_ORDER = {"relevant": 0, "secondary": 1, "descriptive": 2, "inconclusive": 3, "discarded": 4}
 MAX_DISTRIBUTIONS = 3
 MAX_SCATTERS = 2
+MAX_RATES = 2  # columnas de dos valores con su tasa como indicador (Fase 28)
 MAX_FILTER_DIMENSIONS = 3
 PARTIAL = {
     "paused": "la pausaste",
@@ -409,6 +417,10 @@ class DashboardPlan:
     distributions: list[ExploreQuery]
     scatters: list[ExploreQuery]
     filters: list[ExploreQuery]  # conteo por dimensión: los valores que se ofrecen
+    # Fase 28 (`explore-v3`): tasa de cada columna de dos valores y registros por año de una
+    # fecha que describe al registro.
+    rates: list[ExploreQuery] = field(default_factory=list)
+    cohorts: list[ExploreQuery] = field(default_factory=list)
 
     def queries(self) -> list[ExploreQuery]:
         found: dict[str, ExploreQuery] = {}
@@ -421,6 +433,8 @@ class DashboardPlan:
             *self.distributions,
             *self.scatters,
             *self.filters,
+            *self.rates,
+            *self.cohorts,
         ]:
             found.setdefault(query.key, query)
         return list(found.values())
@@ -497,6 +511,15 @@ def dashboard_plan(comprehension: Comprehension) -> DashboardPlan:
         filters=[
             ExploreQuery(kind="aggregate", aggregation="count", dimensions=[column])
             for column in groupable[:MAX_FILTER_DIMENSIONS]
+        ],
+        rates=[
+            ExploreQuery(kind="rate", target=d.column)
+            for d in comprehension.dimensions
+            if d.distinct == 2
+        ][:MAX_RATES],
+        cohorts=[
+            ExploreQuery(kind="cohort", aggregation="count", target=d.column)
+            for d in comprehension.dated_attributes[:1]
         ],
     )
 
@@ -603,6 +626,7 @@ def build_indicators(
         value: tuple[str, str],
         highlight: str | None = None,
         compared: IndicatorComparison | None = None,
+        unit: str | None = None,
     ) -> None:
         found.append(
             Indicator(
@@ -611,7 +635,7 @@ def build_indicators(
                 name=name,
                 value=value[0],
                 highlight=highlight,
-                unit=units.get(query.measure) if query.measure else None,
+                unit=unit or (units.get(query.measure) if query.measure else None),
                 reference=reference,
                 comparison=compared,
                 evidence_id=value[1],
@@ -646,6 +670,15 @@ def build_indicators(
                 figure,
                 highlight=top.rows[0].groups[0],
             )
+    # Fase 28: la tasa de cada columna de dos valores (el porcentaje lo calcula el motor).
+    for query in plan.rates:
+        rate = results.get(query.key)
+        if rate is None or not rate.rows or not rate.rows[0].figures:
+            continue
+        share = rate.rows[0].figures[0]
+        if share.value is None:
+            continue
+        add(query, rate.title, (share.value, share.evidence_id), unit="%")
     if plan.evolution is not None:
         series = results.get(plan.evolution.key)
         points = [

@@ -290,8 +290,10 @@ def test_upload_gets_a_dashboard_designed_by_the_fake_ai_and_marks_update_the_re
     assert [s["id"] for s in stages][3] == "dashboard" and stages[3]["state"] == "done"
 
     # Marcas «sí va / no va».
-    items = [w["item"] for w in view["arrangement"]["sections"][-1]["widgets"]]
-    keep, drop = items[-1], items[0]
+    # Dos elementos distintos del diseño (desde la Fase 28 la última sección puede tener uno).
+    items = [w["item"] for s in view["arrangement"]["sections"] for w in s["widgets"]]
+    keep = items[-1]
+    drop = next(item for item in items if item != keep)
     response = client.post(
         f"{base}/dashboard/feedback", json={"item": keep, "verdict": "keep"}, headers=headers
     )

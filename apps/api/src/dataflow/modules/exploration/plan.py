@@ -24,8 +24,19 @@ from dataflow.modules.exploration.contracts import (
 )
 from dataflow.modules.exploration.domain import Catalog, clean_reason, rule_queries
 
-RELEVANCE = "relevance-v1"
+RELEVANCE = "relevance-v2"
 MIN_ROWS = 30  # por debajo, un resultado no es consistente
+# Fase 28 (`relevance-v2`): en una estimación (promedio, mediana o tasa), un grupo o un mes con
+# menos registros se muestra, pero no cuenta para clasificar: con 1 o 2 registros por grupo se
+# comparan casos sueltos, no grupos. Una suma o un conteo es un total exacto y cuenta siempre.
+MIN_GROUP_ROWS = 10
+
+
+def minimum_for(query: ExploreQuery) -> int:
+    estimate = query.kind == "rate" or query.aggregation in {"mean", "median"}
+    return MIN_GROUP_ROWS if estimate else 0
+
+
 MIN_COVERAGE = Decimal("0.5")  # por debajo, la calidad de los datos rebaja el resultado
 ORDER: list[Classification] = ["relevant", "secondary", "descriptive"]
 CLASSES: dict[Classification, str] = {
@@ -44,6 +55,8 @@ METHODS = {
     "evolution": "Serie temporal mensual",
     "period_change": "Comparación de periodos",
     "outliers": "Valores atípicos (regla de Tukey)",
+    "rate": "Proporción de una categoría",
+    "cohort": "Registros por año",
 }
 AGGREGATION_WORDS = {"sum": "suma", "mean": "promedio", "median": "mediana", "count": "conteo"}
 
@@ -84,7 +97,7 @@ def method_name(query: ExploreQuery) -> str:
 
 
 def query_columns(query: ExploreQuery | RawQuery) -> list[str]:
-    names = [*query.dimensions, query.measure, query.measure_b, query.filter_column]
+    names = [*query.dimensions, query.measure, query.measure_b, query.filter_column, query.target]
     return list(dict.fromkeys(n for n in names if n))
 
 
@@ -190,6 +203,46 @@ def rule_plan(comprehension: Comprehension, catalog: Catalog) -> list[Draft]:
                 2,
             )
         )
+    # Fase 28 (`explore-v3`): la tasa de cada columna de dos valores (bajas, aprobados…), en
+    # total y por la primera dimensión agrupable, y los registros por año de una fecha que
+    # describe al registro.
+    for target in catalog.dichotomous[:2]:
+        drafts.append(
+            Draft(
+                RawQuery(kind="rate", target=target),
+                "rule",
+                f"¿Qué proporción de registros tiene cada valor de {target}?",
+                f"{target} tiene dos valores: su proporción es un indicador en sí mismo.",
+                f"Uno de los dos valores de {target} es minoritario.",
+                f"El porcentaje de la categoría menos frecuente de {target}.",
+                1,
+            )
+        )
+        others = [d for d in dimensions if d != target]
+        if others:
+            drafts.append(
+                Draft(
+                    RawQuery(kind="rate", target=target, dimensions=[others[0]]),
+                    "rule",
+                    f"¿La proporción de {target} cambia según {others[0]}?",
+                    f"Ver si la tasa de {target} se concentra en algunos grupos de {others[0]}.",
+                    f"La tasa de {target} no es la misma en todos los grupos de {others[0]}.",
+                    f"La tasa de cada {others[0]} con sus casos.",
+                    1,
+                )
+            )
+    for column in catalog.dated[:1]:
+        drafts.append(
+            Draft(
+                RawQuery(kind="cohort", target=column),
+                "rule",
+                f"¿Cuántos registros hay por año de {column}?",
+                f"{column} describe a cada registro: se cuentan por año, no se sigue mes a mes.",
+                f"El número de registros cambia de un año a otro de {column}.",
+                "Los registros de cada año.",
+                2,
+            )
+        )
     if measure:
         drafts.append(
             Draft(
@@ -202,7 +255,38 @@ def rule_plan(comprehension: Comprehension, catalog: Catalog) -> list[Draft]:
                 3,
             )
         )
-    return drafts
+    return unique_drafts(drafts)
+
+
+def signature(raw: RawQuery) -> tuple[object, ...]:
+    """Lo que calcula una consulta: un ranking y una agregación por la misma dimensión, medida y
+    agregación dan las mismas cifras (Fase 28: no se repiten como dos hallazgos)."""
+    kind = "aggregate" if raw.kind in {"aggregate", "top"} else raw.kind
+    aggregation = raw.aggregation or ("count" if raw.measure is None else "sum")
+    return (
+        kind,
+        raw.measure,
+        raw.measure_b,
+        aggregation if kind != "outliers" else None,
+        tuple(raw.dimensions),
+        raw.filter_column,
+        raw.filter_value,
+        raw.target,
+        raw.target_value,
+    )
+
+
+def unique_drafts(drafts: Sequence[Draft]) -> list[Draft]:
+    """El plan sin consultas equivalentes (se conserva la primera, la de más prioridad)."""
+    seen: set[tuple[object, ...]] = set()
+    kept: list[Draft] = []
+    for draft in drafts:
+        key = signature(draft.raw)
+        if key in seen:
+            continue
+        seen.add(key)
+        kept.append(draft)
+    return kept
 
 
 def ai_draft(raw: RawQuery, columns: Sequence[str]) -> Draft:
@@ -260,6 +344,8 @@ def node(
                 "filter_column",
                 "filter_value",
                 "limit",
+                "target",
+                "target_value",
             },
         ),
         key=query.key if query else None,
@@ -277,10 +363,14 @@ def node(
 # --- Evaluación (`relevance-v1`) -----------------------------------------------------------------
 
 
-def main_values(result: ExploreResult, index: int = -1) -> list[tuple[str, Decimal]]:
+def main_values(
+    result: ExploreResult, index: int = -1, minimum: int = 0
+) -> list[tuple[str, Decimal]]:
+    """Cifra principal de cada fila; con `minimum`, sólo las filas (grupos o meses) con al menos
+    ese número de registros (Fase 28, `relevance-v2`)."""
     found = []
     for row in result.rows:
-        if not row.figures:
+        if not row.figures or row.rows < minimum:
             continue
         value = number(row.figures[index].value)
         if value is not None:
@@ -300,9 +390,60 @@ def spread(values: list[tuple[str, Decimal]]) -> tuple[Decimal, str, str] | None
     return (high[1] - low[1]) / abs(mean), high[0], low[0]
 
 
+def few(result: ExploreResult) -> str:
+    if not minimum_for(result.query):
+        return ""
+    small = sum(1 for row in result.rows if row.rows < MIN_GROUP_ROWS)
+    return (
+        f" {small} de {len(result.rows)} grupos o meses tienen menos de {MIN_GROUP_ROWS} registros "
+        "y no cuentan para la clasificación."
+        if small
+        else ""
+    )
+
+
 def magnitude(query: ExploreQuery, result: ExploreResult) -> tuple[Classification, str]:
-    """Clase por la magnitud del efecto y el texto que la justifica (cifras del motor)."""
+    """Clase por la magnitud del efecto y el texto que la justifica (cifras del motor). Desde la
+    Fase 28 (`relevance-v2`) los grupos y meses con menos de `MIN_GROUP_ROWS` registros no
+    cuentan: si no quedan suficientes, el resultado no es concluyente."""
     kind = query.kind
+    if kind == "cohort":
+        values = main_values(result)
+        if not values:
+            return "inconclusive", "No hay años con registros."
+        year, count = max(values, key=lambda item: item[1])
+        return (
+            "descriptive",
+            f"{len(values)} años, de {values[0][0]} a {values[-1][0]}; el que más registros "
+            f"tiene es {year} ({count}).",
+        )
+    if kind == "rate":
+        position = len(query.dimensions)
+        label = result.columns[position] if len(result.columns) > position else "proporción"
+        if not query.dimensions:
+            values = main_values(result, 0)
+            if not values:
+                return "inconclusive", "No hay registros con valor."
+            return "descriptive", f"{label}: {values[0][1]} % de {result.covered_rows} registros."
+        values = main_values(result, 0, minimum=MIN_GROUP_ROWS)
+        if len(values) < 2:
+            return (
+                "inconclusive",
+                f"Menos de dos grupos tienen al menos {MIN_GROUP_ROWS} registros: no se puede "
+                "comparar la tasa." + few(result),
+            )
+        most = max(values, key=lambda item: item[1])
+        least = min(values, key=lambda item: item[1])
+        points = most[1] - least[1]
+        text = (
+            f"La {label.lower()} va del {least[1]} % ({least[0]}) al {most[1]} % ({most[0]}): "
+            f"{points} puntos de diferencia." + few(result)
+        )
+        if points >= 10:
+            return "relevant", text
+        if points >= 5:
+            return "secondary", text
+        return "discarded", text + " Las tasas son parecidas."
     if kind in {"aggregate", "top"} and query.aggregation in {"sum", "count"}:
         values = [(g, v) for g, v in main_values(result) if v > 0]
         total = sum((v for _, v in values), Decimal(0))
@@ -326,13 +467,17 @@ def magnitude(query: ExploreQuery, result: ExploreResult) -> tuple[Classificatio
     if kind in {"aggregate", "top", "ratio"}:
         if not query.dimensions:
             return "descriptive", "Una sola cifra para el total: describe, no compara."
-        found = spread(main_values(result))
+        found = spread(main_values(result, minimum=minimum_for(query)))
         if found is None:
-            return "inconclusive", "No hay al menos dos grupos con un valor comparable."
+            return (
+                "inconclusive",
+                f"No hay al menos dos grupos con {MIN_GROUP_ROWS} registros o más y un valor "
+                "comparable." + few(result),
+            )
         gap, high, low = found
         text = (
             f"Entre el grupo más alto ({high}) y el más bajo ({low}) hay una diferencia del "
-            f"{percent(gap)} % respecto al promedio de los grupos."
+            f"{percent(gap)} % respecto al promedio de los grupos." + few(result)
         )
         if gap >= Decimal("0.5"):
             return "relevant", text
@@ -353,9 +498,13 @@ def magnitude(query: ExploreQuery, result: ExploreResult) -> tuple[Classificatio
             return "secondary", text
         return "discarded", text + " La asociación es débil en todos los grupos."
     if kind == "evolution":
-        series = main_values(result)
+        series = main_values(result, minimum=minimum_for(query))
         if len(series) < 3:
-            return "inconclusive", "Hacen falta al menos tres meses con valor para una tendencia."
+            return (
+                "inconclusive",
+                f"Hacen falta al menos tres meses con {MIN_GROUP_ROWS} registros o más para una "
+                "tendencia." + few(result),
+            )
         (first_month, first), (last_month, last) = series[0], series[-1]
         if first == 0:
             return "descriptive", f"La serie empieza en cero ({first_month})."
@@ -370,7 +519,7 @@ def magnitude(query: ExploreQuery, result: ExploreResult) -> tuple[Classificatio
             return "secondary", text
         return "descriptive", text + " La serie es estable."
     if kind == "period_change":
-        values = main_values(result)  # «Variación %»
+        values = main_values(result, minimum=minimum_for(query))  # «Variación %»
         if not values:
             return "inconclusive", "No hay una variación comparable entre las dos ventanas."
         group, change = (
