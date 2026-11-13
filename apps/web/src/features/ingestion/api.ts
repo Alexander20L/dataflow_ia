@@ -193,10 +193,12 @@ export type InvestigationView = components["schemas"]["InvestigationView"];
 // Fase 16: investigación automática tras la carga (reglas + propuestas de la IA validadas).
 // Las versiones anteriores no la tienen (404 INVESTIGATION_NOT_AVAILABLE): se muestra la
 // explicación del dashboard como antes.
-export function useInvestigation(version?: DatasetVersion) {
+// Fase 27: las cargas nuevas ya no tienen seguimiento (Fase 16); sólo se consulta si la
+// versión tiene ese trabajo (`followed`, de su progreso).
+export function useInvestigation(version?: DatasetVersion, followed = true) {
   return useQuery({
     queryKey: ["investigation", version?.id],
-    enabled: version?.state === "succeeded",
+    enabled: version?.state === "succeeded" && followed,
     queryFn: async ({ signal }) => {
       const result = await api.GET(
         "/api/v1/versions/{version_id}/investigation",

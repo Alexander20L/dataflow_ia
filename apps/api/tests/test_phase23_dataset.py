@@ -306,7 +306,8 @@ def test_corrections_recalculate_the_analysis_and_declared_nulls_create_a_derive
     understood = get(client, f"/api/v1/versions/{derived}/comprehension")["comprehension"]
     # Descartar el aviso de datos personales también es una corrección (heredada).
     assert understood["corrected_columns"] == ["nombre", "ciclo"]
-    for kind in ("comprehension", "investigation", "exploration", "dashboard"):
+    # Fase 27: sin seguimiento de hallazgos (Fase 16); el informe parte del dashboard.
+    for kind in ("comprehension", "exploration", "dashboard", "automatic_report"):
         assert [r.state for r in runs(db, derived, kind)] == ["succeeded"], kind
     # Re-enviar los textos ya aplicados en la derivada se acepta y no crea otra versión.
     again = client.post(

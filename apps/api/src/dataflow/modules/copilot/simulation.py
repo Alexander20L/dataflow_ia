@@ -146,6 +146,28 @@ def relevance(context: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+def report_narrative(context: dict[str, Any]) -> dict[str, Any]:
+    """Cita la primera evidencia, escribe un número libre (se retira) y añade una conclusión
+    causal (se retira): la verificación debe dejar sólo lo comprobable."""
+    figures = context["cifras"]
+    if not figures:
+        return {
+            "resumen": "No se encontraron hallazgos relevantes en este análisis.",
+            "conclusiones": ["Los datos no muestran resultados relevantes."],
+            "recomendaciones": ["Revisar la calidad y el periodo de los datos."],
+        }
+    first = figures[0]["evidencia"]
+    return {
+        "resumen": f"El hallazgo principal alcanza {{{{evidence:{first}}}}} en 12 meses. "
+        "Las ventas bajaron porque cambió el precio.",
+        "conclusiones": [
+            f"El resultado principal es {{{{evidence:{first}}}}}.",
+            "La caída se debe a la competencia.",
+        ],
+        "recomendaciones": ["Revisar los grupos que más aportan antes de decidir."],
+    }
+
+
 def dashboard_design(context: dict[str, Any]) -> dict[str, Any]:
     """Primero un indicador y la exploración; después los hallazgos en orden inverso. Incluye
     un gráfico incompatible, un elemento inventado y un título con una cifra propia."""
@@ -237,4 +259,6 @@ def respond(task: str, context: dict[str, Any], request: str) -> dict[str, Any]:
         return relevance(context)
     if task == "dashboard_design":
         return dashboard_design(context)
+    if task == "report_narrative":
+        return report_narrative(context)
     raise ValueError(f"Tarea de IA no simulada: {task}")

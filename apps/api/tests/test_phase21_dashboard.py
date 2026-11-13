@@ -302,7 +302,11 @@ def test_upload_gets_a_dashboard_designed_by_the_fake_ai_and_marks_update_the_re
     arranged = client.get(f"{base}/dashboard").json()["arrangement"]
     assert arranged["sections"][0]["title"] == "Fijados por ti"
     assert arranged["pinned"] == [keep] and arranged["hidden"] == [drop]
-    # Una sola versión nueva en cola; mientras, se sirve el informe anterior.
+    # Fase 27: con el informe v2 las marcas son la revisión de los hallazgos; la versión nueva
+    # la pide el usuario. Mientras se genera, se sirve la anterior.
+    assert reports(db, version["id"]) == 1
+    generated = client.post(f"{base}/report/versions", headers=headers)
+    assert generated.status_code == 200, generated.json()
     assert reports(db, version["id"]) == 2
     report = client.get(f"{base}/report").json()
     assert report["state"] == "ready" and report["updating"] is True

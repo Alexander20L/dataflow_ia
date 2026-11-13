@@ -778,8 +778,15 @@ def progress(version: UUID, runs: list[RunSummary]) -> Progress:
     etapa). Una etapa sin trabajo tras otra terminada no aplica a esta carga."""
     stages: list[Stage] = []
     previous: StageState = "done"
+    # Fase 27: las cargas nuevas ya no tienen seguimiento de hallazgos (Fase 16). Se nota porque
+    # la comprensión ya empezó y no hay seguimiento (antes se encolaban a la vez).
+    retired = not any(r.kind == "investigation" for r in runs) and any(
+        r.kind in {"comprehension", "exploration", "dashboard"} for r in runs
+    )
     for identifier, title, kinds in STAGES:
         run = next((item for item in runs if item.kind in kinds), None)
+        if identifier == "investigation" and retired:
+            continue
         # Fase 21: una versión nueva del informe (tras una marca) con la anterior disponible.
         renewing = (
             run is not None

@@ -45,6 +45,8 @@ ArtifactKind = Literal[
     "exploration",
     "dashboard",
     "inspection",
+    # Fase 27: documento del informe v2 (el PDF se dibuja a partir de él).
+    "report_document",
 ]
 
 
@@ -210,6 +212,7 @@ InputKind = Literal[
     "exploration",
     "dashboard",
     "inspection",
+    "report_v2",  # Fase 27: el informe v2 parte del dashboard publicado
 ]
 
 

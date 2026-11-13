@@ -68,17 +68,18 @@ test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
   await expect(
     page.getByRole("navigation", { name: "Etapas del CSV real" }),
   ).toHaveCount(0);
-  const explanation = page.getByRole("region", {
-    name: "Explicación automática IA",
+  // Fase 27: la explicación de la IA (resumen, conclusiones y recomendaciones con cifras
+  // verificadas) está en el informe.
+  await page.getByRole("tab", { name: "Informe", exact: true }).click();
+  const report = page.getByRole("region", { name: "Informe", exact: true });
+  const conclusions = report.getByRole("region", {
+    name: "Conclusiones y recomendaciones",
   });
-  await expect(
-    explanation.getByRole("heading", { name: "Recomendaciones" }),
-  ).toBeVisible({ timeout: 30000 });
-  await expect(
-    explanation.getByRole("link", { name: /De dónde sale/ }),
-  ).toHaveCount(1);
-  await expect(explanation.getByRole("button")).toHaveCount(0);
-  const savedExplanation = await explanation.innerText();
+  await expect(conclusions).toContainText("Recomendaciones", {
+    timeout: 60000,
+  });
+  const savedConclusions = await conclusions.innerText();
+  await page.getByRole("tab", { name: "Análisis", exact: true }).click();
   await dashboard.getByText("Detalle de los datos", { exact: true }).click();
   await expect(
     dashboard.getByRole("cell", { name: "001", exact: true }),
@@ -93,10 +94,12 @@ test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
   ])
     expect((await page.request.get(retired)).status()).toBe(404);
   await page.reload();
-  await openAnalysis(page);
-  await expect(explanation).toHaveText(savedExplanation.replace(/\s+/g, " "), {
+  // El informe guardado no cambia al volver.
+  await page.getByRole("tab", { name: "Informe", exact: true }).click();
+  await expect(conclusions).toHaveText(savedConclusions.replace(/\s+/g, " "), {
     useInnerText: true,
   });
+  await openAnalysis(page);
   await expect(
     dashboard.getByRole("heading", { name: "Tu análisis automático" }),
   ).toBeVisible();

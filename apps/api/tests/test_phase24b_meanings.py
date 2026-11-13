@@ -74,13 +74,14 @@ def test_unknown_mark_is_inherited_and_meanings_reach_the_report(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     seen: list[Comprehension | None] = []
-    original = delivery_job.build_report
+    # Fase 27: las cargas nuevas usan el informe v2 (la comprensión es su sexto argumento).
+    original = delivery_job.build_report_v2
 
     def capture(*args: Any) -> Any:
-        seen.append(args[6])
+        seen.append(args[5])
         return original(*args)
 
-    monkeypatch.setattr(delivery_job, "build_report", capture)
+    monkeypatch.setattr(delivery_job, "build_report_v2", capture)
     headers = account(client)
     pid = project(client, headers)
     content = students()

@@ -18,7 +18,15 @@ from dataflow.bootstrap.dashboard_job import (
     record_dashboard_calls,
     request_report_update,
 )
-from dataflow.bootstrap.delivery_job import ReportInput, ReportStep, enqueue_report
+from dataflow.bootstrap.delivery_job import (
+    ReportInput,
+    ReportInputV2,
+    ReportStep,
+    ReportStepV2,
+    enqueue_report,
+    enqueue_report_v2,
+    record_report_calls,
+)
 from dataflow.bootstrap.exploration_job import (
     ExplorationInput,
     ExplorationStep,
@@ -34,7 +42,6 @@ from dataflow.bootstrap.inspection_job import (
 from dataflow.bootstrap.investigation_job import (
     InvestigationInput,
     InvestigationStep,
-    enqueue_investigation,
     record_investigation_calls,
 )
 from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry, WorkerRegistry
@@ -234,6 +241,12 @@ class DatasetPublication:
                 self.db, lease, next(o for o in outputs if o.kind == "comprehension"), self.objects
             )
             return
+        if lease.execution.kind == "automatic_report":
+            # Fase 27: la narrativa del informe v2 (el v1 no llama a la IA).
+            document = next((o for o in outputs if o.kind == "report_document"), None)
+            if document is not None:
+                record_report_calls(self.db, lease, document, self.objects)
+            return
         if lease.execution.kind == "investigation":
             record_investigation_calls(
                 self.db, lease, next(o for o in outputs if o.kind == "investigation"), self.objects
@@ -286,7 +299,8 @@ class DatasetPublication:
                 self.config,
                 SQLColumnAnnotations(self.db),
             )
-        enqueue_investigation(self.executions, lease, analysis, table, self.config)
+        # Fase 27 (ADR-045): el seguimiento de la Fase 16 ya no se encola en las cargas nuevas;
+        # el informe v2 parte del dashboard.
         return True
 
     def published(self, lease: Lease, artifacts: list[Artifact]) -> None:
@@ -327,13 +341,27 @@ class DatasetPublication:
             )
         elif kind == "dashboard":
             # Fase 21: si el informe ya se generó sin este dashboard, se genera otra versión.
+            # Fase 27: si aún no hay informe, el v2 parte de este dashboard.
             dashboard = next(a for a in artifacts if a.kind == "dashboard")
-            request_report_update(
-                self.executions,
-                lease.owner_id,
-                lease.version_id,
-                f"dashboard:{dashboard.content.sha256}",
-            )
+            if any(
+                r.kind == "automatic_report"
+                for r in self.executions.for_version(lease.owner_id, lease.version_id)
+            ):
+                request_report_update(
+                    self.executions,
+                    lease.owner_id,
+                    lease.version_id,
+                    f"dashboard:{dashboard.content.sha256}",
+                )
+            else:
+                enqueue_report_v2(
+                    self.executions,
+                    self.datasets,
+                    lease,
+                    dashboard,
+                    self.config,
+                    self.review(lease),
+                )
         elif kind == "investigation":
             # Fase 17: el informe automático se genera al publicarse la investigación.
             enqueue_report(
@@ -503,6 +531,7 @@ def make_runner(
             "dashboard": DashboardInput(datasets, executions, projects),
             "inspection": InspectionInput(datasets, executions, projects),
             "investigation": ReportInput(datasets, executions, projects),
+            "report_v2": ReportInputV2(datasets, executions, projects),
         },
         WorkerRegistry(
             make_operations(
@@ -523,6 +552,14 @@ def make_runner(
                 ),
                 "delivery.report@1": ReportStep(
                     objects, executions, SQLFindingFeedback(db), SQLMeaningRepository(db)
+                ),
+                # Fase 27: informe v2 con revisión humana, historial y narrativa verificada.
+                "delivery.report@2": ReportStepV2(
+                    objects,
+                    executions,
+                    make_copilot(db, provider, ai_config),
+                    SQLFindingFeedback(db),
+                    SQLMeaningRepository(db),
                 ),
                 "delivery.dashboard@1": DashboardStep(
                     objects, make_copilot(db, provider, ai_config)

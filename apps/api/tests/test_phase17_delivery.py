@@ -190,6 +190,18 @@ def run(kind: str, state: str) -> RunSummary:
             ["done", "skipped", "skipped", "skipped", "failed", "skipped"],
             True,
         ),
+        # Fase 27: sin seguimiento de hallazgos (retirado), la etapa no aparece.
+        (
+            [
+                run("automatic_report", "succeeded"),
+                run("dashboard", "succeeded"),
+                run("exploration", "succeeded"),
+                run("comprehension", "succeeded"),
+                run("csv_import", "succeeded"),
+            ],
+            ["done"] * 5,
+            True,
+        ),
         ([run("csv_import", "succeeded")], ["done"] + ["skipped"] * 5, True),
         ([run("csv_import", "failed")], ["failed"] + ["skipped"] * 5, True),
     ],
@@ -197,14 +209,10 @@ def run(kind: str, state: str) -> RunSummary:
 def test_progress_by_stage(runs: list[RunSummary], states: list[str], complete: bool) -> None:
     result = progress(UUID(int=1), runs)
     assert [stage.state for stage in result.stages] == states
-    assert [stage.id for stage in result.stages] == [
-        "analysis",
-        "comprehension",
-        "exploration",
-        "dashboard",
-        "investigation",
-        "report",
-    ]
+    expected = ["analysis", "comprehension", "exploration", "dashboard", "investigation", "report"]
+    if len(states) == 5:  # Fase 27: sin seguimiento de hallazgos
+        expected.remove("investigation")
+    assert [stage.id for stage in result.stages] == expected
     assert result.complete is complete
 
 
@@ -223,25 +231,31 @@ def test_upload_ends_with_a_downloadable_report(
     assert [s["state"] for s in stages] == ["queued"] + ["pending"] * 5
     runner = make_runner(db, objects)
     assert runner.run_once()
-    assert client.get(f"{base}/report").json()["code"] == "REPORT_NOT_AVAILABLE"
+    # Fase 27: mientras la cadena sigue, el informe está en cola (sin trabajo todavía).
+    waiting = client.get(f"{base}/report").json()
+    assert waiting["state"] == "queued" and waiting["execution_id"] is None
     assert runner.run_once()  # inspección del dataset (Fase 22)
     assert runner.run_once()  # comprensión del negocio (Fase 19)
-    assert runner.run_once()  # investigación
-    assert runner.run_once()  # exploración guiada (Fase 20)
+    assert runner.run_once()  # investigación (Fase 25)
+    # Fase 27: el informe parte del dashboard (sin seguimiento de la Fase 16).
+    assert client.get(f"{base}/report").json()["execution_id"] is None
+    assert runner.run_once()  # diseño del dashboard (Fase 21)
     assert client.get(f"{base}/report").json()["state"] == "queued"
-    assert runner.run_once()  # diseño del dashboard (Fase 21): el informe va el último
     assert client.get(f"{base}/report.pdf").json()["code"] == "REPORT_NOT_READY"
     assert runner.run_once()  # informe
     assert not runner.run_once()
     progress_view = client.get(f"{base}/progress").json()
     assert progress_view["complete"] is True
-    assert [s["state"] for s in progress_view["stages"]] == ["done"] * 6
+    assert [s["state"] for s in progress_view["stages"]] == ["done"] * 5
     view = client.get(f"{base}/report").json()
     assert view["state"] == "ready" and view["file_name"] == "informe-ventas_mensuales-v1.pdf"
-    assert view["evidence_count"] > 0
+    assert view["evidence_count"] > 0 and view["number"] == 1
+    assert view["document"]["rules_version"] == "automatic-report-v2"
     pdf = client.get(f"{base}/report.pdf")
     assert pdf.status_code == 200 and pdf.headers["content-type"] == "application/pdf"
-    assert pdf.content.startswith(b"%PDF") and len(pdf.content) == view["byte_size"]
+    assert pdf.content.startswith(b"%PDF")
+    # El PDF se dibuja del documento: es el mismo cada vez.
+    assert client.get(f"{base}/report.pdf").content == pdf.content
     assert "informe-ventas_mensuales-v1.pdf" in pdf.headers["content-disposition"]
     account(client)
     assert client.get(f"{base}/report").status_code == 404
@@ -255,8 +269,10 @@ def test_reports_wait_behind_newer_uploads(
     pid = project(client, headers)
     first = upload(client, headers, pid, reference_csv(), name="ventas_mensuales.csv").json()
     runner = make_runner(db, objects)
-    # Carga, inspección (Fase 22), comprensión e investigación.
-    assert runner.run_once() and runner.run_once() and runner.run_once() and runner.run_once()
+    # Carga, inspección (Fase 22), comprensión, investigación y dashboard (Fase 27: el informe
+    # se encola al publicarse el dashboard).
+    for _ in range(5):
+        assert runner.run_once()
     second = upload(client, headers, pid, reference_csv() + b"\n", name="otra.csv").json()
     assert runner.run_once()
     assert client.get(f"/api/v1/executions/{second['execution_id']}").json()["state"] == (

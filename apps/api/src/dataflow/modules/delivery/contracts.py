@@ -61,8 +61,9 @@ class ReportSource(DeliveryModel):
     file_name: str
     analysis_execution_id: UUID
     analysis_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
-    investigation_execution_id: UUID
-    investigation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    # Fase 27: el informe v2 ya no parte de la investigación de la Fase 16.
+    investigation_execution_id: UUID | None = None
+    investigation_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     quality_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     # Fase 20: exploración guiada incluida (la terminada cuando se generó el informe).
     exploration_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
@@ -71,17 +72,43 @@ class ReportSource(DeliveryModel):
     feedback_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
     # Fase 24B: significados del usuario aplicados al describir las columnas (hash canónico).
     meanings_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    # Fase 27: ejecuciones que produjeron lo que cita el informe v2.
+    execution_id: UUID | None = None  # la del propio informe
+    exploration_execution_id: UUID | None = None
+    dashboard_execution_id: UUID | None = None
+    inspection_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+
+
+ReviewStatus = Literal["pending", "approved", "rejected"]
+
+
+class ReviewItem(DeliveryModel):
+    """Un hallazgo candidato del informe (Fase 27) y su revisión: pendiente, aprobado o
+    rechazado. `principal`: si aparece entre los hallazgos principales."""
+
+    item: str  # «exploration:<clave>» o «insight:<id>», como en el dashboard
+    title: str
+    origin: Literal["exploration", "insight"]
+    classification: str | None = None
+    status: ReviewStatus
+    principal: bool
 
 
 class ReportDocument(DeliveryModel):
-    schema_version: Literal[1] = 1
-    operation: Literal["delivery.report@1"] = "delivery.report@1"
-    rules_version: Literal["automatic-report-v1"] = "automatic-report-v1"
+    schema_version: Literal[1, 2] = 1
+    operation: Literal["delivery.report@1", "delivery.report@2"] = "delivery.report@1"
+    rules_version: Literal["automatic-report-v1", "automatic-report-v2"] = "automatic-report-v1"
     title: str
     source: ReportSource
     generated_at: datetime
     sections: list[ReportSection]
     evidence_ids: list[str]
+    # Fase 27 (`automatic-report-v2`): la revisión aplicada, quién redactó el resumen, las
+    # conclusiones y las recomendaciones, y las llamadas a la IA (para su registro).
+    review: list[ReviewItem] = Field(default_factory=list)
+    narrative_by: Literal["ai", "rules"] | None = None
+    narrative_reason: str | None = None
+    calls: list[dict[str, object]] = Field(default_factory=list)
 
 
 class ReportView(BaseModel):
@@ -89,7 +116,9 @@ class ReportView(BaseModel):
 
     state: Literal["queued", "running", "ready", "failed"]
     reason: str | None = None
-    execution_id: UUID
+    # Fase 27: sin trabajo todavía (la investigación o el dashboard de la carga siguen en
+    # marcha): None.
+    execution_id: UUID | None = None
     file_name: str | None = None
     byte_size: int | None = None
     sha256: str | None = None
@@ -98,6 +127,41 @@ class ReportView(BaseModel):
     # Fase 21: hay una versión nueva del informe en cola (tras una valoración); mientras tanto
     # se sirve la última terminada.
     updating: bool = False
+    # Fase 27: número de versión del informe (1 = la primera) y el documento para la vista
+    # previa (sólo en informes v2).
+    number: int | None = None
+    document: ReportDocument | None = None
+
+
+class ReportVersion(DeliveryModel):
+    """Una versión del historial del informe (Fase 27)."""
+
+    number: int
+    execution_id: UUID
+    state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
+    trigger: str  # «load», «selection», «dashboard»…
+    created_at: datetime
+    finished_at: datetime | None = None
+    rules_version: str | None = None
+    approved: int | None = None
+    principal: int | None = None
+
+
+class ReportHistory(DeliveryModel):
+    items: list[ReportVersion]
+
+
+class ReportReview(DeliveryModel):
+    """Los hallazgos candidatos con su revisión vigente (Fase 27). `changed`: la selección
+    difiere de la usada por la última versión del informe."""
+
+    items: list[ReviewItem]
+    changed: bool
+
+
+class ReviewRequest(DeliveryModel):
+    item: str = Field(min_length=1, max_length=700)
+    status: ReviewStatus
 
 
 StageId = Literal[

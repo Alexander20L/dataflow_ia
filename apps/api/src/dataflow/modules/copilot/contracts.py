@@ -156,6 +156,15 @@ class ElementoIA(OutputModel):
     titulo: str | None = Field(default=None, max_length=200, description="Sin cifras.")
 
 
+class NarrativaIA(OutputModel):
+    """Resumen, conclusiones y recomendaciones del informe (Fase 27, `report-narrative@1`).
+    Cada cifra va como {{evidence:id}}; nunca se escriben números ni causas."""
+
+    resumen: str = Field(max_length=1500)
+    conclusiones: list[str] = Field(max_length=5)
+    recomendaciones: list[str] = Field(max_length=5)
+
+
 class SeccionIA(OutputModel):
     titulo: str = Field(max_length=200)
     descripcion: str | None = Field(default=None, max_length=300)
@@ -201,6 +210,17 @@ class AuditContent(CopilotModel):
     alertas_criticas: list[AuditAlert]
     recomendaciones: list[list[Segment]]
     unverified_numbers: int  # números escritos por el modelo que se retiraron
+
+
+class ReportNarrative(CopilotModel):
+    """Narrativa del informe ya verificada (Fase 27): cifras sólo por evidencia; las frases
+    que afirmaban una causa se retiraron y se cuentan."""
+
+    summary: list[Segment]
+    conclusions: list[list[Segment]]
+    recommendations: list[list[Segment]]
+    unverified_numbers: int = 0
+    causal_removed: int = 0
 
 
 @dataclass(frozen=True)
