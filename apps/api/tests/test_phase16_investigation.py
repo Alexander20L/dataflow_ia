@@ -12,7 +12,7 @@ from uuid import UUID
 import pytest
 from fastapi.testclient import TestClient
 from reference_sales import HEADER, MONTHS, reference_csv, reference_rows
-from sqlalchemy import func, select
+from sqlalchemy import select
 from sqlalchemy.orm import Session
 from test_csv_ingestion import account, project, upload
 from test_phase15_automatic_analysis import SCOPE
@@ -356,88 +356,29 @@ def test_provider_error_keeps_rule_results() -> None:
 # --- De extremo a extremo -------------------------------------------------------------------
 
 
-def test_import_investigates_with_the_fake_provider_and_explains_findings(
+def test_new_loads_no_longer_run_the_follow_up(
     client: TestClient, db: Session, objects: LocalObjects, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    """Fase 27 (ADR-045): el seguimiento de hallazgos ya no se encola en las cargas nuevas; el
+    informe parte del dashboard y la IA redacta su narrativa. Las reglas y el ciclo de este
+    módulo (pruebas de arriba) siguen para leer las versiones anteriores."""
     monkeypatch.setattr(get_settings(), "ai_provider", "fake")
-    headers = account(client)
-    pid = project(client, headers)
-    version = upload(client, headers, pid, reference_csv(), name="ventas_mensuales.csv").json()
-    runner = make_runner(db, objects)
-    assert runner.run_once()
-    path = f"/api/v1/versions/{version['id']}/investigation"
-    assert client.get(path).json()["state"] == "queued"
-    assert runner.run_once()  # inspección del dataset (Fase 22)
-    assert runner.run_once()  # comprensión del negocio (Fase 19)
-    assert runner.run_once()
-    assert runner.run_once()  # exploración guiada (Fase 20)
-    assert runner.run_once()  # diseño del dashboard (Fase 21)
-    assert runner.run_once()  # informe automático (Fase 17)
-    assert not runner.run_once()
-    view = client.get(path).json()
-    assert view["state"] == "ready", view
-    result = view["investigation"]
-    assert result["operation"] == "investigation.investigate@1"
-    origins = {(p["origin"], p["status"]) for p in result["proposals"]}
-    assert ("rule", "accepted") in origins and ("ai", "accepted") in origins
-    assert ("ai", "rejected") in origins
-    assert result["explanation_state"] == "ready"
-    cited = [
-        s["evidence_id"]
-        for s in result["explanation"]["resumen_ejecutivo"]
-        if s["kind"] == "evidence"
-    ]
-    assert cited and client.get(f"{path}/evidence/{cited[0]}").status_code == 200
-    followup = result["results"][0]["evidence"][0]["evidence_id"]
-    assert client.get(f"{path}/evidence/{followup}").json()["evidence_id"] == followup
-    assert client.get(f"{path}/evidence/{'0' * 64}").json()["code"] == "EVIDENCE_NOT_FOUND"
-    # Ya no se encola la explicación del dashboard para esta carga.
-    audit = client.get(f"/api/v1/versions/{version['id']}/overview-audit").json()
-    assert audit["state"] == "unavailable"
-    tasks = db.scalars(select(AICallRecord.task)).all()
-    # Fase 19: la comprensión del negocio hace su propia llamada antes de la investigación.
-    assert sorted(set(tasks)) == [
-        "business_comprehension",
-        "dashboard_design",
-        "exploration_proposal",
-        "exploration_relevance",
-        "findings_audit",
-        "investigation_proposal",
-    ]
-    # Las de la investigación más la de la comprensión (Fase 19), las dos de la exploración
-    # (Fase 20) y la del diseño del dashboard (Fase 21).
-    assert db.scalar(select(func.count()).select_from(AICallRecord)) == len(result["calls"]) + 4
-    account(client)
-    assert client.get(path).status_code == 404
-
-
-def test_import_investigates_with_rules_when_ai_is_disabled(
-    client: TestClient, db: Session, objects: LocalObjects
-) -> None:
     headers = account(client)
     pid = project(client, headers)
     version = upload(client, headers, pid, reference_csv(), name="ventas_mensuales.csv").json()
     while make_runner(db, objects).run_once():
         pass
-    view = client.get(f"/api/v1/versions/{version['id']}/investigation").json()
-    result = view["investigation"]
-    assert view["state"] == "ready" and result["ai"] == "unavailable"
-    assert result["ai_reason"] == "disabled" and result["stopped"] == "ai_unavailable"
-    assert len(result["results"]) == 5 and result["calls"] == []
-
-
-def test_investigations_wait_behind_newer_uploads(
-    client: TestClient, db: Session, objects: LocalObjects
-) -> None:
-    headers = account(client)
-    pid = project(client, headers)
-    first = upload(client, headers, pid, reference_csv(), name="ventas_mensuales.csv").json()
-    runner = make_runner(db, objects)
-    assert runner.run_once()
-    second = upload(client, headers, pid, reference_csv() + b"\n", name="otra.csv").json()
-    # La investigación de la primera carga se encoló antes, pero es trabajo de fondo.
-    assert runner.run_once()
-    assert client.get(f"/api/v1/executions/{second['execution_id']}").json()["state"] == (
-        "succeeded"
-    )
-    assert client.get(f"/api/v1/versions/{first['id']}/investigation").json()["state"] == "queued"
+    path = f"/api/v1/versions/{version['id']}/investigation"
+    assert client.get(path).json()["code"] == "INVESTIGATION_NOT_AVAILABLE"
+    assert client.get(f"/api/v1/versions/{version['id']}/report").json()["state"] == "ready"
+    # Ya no se encola la explicación del dashboard para esta carga.
+    audit = client.get(f"/api/v1/versions/{version['id']}/overview-audit").json()
+    assert audit["state"] == "unavailable"
+    tasks = db.scalars(select(AICallRecord.task)).all()
+    assert sorted(set(tasks)) == [
+        "business_comprehension",
+        "dashboard_design",
+        "exploration_proposal",
+        "exploration_relevance",
+        "report_narrative",
+    ]

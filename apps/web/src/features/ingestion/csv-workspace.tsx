@@ -24,6 +24,7 @@ import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
 import { ComprehensionTab } from "@/features/comprehension/comprehension-tab";
 import { DashboardTab } from "@/features/dashboard/dashboard-tab";
+import { ReportTab } from "@/features/report/report-tab";
 import { InvestigationTab } from "@/features/investigation/investigation-tab";
 import {
   DatasetTab,
@@ -58,6 +59,7 @@ const TABS = [
   { id: "comprehension", label: "Comprensión" },
   { id: "investigation", label: "Investigación" },
   { id: "dashboard", label: "Dashboard" },
+  { id: "report", label: "Informe" },
   { id: "analysis", label: "Análisis" },
 ] as const;
 type MainTab = (typeof TABS)[number]["id"];
@@ -155,8 +157,12 @@ export function CsvWorkspace({
   };
   const diagnostic = useDiagnostic(version);
   const automatic = useAutomaticAnalysis(version);
-  const investigation = useInvestigation(version);
   const progress = useProgress(version);
+  const followed = Boolean(
+    progress.data?.stages.find((stage) => stage.id === "investigation")
+      ?.execution_id,
+  );
+  const investigation = useInvestigation(version, followed);
   const review = useSourceReview(version);
   if (versions.isPending || loadingOutside)
     return (
@@ -436,6 +442,17 @@ export function CsvWorkspace({
                     }}
                   />
                 </div>
+              ) : tab === "report" ? (
+                <div
+                  id="workspace-panel-report"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-report"
+                >
+                  <ReportTab
+                    key={`report-tab-${version.id}`}
+                    versionId={version.id}
+                  />
+                </div>
               ) : (
                 <div
                   id="workspace-panel-analysis"
@@ -475,7 +492,7 @@ export function CsvWorkspace({
                     quality={diagnostic.data.quality}
                     versionNumber={version.number}
                   />
-                  {investigation.data === null ? (
+                  {progress.data && !followed && !automatic.data ? (
                     <OverviewAudit
                       key={`audit-${version.id}`}
                       versionId={version.id}

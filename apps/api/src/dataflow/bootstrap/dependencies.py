@@ -149,7 +149,7 @@ def delivery_service(db: Db, objects: Objects) -> DeliveryAccess:
     from dataflow.platform.runtime import require_ready
 
     require_ready(db)
-    return DeliveryAccess(make_datasets(db), make_executions(db), objects)
+    return DeliveryAccess(make_datasets(db), make_executions(db), objects, db)
 
 
 Delivery = Annotated[DeliveryAccess, Depends(delivery_service)]

@@ -965,9 +965,96 @@ export interface paths {
         };
         /**
          * Report Pdf
-         * @description PDF del informe automático (sólo cuando está listo).
+         * @description PDF del informe automático (sólo cuando está listo). Fase 27: `execution_id` descarga
+         *     una versión anterior del historial.
          */
         get: operations["downloadReport"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/report/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report History
+         * @description Todas las versiones del informe, de la más reciente a la primera.
+         */
+        get: operations["getReportHistory"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/report/review": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report Review
+         * @description Hallazgos candidatos con su revisión (pendiente, aprobado o rechazado) y si la selección
+         *     difiere de la del último informe.
+         */
+        get: operations["getReportReview"];
+        put?: never;
+        /**
+         * Review Report Finding
+         * @description Aprueba, rechaza o deja pendiente un hallazgo. No genera el informe.
+         */
+        post: operations["reviewReportFinding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/report/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Generate Report Version
+         * @description Genera una versión nueva del informe con la selección vigente; la anterior se conserva.
+         *     409 `REPORT_UP_TO_DATE` si la selección no cambió.
+         */
+        post: operations["generateReportVersion"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/report/versions/{execution_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Report Version
+         * @description Una versión concreta del informe, con su documento para la vista previa.
+         */
+        get: operations["getReportVersion"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1354,7 +1441,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis" | "investigation" | "comprehension" | "exploration" | "dashboard" | "inspection";
+            kind: "table" | "profile" | "quality" | "legacy_diagnostic" | "effect" | "effect_samples" | "row_lineage" | "quality_rules" | "analysis_result" | "report_pdf" | "overview_audit" | "automatic_analysis" | "investigation" | "comprehension" | "exploration" | "dashboard" | "inspection" | "report_document";
             /** Logical Content Sha256 */
             logical_content_sha256: string | null;
             /**
@@ -4770,6 +4857,193 @@ export interface components {
             /** Verdict */
             verdict?: ("relevant" | "not_relevant") | null;
         };
+        /** ReportBlock */
+        ReportBlock: {
+            /** Badge */
+            badge?: string | null;
+            chart?: components["schemas"]["ReportChart"] | null;
+            /** Paragraphs */
+            paragraphs?: string[];
+            table?: components["schemas"]["ReportTable"] | null;
+            /** Title */
+            title?: string | null;
+        };
+        /**
+         * ReportChart
+         * @description Ilustración vectorial de una serie ya calculada; la trazabilidad está en la tabla.
+         */
+        ReportChart: {
+            /** Labels */
+            labels: string[];
+            /** Title */
+            title: string;
+            /**
+             * Type
+             * @enum {string}
+             */
+            type: "bar" | "line";
+            /** Values */
+            values: string[];
+        };
+        /** ReportDocument */
+        ReportDocument: {
+            /** Calls */
+            calls?: {
+                [key: string]: unknown;
+            }[];
+            /** Evidence Ids */
+            evidence_ids: string[];
+            /**
+             * Generated At
+             * Format: date-time
+             */
+            generated_at: string;
+            /** Narrative By */
+            narrative_by?: ("ai" | "rules") | null;
+            /** Narrative Reason */
+            narrative_reason?: string | null;
+            /**
+             * Operation
+             * @default delivery.report@1
+             * @enum {string}
+             */
+            operation: "delivery.report@1" | "delivery.report@2";
+            /** Review */
+            review?: components["schemas"]["ReviewItem"][];
+            /**
+             * Rules Version
+             * @default automatic-report-v1
+             * @enum {string}
+             */
+            rules_version: "automatic-report-v1" | "automatic-report-v2";
+            /**
+             * Schema Version
+             * @default 1
+             * @enum {integer}
+             */
+            schema_version: 1 | 2;
+            /** Sections */
+            sections: components["schemas"]["ReportSection"][];
+            source: components["schemas"]["ReportSource"];
+            /** Title */
+            title: string;
+        };
+        /** ReportHistory */
+        ReportHistory: {
+            /** Items */
+            items: components["schemas"]["ReportVersion"][];
+        };
+        /**
+         * ReportReview
+         * @description Los hallazgos candidatos con su revisión vigente (Fase 27). `changed`: la selección
+         *     difiere de la usada por la última versión del informe.
+         */
+        ReportReview: {
+            /** Changed */
+            changed: boolean;
+            /** Items */
+            items: components["schemas"]["ReviewItem"][];
+        };
+        /** ReportSection */
+        ReportSection: {
+            /** Blocks */
+            blocks: components["schemas"]["ReportBlock"][];
+            /** Id */
+            id: string;
+            /** Intro */
+            intro?: string | null;
+            /** Title */
+            title: string;
+        };
+        /**
+         * ReportSource
+         * @description De dónde sale cada parte del informe (ids y hashes de lo publicado).
+         */
+        ReportSource: {
+            /**
+             * Analysis Execution Id
+             * Format: uuid
+             */
+            analysis_execution_id: string;
+            /** Analysis Sha256 */
+            analysis_sha256: string;
+            /** Dashboard Execution Id */
+            dashboard_execution_id?: string | null;
+            /** Dashboard Sha256 */
+            dashboard_sha256?: string | null;
+            /** Execution Id */
+            execution_id?: string | null;
+            /** Exploration Execution Id */
+            exploration_execution_id?: string | null;
+            /** Exploration Sha256 */
+            exploration_sha256?: string | null;
+            /** Feedback Sha256 */
+            feedback_sha256?: string | null;
+            /** File Name */
+            file_name: string;
+            /** Inspection Sha256 */
+            inspection_sha256?: string | null;
+            /** Investigation Execution Id */
+            investigation_execution_id?: string | null;
+            /** Investigation Sha256 */
+            investigation_sha256?: string | null;
+            /** Meanings Sha256 */
+            meanings_sha256?: string | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Quality Sha256 */
+            quality_sha256?: string | null;
+            /**
+             * Version Id
+             * Format: uuid
+             */
+            version_id: string;
+            /** Version Number */
+            version_number: number;
+        };
+        /** ReportTable */
+        ReportTable: {
+            /** Headers */
+            headers: string[];
+            /** Rows */
+            rows: string[][];
+        };
+        /**
+         * ReportVersion
+         * @description Una versión del historial del informe (Fase 27).
+         */
+        ReportVersion: {
+            /** Approved */
+            approved?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Number */
+            number: number;
+            /** Principal */
+            principal?: number | null;
+            /** Rules Version */
+            rules_version?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            /** Trigger */
+            trigger: string;
+        };
         /**
          * ReportView
          * @description Estado del informe de una versión (sólo lectura).
@@ -4777,17 +5051,17 @@ export interface components {
         ReportView: {
             /** Byte Size */
             byte_size?: number | null;
+            document?: components["schemas"]["ReportDocument"] | null;
             /** Evidence Count */
             evidence_count?: number | null;
-            /**
-             * Execution Id
-             * Format: uuid
-             */
-            execution_id: string;
+            /** Execution Id */
+            execution_id?: string | null;
             /** File Name */
             file_name?: string | null;
             /** Generated At */
             generated_at?: string | null;
+            /** Number */
+            number?: number | null;
             /** Reason */
             reason?: string | null;
             /** Sha256 */
@@ -4898,6 +5172,41 @@ export interface components {
             values: {
                 [key: string]: string | null;
             };
+        };
+        /**
+         * ReviewItem
+         * @description Un hallazgo candidato del informe (Fase 27) y su revisión: pendiente, aprobado o
+         *     rechazado. `principal`: si aparece entre los hallazgos principales.
+         */
+        ReviewItem: {
+            /** Classification */
+            classification?: string | null;
+            /** Item */
+            item: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "exploration" | "insight";
+            /** Principal */
+            principal: boolean;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
+            /** Title */
+            title: string;
+        };
+        /** ReviewRequest */
+        ReviewRequest: {
+            /** Item */
+            item: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "approved" | "rejected";
         };
         /**
          * Segment
@@ -11981,7 +12290,9 @@ export interface operations {
     };
     downloadReport: {
         parameters: {
-            query?: never;
+            query?: {
+                execution_id?: string | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -11999,6 +12310,626 @@ export interface operations {
                 };
                 content: {
                     "application/pdf": unknown;
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getReportHistory: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportHistory"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getReportReview: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportReview"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    reviewReportFinding: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ReviewRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportReview"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    generateReportVersion: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getReportVersion: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+                execution_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReportView"];
                 };
             };
             /** @description Bad Request */

@@ -462,6 +462,9 @@ def request_report_update(executions: Executions, owner: UUID, version: UUID, tr
     base = runs[0]
     assert base.plan and base.input_artifact_id and base.input_artifact_sha256
     content = base.plan.content
+    if content["input"].get("kind") == "report_v2":
+        # Fase 27: el historial dice qué pidió cada versión («selection», «dashboard»…).
+        content = {**content, "input": {**content["input"], "trigger": trigger.split(":")[0]}}
     key = uuid5(version, f"automatic-report-update:{len(runs)}:{trigger}")
     fingerprint = digest(
         "automatic_report_update",
@@ -483,6 +486,15 @@ def request_report_update(executions: Executions, owner: UUID, version: UUID, tr
         base.input_artifact_id,
         base.input_artifact_sha256,
         kind="automatic_report",
+    )
+
+
+def report_is_v2(executions: Executions, owner: UUID, version: UUID) -> bool:
+    runs = [r for r in executions.for_version(owner, version) if r.kind == "automatic_report"]
+    return (
+        bool(runs)
+        and runs[0].plan is not None
+        and (runs[0].plan.content["input"].get("kind") == "report_v2")
     )
 
 
@@ -712,6 +724,9 @@ class DashboardAccess:
         self.feedback.add(owner, run.project_id, version, request.item, request.verdict)
         marks = sorted([f.item, f.verdict] for f in self.feedback.for_version(owner, version))
         state = digest("finding_feedback", {"dashboard": artifact.content.sha256, "marks": marks})
-        request_report_update(self.executions, owner, version, f"feedback:{state}")
+        # Fase 27: con el informe v2 las marcas son la revisión de los hallazgos y la versión
+        # nueva la pide el usuario («Generar versión»); con el v1 se regenera como antes.
+        if not report_is_v2(self.executions, owner, version):
+            request_report_update(self.executions, owner, version, f"feedback:{state}")
         self.db.commit()
         return self.view(owner, version)
