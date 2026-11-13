@@ -14,17 +14,30 @@ const SEPARATORS: Record<string, string> = {
 };
 
 /** Fase 18: lectura del archivo y cambios de estructura. Sólo informa: no hay nada que elegir. */
-export function SourceReviewPanel({ review }: { review: SourceReview }) {
+export function SourceReviewPanel({
+  review,
+  structureOnly = false,
+}: {
+  review: SourceReview;
+  /** Fase 28: en Dataset › Archivo sólo los cambios de estructura (la lectura ya está allí). */
+  structureOnly?: boolean;
+}) {
   const reading = review.reading;
   const structure = review.structure;
   const notable =
+    !structureOnly &&
     reading &&
     (reading.encoding === "cp1252" ||
       (reading.converted?.length ?? 0) > 0 ||
       (reading.kept_as_text?.length ?? 0) > 0);
   if (!notable && !structure) return null;
   return (
-    <section className="source-review" aria-label="Lectura del archivo">
+    <section
+      className="source-review"
+      aria-label={
+        structureOnly ? "Cambios de estructura" : "Lectura del archivo"
+      }
+    >
       {notable && reading && (
         <div className="source-review-block">
           <h3>

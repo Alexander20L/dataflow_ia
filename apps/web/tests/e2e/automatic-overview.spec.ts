@@ -1,7 +1,7 @@
 import { expect, test } from "@playwright/test";
-import { openAnalysis } from "./helpers";
+import { openTab } from "./helpers";
 
-test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
+test("subir CSV muestra los resultados guardados sin ningún paso manual", async ({
   page,
 }) => {
   const registration = await page.request.post("/api/v1/auth/register", {
@@ -28,39 +28,15 @@ test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
   });
   await expect(page.getByLabel("Nombre del proyecto")).toHaveValue("datos");
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
-  await openAnalysis(page);
-  const dashboard = page.getByRole("region", {
-    name: "Dashboard automático",
-    exact: true,
-  });
+  // Fase 28: los resultados viven en las cinco pestañas; no queda «Análisis».
+  await openTab(page, "Dataset");
+  await page.getByRole("tab", { name: "Registros" }).click({ timeout: 30000 });
   await expect(
-    dashboard.getByRole("heading", { name: "Tu análisis automático" }),
+    page.getByRole("cell", { name: "001", exact: true }).first(),
   ).toBeVisible({ timeout: 30000 });
   await expect(
-    dashboard.getByRole("heading", { name: "Total de importe" }),
-  ).toBeVisible();
-  const interpretation = dashboard.getByRole("region", {
-    name: "Lectura automática de los datos",
-  });
-  await expect(
-    interpretation.getByRole("heading", {
-      name: "Posible contexto comercial (ventas)",
-    }),
-  ).toBeVisible();
-  await expect(
-    interpretation.getByRole("button", {
-      name: /confirmar|guardar|aplicar|elegir/i,
-    }),
+    page.getByRole("tab", { name: "Análisis", exact: true }),
   ).toHaveCount(0);
-  await expect(
-    dashboard.getByRole("img", { name: "importe por mes" }),
-  ).toBeVisible();
-  await expect(
-    dashboard.getByRole("img", { name: "importe por region" }),
-  ).toBeVisible();
-  await expect(
-    dashboard.getByText("3 valores utilizados · 1 vacíos excluidos").first(),
-  ).toBeVisible();
   // Fase 13: no quedan herramientas manuales ni etapas que abrir.
   await expect(
     page.getByRole("button", { name: /Herramientas avanzadas/ }),
@@ -68,9 +44,14 @@ test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
   await expect(
     page.getByRole("navigation", { name: "Etapas del CSV real" }),
   ).toHaveCount(0);
+  await openTab(page, "Dashboard");
+  const board = page.getByRole("region", { name: "Dashboard", exact: true });
+  await expect(board.getByText(/Dataset completo: /)).toBeVisible({
+    timeout: 60000,
+  });
   // Fase 27: la explicación de la IA (resumen, conclusiones y recomendaciones con cifras
   // verificadas) está en el informe.
-  await page.getByRole("tab", { name: "Informe", exact: true }).click();
+  await openTab(page, "Informe");
   const report = page.getByRole("region", { name: "Informe", exact: true });
   const conclusions = report.getByRole("region", {
     name: "Conclusiones y recomendaciones",
@@ -79,11 +60,6 @@ test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
     timeout: 60000,
   });
   const savedConclusions = await conclusions.innerText();
-  await page.getByRole("tab", { name: "Análisis", exact: true }).click();
-  await dashboard.getByText("Detalle de los datos", { exact: true }).click();
-  await expect(
-    dashboard.getByRole("cell", { name: "001", exact: true }),
-  ).toBeVisible();
   const projectId = page.url().split("/workspace/")[1]?.split("/")[0];
   expect(projectId).toBeTruthy();
   // Las rutas del recorrido manual y del pipeline por política ya no existen.
@@ -95,22 +71,15 @@ test("subir CSV muestra el dashboard guardado sin ningún paso manual", async ({
     expect((await page.request.get(retired)).status()).toBe(404);
   await page.reload();
   // El informe guardado no cambia al volver.
-  await page.getByRole("tab", { name: "Informe", exact: true }).click();
+  await openTab(page, "Informe");
   await expect(conclusions).toHaveText(savedConclusions.replace(/\s+/g, " "), {
     useInnerText: true,
   });
-  await openAnalysis(page);
-  await expect(
-    dashboard.getByRole("heading", { name: "Tu análisis automático" }),
-  ).toBeVisible();
-  await expect(
-    interpretation.getByRole("heading", {
-      name: "Posible contexto comercial (ventas)",
-    }),
-  ).toBeVisible();
+  await openTab(page, "Dashboard");
   await page.setViewportSize({ width: 390, height: 844 });
+  await expect(board.getByText(/Dataset completo: /)).toBeVisible();
   expect(
-    await dashboard.evaluate(
+    await board.evaluate(
       (element) => element.scrollWidth <= element.clientWidth + 1,
     ),
   ).toBeTruthy();

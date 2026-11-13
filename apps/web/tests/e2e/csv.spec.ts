@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
-import { openAnalysis } from "./helpers";
+import { openRecords, openTab } from "./helpers";
 
 const csv = Buffer.from(
   "﻿id,importe,region,unidades\r\n001,10.50,Norte,1\r\n002,,Sur,2\r\n001,10.50,Norte,1\r\n003, ,Sur,4\r\n",
@@ -17,7 +17,7 @@ test.beforeEach(async ({ page }) => {
   expect(result.status()).toBe(201);
 });
 
-test("CSV real: dashboard automático, descarga íntegra y versiones independientes", async ({
+test("CSV real: resultados automáticos, descarga íntegra y versiones independientes", async ({
   page,
 }) => {
   await page.goto("/new");
@@ -30,14 +30,7 @@ test("CSV real: dashboard automático, descarga íntegra y versiones independien
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
-  await openAnalysis(page);
-  const dashboard = page.getByRole("region", {
-    name: "Dashboard automático",
-    exact: true,
-  });
-  await expect(
-    dashboard.getByRole("heading", { name: "Tu análisis automático" }),
-  ).toBeVisible({ timeout: 20000 });
+  await openTab(page, "Dataset");
   const downloadPromise = page.waitForEvent("download");
   await page.getByRole("link", { name: "Descargar original" }).click();
   const download = await downloadPromise;
@@ -63,26 +56,19 @@ test("CSV real: dashboard automático, descarga íntegra y versiones independien
   await expect(
     page.getByRole("option", { name: /v2 · ventas_v2.csv/ }),
   ).toHaveCount(1);
+  await openRecords(page);
   await expect(
-    dashboard.getByRole("heading", { name: "Tu análisis automático" }),
+    page.getByRole("cell", { name: "009", exact: true }).first(),
   ).toBeVisible({ timeout: 20000 });
-  await dashboard
-    .locator("summary", { hasText: "Detalle de los datos" })
-    .click();
-  await expect(
-    dashboard.getByRole("cell", { name: "009", exact: true }),
-  ).toBeVisible();
 
   const v1 = await page
     .getByRole("option", { name: /v1 · ventas_privadas.csv/ })
     .getAttribute("value");
   await page.getByLabel("Versión", { exact: true }).selectOption(v1!);
-  await dashboard
-    .locator("summary", { hasText: "Detalle de los datos" })
-    .click();
+  await openRecords(page);
   await expect(
-    dashboard.getByRole("cell", { name: "002", exact: true }),
-  ).toBeVisible();
+    page.getByRole("cell", { name: "002", exact: true }).first(),
+  ).toBeVisible({ timeout: 20000 });
   await page.reload();
   await expect(
     page.getByRole("heading", { name: "Calidad de mis ventas CSV" }),
@@ -113,6 +99,6 @@ test("un CSV inválido muestra un error real y conserva su original", async ({
     page.getByRole("link", { name: "Descargar original" }),
   ).toBeVisible();
   await expect(
-    page.getByRole("region", { name: "Dashboard automático", exact: true }),
+    page.getByRole("tab", { name: "Dataset", exact: true }),
   ).toHaveCount(0);
 });

@@ -16,8 +16,7 @@ import { errorMessage } from "@/lib/api";
 import { number } from "@/lib/utils";
 import { useApp } from "@/lib/providers";
 import { AutomaticAnalysisView } from "./automatic-analysis";
-import { AutomaticOverview } from "./automatic-overview";
-import { DeliverySummary } from "./delivery-summary";
+import { ProgressStrip } from "./progress-strip";
 import { SourceReviewPanel } from "./source-review";
 import { InvestigationPanel } from "./investigation";
 import { OverviewAudit } from "./overview-audit";
@@ -60,7 +59,6 @@ const TABS = [
   { id: "investigation", label: "Investigación" },
   { id: "dashboard", label: "Dashboard" },
   { id: "report", label: "Informe" },
-  { id: "analysis", label: "Análisis" },
 ] as const;
 type MainTab = (typeof TABS)[number]["id"];
 
@@ -380,6 +378,7 @@ export function CsvWorkspace({
             </div>
           ) : diagnostic.data?.profile.overview ? (
             <>
+              <ProgressStrip progress={progress.data} />
               <MainTabs
                 value={tab}
                 onChange={(next) => {
@@ -396,6 +395,11 @@ export function CsvWorkspace({
                   <DatasetTab
                     key={`dataset-${version.id}`}
                     versionId={version.id}
+                    fileExtra={
+                      review.data?.structure ? (
+                        <SourceReviewPanel review={review.data} structureOnly />
+                      ) : null
+                    }
                     onOpenVersion={(id) => setSelected(id)}
                     onKeepVersion={() => setSelected(version.id)}
                     initialSubview={datasetSubview}
@@ -425,6 +429,19 @@ export function CsvWorkspace({
                   <InvestigationTab
                     key={`investigation-tab-${version.id}`}
                     versionId={version.id}
+                    findings={
+                      automatic.data ? (
+                        <AutomaticAnalysisView analysis={automatic.data} />
+                      ) : null
+                    }
+                    followUp={
+                      investigation.data ? (
+                        <InvestigationPanel
+                          view={investigation.data}
+                          versionId={version.id}
+                        />
+                      ) : null
+                    }
                   />
                 </div>
               ) : tab === "dashboard" ? (
@@ -442,7 +459,7 @@ export function CsvWorkspace({
                     }}
                   />
                 </div>
-              ) : tab === "report" ? (
+              ) : (
                 <div
                   id="workspace-panel-report"
                   role="tabpanel"
@@ -451,53 +468,12 @@ export function CsvWorkspace({
                   <ReportTab
                     key={`report-tab-${version.id}`}
                     versionId={version.id}
+                    legacy={
+                      progress.data && !followed && !automatic.data ? (
+                        <OverviewAudit versionId={version.id} />
+                      ) : null
+                    }
                   />
-                </div>
-              ) : (
-                <div
-                  id="workspace-panel-analysis"
-                  role="tabpanel"
-                  aria-labelledby="workspace-tab-analysis"
-                >
-                  {automatic.data && (
-                    <DeliverySummary
-                      key={`summary-${version.id}`}
-                      versionId={version.id}
-                      progress={progress.data}
-                      analysis={automatic.data}
-                    />
-                  )}
-                  {review.data && (
-                    <SourceReviewPanel
-                      key={`review-${version.id}`}
-                      review={review.data}
-                    />
-                  )}
-                  {automatic.data && (
-                    <AutomaticAnalysisView
-                      key={`analysis-${version.id}`}
-                      analysis={automatic.data}
-                    />
-                  )}
-                  {investigation.data ? (
-                    <InvestigationPanel
-                      key={`investigation-${version.id}`}
-                      view={investigation.data}
-                      versionId={version.id}
-                    />
-                  ) : null}
-                  <AutomaticOverview
-                    key={`overview-${version.id}`}
-                    overview={diagnostic.data.profile.overview}
-                    quality={diagnostic.data.quality}
-                    versionNumber={version.number}
-                  />
-                  {progress.data && !followed && !automatic.data ? (
-                    <OverviewAudit
-                      key={`audit-${version.id}`}
-                      versionId={version.id}
-                    />
-                  ) : null}
                 </div>
               )}
             </>

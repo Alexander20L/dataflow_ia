@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { openAnalysis } from "./helpers";
+import { openFile } from "./helpers";
 
 // Fase 18: un CSV guardado por Excel en Windows (ANSI, punto y coma, coma decimal y fechas
 // día/mes/año) se lee sin preguntar nada y la lectura se explica.
@@ -31,17 +31,19 @@ test("CSV regional: se lee solo y se explica cómo", async ({ page }) => {
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
-  await openAnalysis(page);
-  const reading = page.getByRole("region", { name: "Lectura del archivo" });
-  await expect(reading).toContainText("Windows-1252 (ANSI)", {
-    timeout: 30000,
+  // Fase 28: la lectura del archivo está en Dataset › Archivo.
+  await openFile(page);
+  const original = page.getByRole("region", { name: "Lectura del original" });
+  await expect(original).toContainText("Windows-1252", { timeout: 30000 });
+  await expect(original).toContainText(/punto y coma/i);
+  const values = page.getByRole("region", {
+    name: "Interpretación de valores",
   });
-  await expect(reading).toContainText("separador punto y coma");
-  await expect(reading).toContainText(
-    "Importe: Leída como coma decimal y punto de miles",
+  await expect(values).toContainText(
+    "Leída como coma decimal y punto de miles",
   );
-  await expect(reading).toContainText("Fecha: Leída como día/mes/año");
-  await expect(reading.getByRole("button")).toHaveCount(0);
+  await expect(values).toContainText("Leída como día/mes/año");
+  await expect(values.getByRole("button")).toHaveCount(0);
 });
 
 // Fase 18B: un PDF con dos tablas da dos versiones; cada una dice de qué tabla sale.
@@ -65,15 +67,15 @@ test("PDF con tablas: cada tabla se analiza sola", async ({ page }) => {
     buffer: pdf,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
-  await openAnalysis(page);
+  await openFile(page);
   const origin = page.getByRole("note", { name: "Origen de los datos" });
   await expect(origin).toContainText("Tabla 1 de la página 1 del PDF.", {
     timeout: 30000,
   });
   await expect(origin).toContainText("Tabla 2 de la página 1");
   await expect(
-    page.getByRole("region", { name: "Lectura del archivo" }),
-  ).toContainText("Importe: Leída como coma decimal y punto de miles", {
+    page.getByRole("region", { name: "Interpretación de valores" }),
+  ).toContainText("Leída como coma decimal y punto de miles", {
     timeout: 30000,
   });
 });

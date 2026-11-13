@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   CircleAlert,
   LoaderCircle,
@@ -31,13 +31,15 @@ import {
   TRIGGERS,
 } from "./labels";
 
-const SUBVIEWS = [
+const BASE = [
   { id: "plan", label: "Plan" },
   { id: "tree", label: "Árbol" },
   { id: "evidence", label: "Evidencias" },
   { id: "history", label: "Historial" },
 ] as const;
-type Subview = (typeof SUBVIEWS)[number]["id"];
+// Fase 28: los hallazgos del análisis automático (Fase 15) y, en versiones anteriores a la
+// Fase 27, su seguimiento (Fase 16), que antes estaban en la pestaña Análisis.
+type Subview = (typeof BASE)[number]["id"] | "findings" | "followup";
 type Filter = "all" | NonNullable<InvestigationNode["classification"]>;
 const ROWS = 12;
 
@@ -477,8 +479,25 @@ function HistoryView({
 /** Fase 25: pestaña Investigación. El plan, el árbol de investigaciones secundarias y la
  * evidencia de cada resultado, con su clasificación. El usuario puede pausar, cancelar,
  * reanudar y volver a investigar, y consultar las investigaciones anteriores. */
-export function InvestigationTab({ versionId }: { versionId: string }) {
+export function InvestigationTab({
+  versionId,
+  findings,
+  followUp,
+}: {
+  versionId: string;
+  findings?: ReactNode;
+  followUp?: ReactNode;
+}) {
   const [subview, setSubview] = useState<Subview>("plan");
+  const SUBVIEWS: { id: Subview; label: string }[] = [
+    ...BASE,
+    ...(findings
+      ? [{ id: "findings" as const, label: "Hallazgos del análisis" }]
+      : []),
+    ...(followUp
+      ? [{ id: "followup" as const, label: "Seguimiento anterior" }]
+      : []),
+  ];
   const [executionId, setExecutionId] = useState<string>();
   const query = useInvestigationView(versionId, executionId);
   const control = useInvestigationControl(versionId);
@@ -498,13 +517,17 @@ export function InvestigationTab({ versionId }: { versionId: string }) {
   const view = query.data;
   if (!view)
     return (
-      <div className="empty-state">
-        <h3>Investigación no disponible</h3>
-        <p>
-          Esta versión se procesó antes de la investigación automática: sube el
-          archivo de nuevo para obtenerla.
-        </p>
-      </div>
+      <>
+        <div className="empty-state">
+          <h3>Investigación no disponible</h3>
+          <p>
+            Esta versión se procesó antes de la investigación automática: sube
+            el archivo de nuevo para obtenerla.
+          </p>
+        </div>
+        {followUp}
+        {findings}
+      </>
     );
   const running = view.state === "queued" || view.state === "running";
   const result = view.exploration;
@@ -661,7 +684,11 @@ export function InvestigationTab({ versionId }: { versionId: string }) {
         role="tabpanel"
         aria-labelledby={`investigation-tab-${subview}`}
       >
-        {subview === "history" ? (
+        {subview === "findings" ? (
+          findings
+        ) : subview === "followup" ? (
+          followUp
+        ) : subview === "history" ? (
           <HistoryView
             versionId={versionId}
             current={executionId ?? view.execution_id}
@@ -696,18 +723,20 @@ export function InvestigationTab({ versionId }: { versionId: string }) {
           <EvidenceView result={result} />
         )}
       </div>
-      {result && result.limitations.length > 0 && subview !== "history" && (
-        <details className="investigation-notes">
-          <summary>
-            Limitaciones y criterios ({result.limitations.length})
-          </summary>
-          <ul>
-            {result.limitations.map((text) => (
-              <li key={text}>{text}</li>
-            ))}
-          </ul>
-        </details>
-      )}
+      {result &&
+        result.limitations.length > 0 &&
+        ["plan", "tree", "evidence"].includes(subview) && (
+          <details className="investigation-notes">
+            <summary>
+              Limitaciones y criterios ({result.limitations.length})
+            </summary>
+            <ul>
+              {result.limitations.map((text) => (
+                <li key={text}>{text}</li>
+              ))}
+            </ul>
+          </details>
+        )}
     </section>
   );
 }
