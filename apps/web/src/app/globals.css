@@ -5915,3 +5915,25 @@ tbody tr:hover {
   display: flex;
   gap: 6px;
 }
+
+/* Fase 28: progreso de la carga encima de las pestañas (sustituye al resumen de Análisis). */
+.progress-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  margin: 0 0 12px;
+  padding: 0;
+  list-style: none;
+  font-size: 0.8rem;
+}
+.progress-strip .delivery-stage {
+  display: inline-flex;
+  gap: 5px;
+  align-items: center;
+  padding: 0;
+  border: 0;
+  background: none;
+}
+.progress-strip.complete {
+  color: var(--text-secondary, #64748b);
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   Check,
   CircleAlert,
@@ -353,7 +353,14 @@ function History({
 
 /** Fase 27: pestaña Informe. Vista previa del documento (las mismas secciones que el PDF),
  * revisión humana de los hallazgos, versiones nuevas a petición e historial. */
-export function ReportTab({ versionId }: { versionId: string }) {
+export function ReportTab({
+  versionId,
+  legacy,
+}: {
+  versionId: string;
+  /** Fase 28: en versiones anteriores al informe v2, la explicación automática (C2). */
+  legacy?: ReactNode;
+}) {
   const [subview, setSubview] = useState<Subview>("preview");
   const [executionId, setExecutionId] = useState<string>();
   const query = useReportView(versionId, executionId);
@@ -472,6 +479,7 @@ export function ReportTab({ versionId }: { versionId: string }) {
           </p>
         ) : null}
       </div>
+      {legacy}
     </section>
   );
 }

@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type ReactNode,
+} from "react";
 import { LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { errorMessage } from "@/lib/api";
@@ -36,8 +42,11 @@ export function DatasetTab({
   onOpenVersion,
   onKeepVersion,
   initialSubview,
+  fileExtra,
 }: {
   versionId: string;
+  /** Fase 28: lo que se añade a «Archivo» (cambios de estructura frente a la versión anterior). */
+  fileExtra?: ReactNode;
   /** Fase 24B: subvista con la que se abre (p. ej. el Diccionario desde Comprensión). */
   initialSubview?: DatasetSubview;
   onOpenVersion?: (versionId: string) => void;
@@ -145,6 +154,7 @@ export function DatasetTab({
           }}
           onOpenVersion={onOpenVersion}
           onKeepVersion={onKeepVersion}
+          fileExtra={fileExtra}
         />
       </div>
     </section>
@@ -159,6 +169,7 @@ function Subview({
   onShowRow,
   onOpenVersion,
   onKeepVersion,
+  fileExtra,
 }: {
   view: InspectionView;
   subview: Subview;
@@ -167,6 +178,7 @@ function Subview({
   onShowRow: (row: number) => void;
   onOpenVersion?: (versionId: string) => void;
   onKeepVersion?: () => void;
+  fileExtra?: ReactNode;
 }) {
   const inspection = view.inspection!;
   switch (subview) {
@@ -195,6 +207,11 @@ function Subview({
     case "quality":
       return <QualityView inspection={inspection} onShowRow={onShowRow} />;
     case "file":
-      return <FileView inspection={inspection} versionId={versionId} />;
+      return (
+        <>
+          <FileView inspection={inspection} versionId={versionId} />
+          {fileExtra}
+        </>
+      );
   }
 }

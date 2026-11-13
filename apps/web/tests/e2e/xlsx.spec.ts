@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { openAnalysis } from "./helpers";
+import { openRecords, openTab } from "./helpers";
 
 // Fase 13B: un libro con portada y título se importa sin elegir hoja ni cabecera.
 test("Excel desde el asistente: el sistema elige la hoja y lo explica", async ({
@@ -30,23 +30,14 @@ test("Excel desde el asistente: el sistema elige la hoja y lo explica", async ({
     "libro_ventas",
   );
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
-  await openAnalysis(page);
-  const dashboard = page.getByRole("region", {
-    name: "Dashboard automático",
-    exact: true,
-  });
-  await expect(
-    dashboard.getByRole("heading", { name: "Tu análisis automático" }),
-  ).toBeVisible({ timeout: 30000 });
+  await openTab(page, "Dataset");
   const note = page.getByRole("note", { name: "Hoja importada" });
   await expect(note).toContainText("Se importó la hoja «Ventas»");
   await expect(note).toContainText("cabecera en la fila 3");
   await expect(note).toContainText("No se importaron: la hoja «Notas»");
   await expect(page.getByLabel("Hoja o tabla")).toHaveCount(0);
-  await dashboard
-    .locator("summary", { hasText: "Detalle de los datos" })
-    .click();
+  await openRecords(page);
   await expect(
-    dashboard.getByRole("cell", { name: "2026-01-02", exact: true }),
-  ).toBeVisible();
+    page.getByRole("cell", { name: "2026-01-02", exact: true }).first(),
+  ).toBeVisible({ timeout: 30000 });
 });

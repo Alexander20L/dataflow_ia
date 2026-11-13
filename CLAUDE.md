@@ -107,6 +107,10 @@ descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
   (sin revisión, los relevantes «Sin revisar»); la versión nueva la pide el usuario. Narrativa
   de la IA en `copilot/report.py` (sólo `{{evidence:id}}`, sin frases causales). Las cargas
   nuevas ya no encolan el seguimiento de la Fase 16. Interfaz en `features/report`.
+- Limpieza (Fase 28, ADR-046): sin pestaña Análisis. Progreso encima de las pestañas
+  (`progress-strip.tsx`); hallazgos de la Fase 15 en Investigación; cambios de estructura en
+  Dataset › Archivo; seguimiento de la Fase 16 y explicación C2 sólo en versiones antiguas
+  (Investigación e Informe). El panorama descriptivo ya no se muestra.
 - delivery (Fase 17): informe automático (`delivery.report@1`, sólo reordena lo publicado; ReportLab
   sólo en `delivery/pdf.py`) y progreso por etapas; `bootstrap/delivery_job.py` lo une a la cola.
 - No volver a crear `automation`, `templates` ni `analysis_sessions` (prueba AST). La detección pura de
@@ -204,13 +208,14 @@ Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:che
 | 25   | 0.33 | `feat/fase-25-investigacion`        | pestaña Investigación: plan, árbol, evidencias, clases, control; 0026          |
 | 26   | 0.34 | `feat/fase-26-dashboard`            | pestaña Dashboard: indicadores, filtros, origen, versión personalizada; 0027   |
 | 27   | 0.35 | `feat/fase-27-informe`              | pestaña Informe: documento v2, revisión, versiones, historial, narrativa IA    |
+| 28   | 0.35 | `feat/fase-28-limpieza`             | se retira la pestaña Análisis; progreso sobre las pestañas (sólo interfaz)     |
 
 Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
 resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
 no regenerar sus referencias para hacer pasar una prueba.
 Integración: `develop` contiene las Fases 4 a 14 y A–C (merge `--no-ff` o PR; desde 2026-11-09, siempre PR). Fase 13: ADR-026 sustituye
 al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
-`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 18: ADR-035. Fase 19: ADR-036 (valoración opcional del usuario). Fase 20: ADR-037. Fase 21: ADR-038. Fase 22: ADR-039. Fase 23: ADR-040 (modifica el punto 7 de ADR-039). Fase 24: ADR-041 (modifica ADR-036). Fase 24B: ADR-042 (las cifras se muestran con 3 decimales como mucho: `delivery/numbers.py` y `apps/web/src/lib/numbers.ts`; nunca se redondean los cálculos). Fase 25: ADR-043 (la exploración pasa a ser la investigación). Fase 26: ADR-044 (dashboard con indicadores, filtros, origen y versión personalizada). Fase 27: ADR-045 (informe v2, revisión humana, historial; el seguimiento de la Fase 16 se retira de las cargas nuevas). Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
+`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 18: ADR-035. Fase 19: ADR-036 (valoración opcional del usuario). Fase 20: ADR-037. Fase 21: ADR-038. Fase 22: ADR-039. Fase 23: ADR-040 (modifica el punto 7 de ADR-039). Fase 24: ADR-041 (modifica ADR-036). Fase 24B: ADR-042 (las cifras se muestran con 3 decimales como mucho: `delivery/numbers.py` y `apps/web/src/lib/numbers.ts`; nunca se redondean los cálculos). Fase 25: ADR-043 (la exploración pasa a ser la investigación). Fase 26: ADR-044 (dashboard con indicadores, filtros, origen y versión personalizada). Fase 27: ADR-045 (informe v2, revisión humana, historial; el seguimiento de la Fase 16 se retira de las cargas nuevas). Fase 28: ADR-046 (se retira la pestaña Análisis). Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
 (limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
 contradiga el enfoque automático. Fase 7 completa (7A y 7B): ADR-018 y
 ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa

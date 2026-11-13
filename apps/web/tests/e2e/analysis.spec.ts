@@ -1,7 +1,7 @@
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { expect, test } from "@playwright/test";
-import { openAnalysis } from "./helpers";
+import { openFindings, openTab } from "./helpers";
 
 // Fase 14: dataset sintético de aceptación (Year + Month, Customer con dos nombres, un mes
 // faltante y sin moneda). Cero clics después de subir.
@@ -27,18 +27,11 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
     buffer: csv,
   });
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
-  await openAnalysis(page);
-  const dashboard = page.getByRole("region", {
-    name: "Dashboard automático",
-    exact: true,
-  });
-  await expect(
-    dashboard.getByRole("heading", { name: "Tu análisis automático" }),
-  ).toBeVisible({ timeout: 30000 });
-  // Fase 15: los hallazgos aparecen antes del dashboard descriptivo, sin ninguna acción.
-  const findings = page.getByRole("region", {
-    name: "Hallazgos del análisis automático",
-  });
+  // Fase 28: el progreso de la carga va encima de las pestañas.
+  const stages = page.getByRole("list", { name: "Progreso de la carga" });
+  await expect(stages.getByRole("listitem")).toHaveCount(5, { timeout: 30000 });
+  // Fase 15 (Fase 28: en Investigación): los hallazgos aparecen sin ninguna acción.
+  const findings = await openFindings(page);
   await expect(
     findings.getByRole("heading", { name: "Hallazgos" }),
   ).toBeVisible();
@@ -56,64 +49,12 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
   await expect(findings.getByRole("button")).toHaveCount(0);
   // Fase 27: el seguimiento de hallazgos de la Fase 16 ya no se ejecuta en las cargas nuevas.
   await expect(
-    page.getByRole("region", { name: "Investigación automática" }),
+    page.getByRole("tab", { name: "Seguimiento anterior" }),
   ).toHaveCount(0);
-  // Fase 17: resumen arriba con progreso por etapas e informe PDF descargable.
-  const summary = page.getByRole("region", { name: "Resumen" });
-  const report = summary.getByRole("link", {
-    name: "Descargar informe (PDF)",
-  });
-  await expect(report).toBeVisible({ timeout: 30_000 });
+  // Fase 28: no queda la pestaña Análisis.
   await expect(
-    summary
-      .getByRole("list", { name: "Progreso de la carga" })
-      .getByRole("listitem"),
-  ).toHaveCount(5);
-  await expect(summary).not.toContainText("Pendiente");
-  await expect(summary.getByText("Hallazgos principales")).toBeVisible();
-  const [download] = await Promise.all([
-    page.waitForEvent("download"),
-    report.click(),
-  ]);
-  expect(download.suggestedFilename()).toBe("informe-ventas_mensuales-v1.pdf");
-  const pdf = await readFile((await download.path())!);
-  expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
-  const reading = dashboard.getByRole("region", {
-    name: "Lectura automática de los datos",
-  });
-  await expect(
-    reading.getByRole("heading", {
-      name: "Posible contexto comercial (ventas)",
-    }),
-  ).toBeVisible();
-  await expect(reading).toContainText(
-    "Periodo mensual (Year + Month): 2023-01 a 2024-12",
-  );
-  await expect(reading).toContainText("faltan 1: 2024-07");
-  await expect(
-    reading.getByRole("note", { name: "Análisis limitados" }),
-  ).toContainText("Análisis por Customer o Customer_Name");
-  // El año no se promedia y el importe se suma sin inventar moneda.
-  await expect(dashboard.getByRole("heading", { name: /Year/ })).toHaveCount(0);
-  await expect(
-    dashboard.getByRole("heading", { name: "Total de Revenue" }),
-  ).toBeVisible();
-  await expect(
-    dashboard.getByRole("img", { name: "Revenue por mes" }),
-  ).toBeVisible();
-  await expect(
-    dashboard.getByRole("img", { name: "Revenue por Product" }),
-  ).toBeVisible();
-  await expect(
-    dashboard.getByRole("img", { name: /Customer_Name/ }),
+    page.getByRole("tab", { name: "Análisis", exact: true }),
   ).toHaveCount(0);
-  const quality = dashboard.getByRole("region", {
-    name: "Calidad de los datos",
-  });
-  await expect(quality).toContainText("Customer con varios Customer_Name");
-  await expect(quality).toContainText("Meses sin registros");
-  await expect(quality).toContainText("Valores atípicos en Units_Sold");
-  await expect(quality.getByRole("button")).toHaveCount(0);
   // Fase 19 y 24: la comprensión (IA falsa) vive en su propia pestaña; rechazar una relación.
   await page.getByRole("tab", { name: "Comprensión", exact: true }).click();
   const comprehension = page.getByRole("region", { name: "Comprensión" });
@@ -172,9 +113,16 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
   );
   await adapted.getByText(/Elecciones de diseño rechazadas/).click();
   await expect(adapted).toContainText("No es un elemento publicado.");
-  // El informe anterior sigue descargable mientras se genera el nuevo con esa marca.
-  await openAnalysis(page);
-  await expect(
-    summary.getByRole("link", { name: /Descargar informe/ }),
-  ).toBeVisible();
+  // El informe en PDF se descarga en su pestaña; el progreso termina sin etapas pendientes.
+  await openTab(page, "Informe");
+  const report = page.getByRole("link", { name: "Descargar PDF" });
+  await expect(report).toBeVisible({ timeout: 60_000 });
+  await expect(stages).not.toContainText("Pendiente");
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    report.click(),
+  ]);
+  expect(download.suggestedFilename()).toBe("informe-ventas_mensuales-v1.pdf");
+  const pdf = await readFile((await download.path())!);
+  expect(pdf.subarray(0, 4).toString()).toBe("%PDF");
 });

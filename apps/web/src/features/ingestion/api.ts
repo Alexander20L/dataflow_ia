@@ -283,26 +283,3 @@ export function useImportSqlServer() {
     },
   });
 }
-
-export type ReportView = components["schemas"]["ReportView"];
-
-// Fase 21: estado del informe (se sigue sirviendo el anterior mientras se genera uno nuevo).
-export function useReport(versionId: string, watch: boolean) {
-  return useQuery({
-    queryKey: ["report", versionId],
-    enabled: watch,
-    queryFn: async ({ signal }) => {
-      const result = await api.GET("/api/v1/versions/{version_id}/report", {
-        signal,
-        params: { path: { version_id: versionId } },
-      });
-      if (result.response.status === 404) return null;
-      return requireData(result);
-    },
-    refetchInterval: (q) =>
-      q.state.data?.updating ||
-      ["queued", "running"].includes(q.state.data?.state ?? "")
-        ? 1500
-        : false,
-  });
-}
