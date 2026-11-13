@@ -282,54 +282,6 @@ export function useImportSqlServer() {
   });
 }
 
-export type DashboardView = components["schemas"]["DashboardView"];
-export type FindingVerdict =
-  components["schemas"]["FindingFeedbackRequest"]["verdict"];
-
-// Fase 21: dashboard adaptado a los datos (diseño de la IA o de las reglas, con las marcas
-// «sí va / no va» aplicadas). Las versiones anteriores no lo tienen (404).
-export function useDashboard(version?: DatasetVersion) {
-  return useQuery({
-    queryKey: ["dashboard", version?.id],
-    enabled: version?.state === "succeeded",
-    queryFn: async ({ signal }) => {
-      const result = await api.GET("/api/v1/versions/{version_id}/dashboard", {
-        signal,
-        params: { path: { version_id: version!.id } },
-      });
-      if (result.response.status === 404) return null;
-      return requireData(result);
-    },
-    refetchInterval: (q) =>
-      ["queued", "running"].includes(q.state.data?.state ?? "") ? 1000 : false,
-  });
-}
-
-/** Marca opcional de un hallazgo: reordena el dashboard y encola un informe nuevo. */
-export function useJudgeFinding(versionId: string) {
-  const client = useQueryClient();
-  return useMutation({
-    mutationFn: async ({
-      item,
-      verdict,
-    }: {
-      item: string;
-      verdict: FindingVerdict;
-    }) =>
-      requireData(
-        await api.POST("/api/v1/versions/{version_id}/dashboard/feedback", {
-          params: { path: { version_id: versionId } },
-          body: { item, verdict },
-        }),
-      ),
-    onSuccess: async (view) => {
-      client.setQueryData(["dashboard", versionId], view);
-      await client.invalidateQueries({ queryKey: ["progress", versionId] });
-      await client.invalidateQueries({ queryKey: ["report", versionId] });
-    },
-  });
-}
-
 export type ReportView = components["schemas"]["ReportView"];
 
 // Fase 21: estado del informe (se sigue sirviendo el anterior mientras se genera uno nuevo).

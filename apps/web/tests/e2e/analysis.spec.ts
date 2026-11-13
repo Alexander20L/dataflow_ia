@@ -170,9 +170,10 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
   await expect(plan).toBeVisible({ timeout: 60000 });
   await expect(plan).toContainText("Propuesta por la IA");
   await expect(plan).toContainText("no es una dimensión");
-  await openAnalysis(page);
-  // Fase 21: dashboard diseñado por la IA falsa; «Sí va» fija un hallazgo arriba.
-  const adapted = page.getByRole("region", { name: "Dashboard adaptado" });
+  // Fase 21: dashboard diseñado por la IA falsa; «Sí va» fija un hallazgo arriba. Desde la
+  // Fase 26 vive en su propia pestaña.
+  await page.getByRole("tab", { name: "Dashboard", exact: true }).click();
+  const adapted = page.getByRole("region", { name: "Dashboard", exact: true });
   await expect(adapted.getByText("Diseñado por la IA")).toBeVisible();
   await expect(
     adapted.getByRole("group", { name: "Lo esencial", exact: true }),
@@ -193,6 +194,7 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
   await adapted.getByText(/Elecciones de diseño rechazadas/).click();
   await expect(adapted).toContainText("No es un elemento publicado.");
   // El informe anterior sigue descargable mientras se genera el nuevo con esa marca.
+  await openAnalysis(page);
   await expect(
     summary.getByRole("link", { name: /Descargar informe/ }),
   ).toBeVisible();

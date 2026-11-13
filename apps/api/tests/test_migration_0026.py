@@ -10,6 +10,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from migration_support import modelled_at_0026
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.exc import IntegrityError
@@ -90,7 +91,9 @@ def test_0026_is_additive_and_investigation_controls_are_append_only(
 
         with Session(engine, expire_on_commit=False) as db:
             with engine.connect() as connection:
-                context = MigrationContext.configure(connection, opts={})
+                context = MigrationContext.configure(
+                    connection, opts={"include_object": modelled_at_0026}
+                )
                 diff = compare_metadata(context, Base.metadata)
             assert diff == [], diff
             controls = SQLInvestigationControls(db)

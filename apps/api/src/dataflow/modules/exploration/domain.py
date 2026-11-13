@@ -96,6 +96,10 @@ def title(query: ExploreQuery) -> str:
             )
     elif query.kind == "outliers":
         base = f"Valores atípicos de {query.measure}" + (f" por {dims}" if dims else "")
+    elif query.kind == "distribution":
+        base = f"Distribución de {query.measure}"
+    elif query.kind == "scatter":
+        base = f"Relación entre {query.measure} y {query.measure_b}"
     elif query.kind == "top":
         what = (
             "registros"
@@ -104,9 +108,11 @@ def title(query: ExploreQuery) -> str:
         )
         base = f"Primeros {query.limit} de {dims} por {what}"
     elif query.aggregation == "count":
-        base = f"Registros por {dims}"
+        base = f"Registros por {dims}" if dims else "Registros (total)"
     else:
-        base = f"{AGGREGATIONS[query.aggregation or 'sum']} de {query.measure} por {dims}"
+        base = f"{AGGREGATIONS[query.aggregation or 'sum']} de {query.measure}" + (
+            f" por {dims}" if dims else " (total)"
+        )
     return base + suffix
 
 
@@ -114,7 +120,7 @@ def validate(
     raw: RawQuery, catalog: Catalog, done: set[str]
 ) -> tuple[ExploreQuery | None, str | None]:
     """Convierte una propuesta en consulta válida o explica por qué se rechaza."""
-    if raw.kind not in get_args(QueryKind):
+    if raw.kind not in get_args(QueryKind) or raw.kind not in {**KINDS, **TEMPORAL}:
         return None, f"«{raw.kind}» no es un tipo de consulta del catálogo."
     dims = list(raw.dimensions)
     if len(set(dims)) != len(dims):

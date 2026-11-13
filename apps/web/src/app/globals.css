@@ -5678,3 +5678,141 @@ tbody tr:hover {
     margin-left: 0;
   }
 }
+
+/* Fase 26: pestaña Dashboard (indicadores con origen, filtros y versión personalizada). */
+.dashboard-toolbar-v2 {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.dashboard-filterbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.dashboard-filterbar fieldset {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+.dashboard-filterbar legend {
+  margin-bottom: 4px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+.dashboard-filterbar label {
+  display: grid;
+  gap: 4px;
+  font-size: 0.8rem;
+}
+.dashboard-filterbar select {
+  min-width: 120px;
+}
+.dashboard-filter-values summary {
+  cursor: pointer;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+.dashboard-filter-values > div {
+  display: grid;
+  gap: 4px;
+  max-height: 220px;
+  margin-top: 6px;
+  overflow-y: auto;
+}
+.dashboard-filter-values label {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.dashboard-filter-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.dashboard-scope {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin: 0;
+  font-size: 0.85rem;
+}
+.dashboard-filtered {
+  color: var(--accent, #4f46e5);
+  font-weight: 600;
+}
+.dashboard-highlight {
+  font-style: normal;
+  font-weight: 600;
+}
+.kpi-up {
+  color: #059669;
+}
+.kpi-down {
+  color: #dc2626;
+}
+.dashboard-origin summary {
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-secondary, #64748b);
+}
+.dashboard-origin dl {
+  display: grid;
+  gap: 4px;
+  margin: 6px 0 0;
+  font-size: 0.8rem;
+}
+.dashboard-origin dl div {
+  display: grid;
+  grid-template-columns: minmax(110px, 40%) 1fr;
+  gap: 8px;
+}
+.dashboard-origin dt {
+  color: var(--text-secondary, #64748b);
+}
+.dashboard-origin dd {
+  margin: 0;
+}
+.dashboard-editor {
+  display: grid;
+  gap: 12px;
+}
+.dashboard-editor-section {
+  display: grid;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+}
+.dashboard-editor-row,
+.dashboard-editor-section li {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+.dashboard-editor-section ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.dashboard-editor input {
+  flex: 1 1 200px;
+  min-width: 0;
+}
+.dashboard-editor-add {
+  display: grid;
+  gap: 4px;
+  font-size: 0.85rem;
+}

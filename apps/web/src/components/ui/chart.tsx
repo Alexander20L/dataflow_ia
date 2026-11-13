@@ -212,3 +212,33 @@ export function heatmapOption(
     series: [{ type: "heatmap", data: cells }],
   };
 }
+
+/** Fase 26: dispersión de dos medidas (cada punto, una fila). */
+export function scatterOption(
+  xName: string,
+  yName: string,
+  points: [number, number][],
+): EChartsCoreOption {
+  return {
+    color: ["#6366f1"],
+    tooltip: { ...SAFE_TOOLTIP, trigger: "item" },
+    grid: { left: 60, right: 20, top: 20, bottom: 50 },
+    xAxis: {
+      type: "value",
+      name: xName,
+      nameLocation: "middle",
+      nameGap: 30,
+      scale: true,
+      axisLabel: { color: "#94a3b8", fontSize: 11 },
+      splitLine: { lineStyle: { color: "#94a3b820", type: "dashed" } },
+    },
+    yAxis: {
+      type: "value",
+      name: yName,
+      scale: true,
+      axisLabel: { color: "#94a3b8", fontSize: 11 },
+      splitLine: { lineStyle: { color: "#94a3b820", type: "dashed" } },
+    },
+    series: [{ type: "scatter", data: points, symbolSize: 7 }],
+  };
+}

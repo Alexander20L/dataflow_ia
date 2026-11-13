@@ -10,14 +10,16 @@ import hashlib
 import io
 import re
 from collections import defaultdict
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
 from statistics import median
 
 import polars as pl
 
 from dataflow.modules.exploration.contracts import (
+    MAX_BINS,
     MAX_GROUPS,
+    MAX_POINTS,
     TEMPORAL_KINDS,
     ExploreFigure,
     ExploreQuery,
@@ -107,13 +109,18 @@ def compute(
         return compute_temporal(content, query, execution, period)
     if query.kind == "outliers":
         return compute_outliers(content, query, execution)
+    if query.kind == "distribution":
+        return compute_distribution(content, query, execution)
+    if query.kind == "scatter":
+        return compute_scatter(content, query, execution)
     names = [
         *query.dimensions,
         *[m for m in (query.measure, query.measure_b) if m],
         *([query.filter_column] if query.filter_column else []),
     ]
     data = columns(content, names)
-    total = len(next(iter(data.values()))) if data else 0
+    # Fase 26: un conteo total no lee ninguna columna; se cuentan las filas de la tabla.
+    total = len(next(iter(data.values()))) if data else row_count(content)
     indices: Sequence[int] = range(total)
     if query.filter_column:
         indices = [i for i in indices if str(data[query.filter_column][i]) == query.filter_value]
@@ -219,8 +226,9 @@ def build(
         figures = figures[: query.limit]
     total_groups = len(figures)
     kept = figures[:MAX_GROUPS]
+    first = {"evolution": ["Periodo"], "distribution": ["Intervalo"], "scatter": ["Fila"]}
     headers = [
-        *(["Periodo"] if query.kind == "evolution" else query.dimensions),
+        *first.get(query.kind, query.dimensions),
         *[label for label, _ in (kept[0][2] if kept else [])],
         "Filas",
     ]
@@ -475,3 +483,130 @@ def compute_outliers(content: bytes, query: ExploreQuery, execution: str) -> Exp
         "interpolación lineal (redondeados a 6 decimales); hacen falta al menos 4 valores."
     )
     return build(query, execution, method, figures)
+
+
+# --- Fase 26 (dashboard-design-v2): histograma, dispersión y subconjunto filtrado ---------------
+
+
+def compute_distribution(
+    content: bytes, query: ExploreQuery, execution: str
+) -> ExploreResult | str:
+    """Histograma de una medida: intervalos de igual ancho (regla de Sturges) sobre todos los
+    valores numéricos; cada intervalo cuenta sus registros."""
+    assert query.measure
+    values = [
+        n
+        for n in (decimal(v) for v in columns(content, [query.measure])[query.measure])
+        if n is not None
+    ]
+    if len(values) < 2:
+        return f"Hacen falta al menos dos valores numéricos de {query.measure}."
+    low, high = min(values), max(values)
+    if low == high:
+        bins = 1
+    else:
+        bins = min(MAX_BINS, (len(values) - 1).bit_length() + 1)
+    with localcontext() as context:
+        context.prec = 40
+        width = (high - low) / bins if bins > 1 else Decimal(0)
+        counts = [0] * bins
+        for value in values:
+            index = 0 if width == 0 else min(int((value - low) / width), bins - 1)
+            counts[index] += 1
+        edges = [low + width * i for i in range(bins)] + [high]
+
+    def edge(value: Decimal) -> str:
+        return text(value.quantize(SIX)) or "0"
+
+    figures: Figures = [
+        (
+            (f"[{edge(edges[i])}, {edge(edges[i + 1])}" + ("]" if i == bins - 1 else ")"),),
+            counts[i],
+            [("Registros", Decimal(counts[i]))],
+        )
+        for i in range(bins)
+    ]
+    method = (
+        f"Histograma de {bins} intervalo{'s' if bins != 1 else ''} de igual ancho (regla de "
+        f"Sturges, máximo {MAX_BINS}) sobre los {len(values)} valores numéricos; los extremos "
+        "se muestran redondeados a 6 decimales."
+    )
+    return build(query, execution, method, figures, ordered=False)
+
+
+def compute_scatter(content: bytes, query: ExploreQuery, execution: str) -> ExploreResult | str:
+    """Pares de dos medidas: todas las filas con ambas o, si hay más de `MAX_POINTS`, una
+    muestra a intervalos regulares del orden de las filas (determinista)."""
+    assert query.measure and query.measure_b
+    data = columns(content, [query.measure, query.measure_b])
+    pairs = [
+        (index, x, y)
+        for index, (x, y) in enumerate(
+            zip(
+                (decimal(v) for v in data[query.measure]),
+                (decimal(v) for v in data[query.measure_b]),
+                strict=True,
+            )
+        )
+        if x is not None and y is not None
+    ]
+    if len(pairs) < 2:
+        return f"Hacen falta al menos dos filas con {query.measure} y {query.measure_b}."
+    total = len(pairs)
+    chosen = (
+        pairs
+        if total <= MAX_POINTS
+        else [pairs[i * total // MAX_POINTS] for i in range(MAX_POINTS)]
+    )
+    figures: Figures = [
+        ((f"Fila {index + 1}",), 1, [(query.measure, x), (query.measure_b, y)])
+        for index, x, y in chosen
+    ]
+    method = (
+        f"Pares de {query.measure} y {query.measure_b} de las {total} filas con ambas medidas"
+        + (
+            f"; se muestran {MAX_POINTS} a intervalos regulares del orden de las filas."
+            if total > MAX_POINTS
+            else "."
+        )
+    )
+    result = build(query, execution, method, figures, ordered=False)
+    return result.model_copy(
+        update={"total_groups": total, "truncated": total > len(chosen), "covered_rows": total}
+    )
+
+
+def subset(
+    content: bytes,
+    period: tuple[str, list[str]] | None,
+    start: str | None,
+    end: str | None,
+    categories: Mapping[str, Sequence[str]],
+) -> tuple[bytes, int, int]:
+    """La tabla publicada con sólo las filas que cumplen los filtros (mes «AAAA-MM» entre
+    `start` y `end`, ambos incluidos, y cada columna en sus valores). Devuelve el contenido, las
+    filas que quedan y las filas de la tabla. Con filtro de periodo, una fila sin mes
+    reconocible queda fuera."""
+    table = pl.read_parquet(io.BytesIO(content))
+    total = table.height
+    keep = [True] * total
+    if (start or end) and period is not None:
+        kind, names = period
+        cells = [table.get_column(name).to_list() for name in names]
+        for i in range(total):
+            month = month_of(kind, [column[i] for column in cells])
+            keep[i] = (
+                month is not None
+                and (start is None or month >= start)
+                and (end is None or month <= end)
+            )
+    for name, values in categories.items():
+        allowed = set(values)
+        column = table.get_column(name).to_list()
+        for i in range(total):
+            if keep[i] and (column[i] is None or str(column[i]) not in allowed):
+                keep[i] = False
+    filtered = table.filter(pl.Series(keep, dtype=pl.Boolean))
+    buffer = io.BytesIO()
+    filtered.write_parquet(buffer)
+    return buffer.getvalue(), filtered.height, total

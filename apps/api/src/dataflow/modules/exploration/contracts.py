@@ -23,8 +23,15 @@ QueryKind = Literal[
     "evolution",
     "period_change",
     "outliers",
+    "distribution",
+    "scatter",
 ]
 TEMPORAL_KINDS = frozenset({"evolution", "period_change"})
+# Fase 26 (`dashboard-design-v2`): sólo los calcula el dashboard (histograma y dispersión); la
+# investigación no los propone ni los acepta.
+DASHBOARD_KINDS = frozenset({"distribution", "scatter"})
+MAX_POINTS = 300  # puntos de un gráfico de dispersión
+MAX_BINS = 20  # intervalos de un histograma
 Aggregation = Literal["sum", "mean", "median", "count"]
 
 RULES = "explore-v1"

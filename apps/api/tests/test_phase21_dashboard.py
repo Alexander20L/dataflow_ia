@@ -18,6 +18,7 @@ from test_phase20_exploration import table
 
 from dataflow.bootstrap.services import make_runner
 from dataflow.modules.copilot.contracts import DisenoIA, ElementoIA, SeccionIA
+from dataflow.modules.copilot.dashboard import design_context
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.delivery.contracts import (
     Dashboard,
@@ -26,6 +27,7 @@ from dataflow.modules.delivery.contracts import (
     DashboardWidget,
 )
 from dataflow.modules.delivery.dashboard import (
+    WIDGETS,
     arrange,
     catalog,
     insight_key,
@@ -104,10 +106,19 @@ def test_chart_types_follow_the_shape_of_each_element() -> None:
     assert lines and all("line" in items[insight_key(i)].widgets for i in lines)
     others = [i for i in analysis.insights if i.chart is None or i.chart.type != "line"]
     assert all("line" not in items[insight_key(i)].widgets for i in others)
-    # Ninguna cifra en el catálogo que ve la IA: sólo forma e ids de evidencia.
-    for item in items.values():
-        dumped = item.model_dump()
-        assert set(dumped) == {"id", "origin", "title", "kind", "widgets", "figures"}
+    # Ninguna cifra en lo que ve la IA: sólo forma, clase e ids de evidencia (Fase 26: el
+    # origen de cada elemento, con sus registros, queda fuera del contexto de la IA).
+    context = design_context(None, [], [i.model_dump(mode="json") for i in items.values()], WIDGETS)
+    for element in context["elementos"]:
+        assert set(element) == {
+            "id",
+            "origen",
+            "titulo",
+            "tipo",
+            "graficos_compatibles",
+            "cifras",
+            "clase",
+        }
 
 
 def test_ai_design_is_validated_and_completed() -> None:
@@ -268,7 +279,11 @@ def test_upload_gets_a_dashboard_designed_by_the_fake_ai_and_marks_update_the_re
     given = {f"insight:{i['id']}" for i in view["insights"]} | {
         f"exploration:{r['key']}" for r in view["results"]
     }
-    assert cited == given
+    # Fase 26: también lo que calcula el propio dashboard (indicadores y distribuciones).
+    given |= {f"computed:{r['key']}" for r in designed["computed"]}
+    # Desde la Fase 26 la vista trae todos los elementos (la versión personalizada puede
+    # mostrar cualquiera): lo citado es un subconjunto.
+    assert cited and cited <= given
     # El informe se generó una sola vez, ya con el dashboard.
     assert reports(db, version["id"]) == 1
     stages = client.get(f"{base}/progress").json()["stages"]
