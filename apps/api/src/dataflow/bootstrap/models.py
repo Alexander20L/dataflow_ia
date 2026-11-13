@@ -43,6 +43,7 @@ from dataflow.modules.executions.infrastructure import (
 from dataflow.modules.executions.infrastructure import (
     AttemptRecord as ExecutionAttemptRecord,
 )
+from dataflow.modules.exploration.infrastructure import InvestigationControlRecord
 from dataflow.modules.identity.infrastructure import AttemptRecord, SessionRecord, UserRecord
 from dataflow.modules.ingestion.legacy_records import (
     LegacyArtifactRecord,
@@ -122,6 +123,7 @@ __all__ = [
     "TextAuditRecord",
     "FeedbackRecord",
     "MeaningMarkRecord",
+    "InvestigationControlRecord",
     "MeaningRecord",
     "FindingFeedbackRecord",
     "ColumnAnnotationDetailRecord",

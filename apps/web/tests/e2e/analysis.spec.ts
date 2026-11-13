@@ -157,17 +157,20 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
   await reject.click();
   await expect(reject).toHaveAttribute("aria-pressed", "true");
   await expect(relation).toContainText("Rechazada");
+  // Fase 20 y 25: la exploración guiada es ahora la pestaña Investigación (reglas + IA falsa,
+  // cifras calculadas sobre todas las filas); la propuesta inválida queda descartada en el plan.
+  await page.getByRole("tab", { name: "Investigación", exact: true }).click();
+  const investigationTab = page.getByRole("region", {
+    name: "Investigación",
+    exact: true,
+  });
+  const plan = investigationTab.getByRole("table", {
+    name: "Plan de investigación",
+  });
+  await expect(plan).toBeVisible({ timeout: 60000 });
+  await expect(plan).toContainText("Propuesta por la IA");
+  await expect(plan).toContainText("no es una dimensión");
   await openAnalysis(page);
-  // Fase 20: exploración guiada (reglas + IA falsa) con cifras calculadas sobre todas las filas.
-  const exploration = page.getByRole("region", { name: "Exploración guiada" });
-  await expect(
-    exploration.getByText("Juzgada por la IA").first(),
-  ).toBeVisible();
-  await exploration
-    .getByText(/Propuestas rechazadas por la validación/)
-    .click();
-  await expect(exploration).toContainText("no es una dimensión");
-  await expect(exploration.getByRole("button")).toHaveCount(0);
   // Fase 21: dashboard diseñado por la IA falsa; «Sí va» fija un hallazgo arriba.
   const adapted = page.getByRole("region", { name: "Dashboard adaptado" });
   await expect(adapted.getByText("Diseñado por la IA")).toBeVisible();

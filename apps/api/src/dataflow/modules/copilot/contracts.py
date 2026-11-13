@@ -117,6 +117,16 @@ class ConsultaIA(OutputModel):
     filtro_valor: str | None = Field(default=None, max_length=200)
     limite: int | None = None
     motivo: str = Field(max_length=300, description="Qué pregunta de negocio responde.")
+    # Fase 25 (prompt v2): la consulta como investigación del plan; textos sin cifras.
+    pregunta: str = Field(default="", max_length=300, description="Pregunta que responde.")
+    hipotesis: str = Field(default="", max_length=300, description="Qué se espera comprobar.")
+    esperado: str = Field(default="", max_length=300, description="Resultado esperado.")
+    prioridad: int | None = Field(default=None, description="1 (alta), 2 o 3 (baja).")
+    depende_de: list[int] = Field(
+        default_factory=list,
+        max_length=4,
+        description="Posiciones (desde 0) de otras consultas de esta lista de las que depende.",
+    )
 
 
 class ConsultasIA(OutputModel):
@@ -127,6 +137,8 @@ class JuicioIA(OutputModel):
     clave: str = Field(max_length=600)
     relevante: bool
     motivo: str = Field(max_length=300, description="Por qué, sin cifras propias.")
+    # Fase 25 (prompt v2): preguntas secundarias para profundizar en este resultado.
+    profundizar: list[ConsultaIA] = Field(default_factory=list, max_length=3)
 
 
 class JuiciosIA(OutputModel):

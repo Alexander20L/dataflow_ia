@@ -19,12 +19,12 @@ import { AutomaticAnalysisView } from "./automatic-analysis";
 import { AutomaticOverview } from "./automatic-overview";
 import { DeliverySummary } from "./delivery-summary";
 import { DashboardPanel } from "./dashboard";
-import { ExplorationPanel } from "./exploration";
 import { SourceReviewPanel } from "./source-review";
 import { InvestigationPanel } from "./investigation";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
 import { ComprehensionTab } from "@/features/comprehension/comprehension-tab";
+import { InvestigationTab } from "@/features/investigation/investigation-tab";
 import {
   DatasetTab,
   type DatasetSubview,
@@ -36,7 +36,6 @@ import {
   useProgress,
   useSourceReview,
   useDashboard,
-  useExploration,
   useDiagnostic,
   usePreview,
   useUploadFile,
@@ -58,13 +57,14 @@ const states = {
 const TABS = [
   { id: "dataset", label: "Dataset" },
   { id: "comprehension", label: "Comprensión" },
+  { id: "investigation", label: "Investigación" },
   { id: "analysis", label: "Análisis" },
 ] as const;
 type MainTab = (typeof TABS)[number]["id"];
 
-/** Pestañas principales de la versión: Dataset (Fase 22), Comprensión (Fase 24) y Análisis.
- * Investigación, Dashboard e Informe siguen dentro de «Análisis» hasta que les toque su propia
- * pestaña. */
+/** Pestañas principales de la versión: Dataset (Fase 22), Comprensión (Fase 24), Investigación
+ * (Fase 25) y Análisis. Dashboard e Informe siguen dentro de «Análisis» hasta que les toque su
+ * propia pestaña. */
 function MainTabs({
   value,
   onChange,
@@ -158,7 +158,6 @@ export function CsvWorkspace({
   const investigation = useInvestigation(version);
   const progress = useProgress(version);
   const review = useSourceReview(version);
-  const exploration = useExploration(version);
   const dashboard = useDashboard(version);
   if (versions.isPending || loadingOutside)
     return (
@@ -412,6 +411,17 @@ export function CsvWorkspace({
                     }}
                   />
                 </div>
+              ) : tab === "investigation" ? (
+                <div
+                  id="workspace-panel-investigation"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-investigation"
+                >
+                  <InvestigationTab
+                    key={`investigation-tab-${version.id}`}
+                    versionId={version.id}
+                  />
+                </div>
               ) : (
                 <div
                   id="workspace-panel-analysis"
@@ -437,12 +447,6 @@ export function CsvWorkspace({
                     <SourceReviewPanel
                       key={`review-${version.id}`}
                       review={review.data}
-                    />
-                  )}
-                  {exploration.data && (
-                    <ExplorationPanel
-                      key={`exploration-${version.id}`}
-                      view={exploration.data}
                     />
                   )}
                   {automatic.data && (

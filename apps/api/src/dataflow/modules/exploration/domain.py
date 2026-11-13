@@ -1,4 +1,5 @@
-"""Reglas puras de la exploración (`explore-v1`): qué se puede consultar y qué propuesta es válida.
+"""Reglas puras de la exploración (`explore-v1`, `explore-v2` desde la Fase 25): qué se puede
+consultar y qué propuesta es válida.
 
 Sin Polars, SQL ni IA. El catálogo sale de la comprensión (escalas y relaciones) y de la
 interpretación (aditividad): sólo se suman medidas aditivas, sólo se agrupa por dimensiones
@@ -29,6 +30,16 @@ KINDS: dict[str, str] = {
     "count), dimensions (una), aggregation, limit (hasta 20).",
     "correlation_by_group": "Correlación de Spearman entre dos medidas dentro de cada grupo de "
     "una dimensión. Campos: measure, measure_b, dimensions (una).",
+    "outliers": "Valores atípicos de una medida (regla de Tukey), en total o por una dimensión. "
+    "Campos: measure, dimensions (cero o una).",
+}
+# Fase 25 (`explore-v2`): sólo si la comprensión encontró un periodo.
+TEMPORAL: dict[str, str] = {
+    "evolution": "Evolución mensual de una medida agregada (sum, mean, median) o de los "
+    "registros (count). Campos: measure (salvo count), aggregation; sin dimensiones.",
+    "period_change": "Compara los últimos meses con los anteriores (limit = meses de cada "
+    "ventana, 3 por defecto), en total o por una dimensión. Campos: measure (salvo count), "
+    "aggregation, dimensions (cero o una), limit.",
 }
 AGGREGATIONS = {"sum": "Suma", "mean": "Promedio", "median": "Mediana", "count": "Registros"}
 
@@ -43,6 +54,20 @@ class Catalog:
         self.excluded_pairs = {
             frozenset(r.columns) for r in comprehension.relationships if r.verdict == "not_relevant"
         }
+        # Fase 25: el periodo de la comprensión (tipo y columnas) habilita las consultas
+        # temporales; sin él no se proponen ni se aceptan.
+        period = comprehension.period
+        self.period: tuple[str, list[str]] | None = (
+            (period.kind, list(period.columns)) if period and period.periods >= 2 else None
+        )
+        self.periods = period.periods if period else 0
+        self.groupable = {d.column for d in comprehension.dimensions if d.groupable} or set(
+            self.dimensions
+        )
+
+    def kinds(self) -> dict[str, str]:
+        """Catálogo de tipos que se ofrece a la IA (los temporales sólo con periodo)."""
+        return {**KINDS, **(TEMPORAL if self.period else {})}
 
     def describe(self) -> list[dict[str, object]]:
         return [
@@ -57,6 +82,20 @@ def title(query: ExploreQuery) -> str:
         base = f"{query.measure} / {query.measure_b}" + (f" por {dims}" if dims else " (total)")
     elif query.kind == "correlation_by_group":
         base = f"Correlación entre {query.measure} y {query.measure_b} dentro de cada {dims}"
+    elif query.kind in {"evolution", "period_change"}:
+        what = (
+            "registros"
+            if query.aggregation == "count"
+            else f"{AGGREGATIONS[query.aggregation or 'sum'].lower()} de {query.measure}"
+        )
+        if query.kind == "evolution":
+            base = f"Evolución mensual de {what}"
+        else:
+            base = f"Cambio de {what} en los últimos {query.limit or 3} meses" + (
+                f" por {dims}" if dims else ""
+            )
+    elif query.kind == "outliers":
+        base = f"Valores atípicos de {query.measure}" + (f" por {dims}" if dims else "")
     elif query.kind == "top":
         what = (
             "registros"
@@ -90,17 +129,28 @@ def validate(
     if aggregation is not None and aggregation not in get_args(Aggregation):
         return None, f"«{aggregation}» no es una agregación admitida."
     kind = raw.kind
+    if kind in TEMPORAL and catalog.period is None:
+        return None, "La tabla no tiene una columna temporal: no se inventan análisis temporales."
     needs: dict[str, tuple[int, int]] = {
         "aggregate": (1, 2),
         "crosstab": (2, 2),
         "ratio": (0, 1),
         "top": (1, 1),
         "correlation_by_group": (1, 1),
+        "evolution": (0, 0),
+        "period_change": (0, 1),
+        "outliers": (0, 1),
     }
     low, high = needs[kind]
     if not low <= len(dims) <= high:
         return None, f"Este tipo necesita entre {low} y {high} dimensiones."
-    if kind in {"aggregate", "top", "crosstab"}:
+    if kind == "period_change" and raw.limit is not None and not 1 <= raw.limit <= 12:
+        return None, "Cada ventana tiene entre 1 y 12 meses."
+    if kind == "outliers":
+        if raw.measure is None or raw.measure_b is not None:
+            return None, "Hace falta una sola medida."
+        aggregation = None
+    elif kind in {"aggregate", "top", "crosstab", "evolution", "period_change"}:
         aggregation = aggregation or ("count" if raw.measure is None else "sum")
         if kind == "crosstab" and aggregation not in {"count", "sum"}:
             return None, "Una tabla cruzada cuenta registros o suma una medida."
@@ -137,7 +187,11 @@ def validate(
         aggregation=aggregation,
         filter_column=raw.filter_column,
         filter_value=raw.filter_value,
-        limit=(raw.limit or 10) if kind == "top" else None,
+        limit=(raw.limit or 10)
+        if kind == "top"
+        else (raw.limit or 3)
+        if kind == "period_change"
+        else None,
     )
     if query.key in done:
         return None, "Ya se exploró."

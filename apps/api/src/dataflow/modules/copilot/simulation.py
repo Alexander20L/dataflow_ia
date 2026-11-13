@@ -87,6 +87,10 @@ def exploration_queries(context: dict[str, Any]) -> dict[str, Any]:
                 "dimensiones": [dimensions[-1]],
                 "agregacion": "mean",
                 "motivo": f"Cómo varía el promedio de {measures[0]} según {dimensions[-1]}.",
+                "pregunta": f"¿Cambia el promedio de {measures[0]} según {dimensions[-1]}?",
+                "hipotesis": f"El promedio de {measures[0]} no es igual en todos los grupos.",
+                "esperado": f"El promedio de {measures[0]} de cada {dimensions[-1]}.",
+                "prioridad": 2,
             }
         )
         flat = [m for m in measures if m not in additive]
@@ -112,7 +116,21 @@ def exploration_queries(context: dict[str, Any]) -> dict[str, Any]:
 
 
 def relevance(context: dict[str, Any]) -> dict[str, Any]:
-    """El primer resultado es relevante; los demás no."""
+    """El primer resultado es relevante; los demás no. Desde la Fase 25 (con catálogo), el
+    primero propone profundizar con una consulta inventada (para mostrar el rechazo)."""
+    deepen = (
+        [
+            {
+                "tipo": "aggregate",
+                "dimensiones": ["Columna inventada"],
+                "agregacion": "count",
+                "motivo": "Una columna que no existe.",
+                "pregunta": "¿Se reparte igual en una columna que no existe?",
+            }
+        ]
+        if "catalogo" in context
+        else []
+    )
     return {
         "juicios": [
             {
@@ -121,6 +139,7 @@ def relevance(context: dict[str, Any]) -> dict[str, Any]:
                 "motivo": "El reparto entre grupos es desigual."
                 if index == 0
                 else "Sin diferencias destacables entre grupos.",
+                "profundizar": deepen if index == 0 else [],
             }
             for index, item in enumerate(context["resultados"])
         ]
@@ -152,6 +171,7 @@ def dashboard_design(context: dict[str, Any]) -> dict[str, Any]:
         for i in items
         if i["origen"] == "exploration"
     ]
+    essentials = essentials[:12]  # el esquema admite 12 elementos por sección
     detail = [
         {"elemento": i["id"], "grafico": chart(i)}
         for i in reversed(items)

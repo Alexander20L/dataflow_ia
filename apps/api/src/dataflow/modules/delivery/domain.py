@@ -585,13 +585,28 @@ def exploration_section(
         key=lambda r: position.get(result_key(r), len(position)),
     )
     discarded = [r for r in exploration.results if r.relevant is False]
+    # Fase 25 (`investigation-v2`): cada resultado dice su pregunta, los registros considerados
+    # y lo que se excluyó (p. ej. registros sin valor).
+    nodes = {n.key: n for n in exploration.nodes if n.key}
+    investigated = exploration.rules_version == "investigation-v2"
     blocks = [
         ReportBlock(
             title=result.title,
             badge="Fijado por ti"
             if result_key(result) in chosen
             else ("Juzgada por la IA" if result.judged_by == "ai" else "Por reglas"),
-            paragraphs=[result.reason or "", result.method]
+            paragraphs=([f"Pregunta: {nodes[result.key].question}"] if result.key in nodes else [])
+            + [result.reason or "", result.method]
+            + (
+                [
+                    criterion.assessment
+                    for criterion in nodes[result.key].criteria
+                    if criterion.name == "quality"
+                ]
+                + nodes[result.key].limitations
+                if result.key in nodes
+                else []
+            )
             + (
                 [f"Se muestran {EXPLORATION_ROWS} de {result.total_groups} grupos."]
                 if result.total_groups > EXPLORATION_ROWS
@@ -614,7 +629,9 @@ def exploration_section(
     if discarded:
         blocks.append(
             ReportBlock(
-                title="Consultas descartadas por poco relevantes",
+                title="Resultados no concluyentes o hipótesis descartadas"
+                if investigated
+                else "Consultas descartadas por poco relevantes",
                 paragraphs=[f"{r.title}: {r.reason}" for r in discarded],
             )
         )
@@ -625,6 +642,25 @@ def exploration_section(
                 title="Propuestas rechazadas por la validación",
                 paragraphs=[f"{p.motive} — {p.reason}" for p in rejected[:12]],
             )
+        )
+    if investigated:
+        stopped = {
+            "completed": "terminó el plan y sus investigaciones secundarias",
+            "max_nodes": "alcanzó el límite de investigaciones",
+            "max_seconds": "alcanzó el límite de tiempo",
+            "paused": "la pausó el usuario (resultados parciales)",
+            "cancelled": "la canceló el usuario (resultados parciales)",
+        }
+        return ReportSection(
+            id="exploration",
+            title="Investigación",
+            intro=(
+                f"{len(exploration.nodes)} investigaciones (plan y secundarias) propuestas por "
+                "reglas y por la IA, validadas por Python y calculadas sobre todas las filas con "
+                "valor. La clasificación es de reglas; la IA sólo interpreta. La investigación "
+                f"se detuvo porque {stopped.get(exploration.stopped or 'completed')}."
+            ),
+            blocks=blocks,
         )
     return ReportSection(
         id="exploration",
@@ -717,9 +753,9 @@ def build_report(
 STAGES: list[tuple[StageId, str, set[str]]] = [
     ("analysis", "Análisis del archivo", {"csv_import", "table_analysis"}),
     ("comprehension", "Entendimiento del negocio", {"comprehension"}),
-    ("exploration", "Exploración guiada", {"exploration"}),
+    ("exploration", "Investigación", {"exploration"}),  # Fase 25: pestaña Investigación
     ("dashboard", "Diseño del dashboard", {"dashboard"}),
-    ("investigation", "Investigación", {"investigation"}),
+    ("investigation", "Seguimiento de hallazgos", {"investigation"}),
     ("report", "Informe", {"automatic_report"}),
 ]
 STATES: dict[str, StageState] = {
