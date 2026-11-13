@@ -245,7 +245,12 @@ def test_upload_is_explored_with_the_fake_ai(
     assert any("Columna inventada" in r for r in reasons)
     judged = [r for r in result["results"] if r["judged_by"] == "ai"]
     assert judged and judged[0]["relevant"] is True
-    assert any(r["relevant"] is False for r in judged)
+    # Fase 25 (`investigation-v2`): el «no relevante» de la IA rebaja la clase de reglas (no la
+    # sustituye) y queda como criterio de negocio de la investigación.
+    business = [
+        c["assessment"] for n in result["nodes"] for c in n["criteria"] if c["name"] == "business"
+    ]
+    assert any("no lo considera relevante" in text for text in business)
     # Las cifras son las del motor sobre todas las filas.
     summed = next(
         (

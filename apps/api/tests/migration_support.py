@@ -24,11 +24,17 @@ from dataflow.modules.reports.infrastructure import (
     ReportSaveRequest,
 )
 
+# Tablas creadas después de 0025 (Fase 25 en adelante).
+TABLES_AFTER_0025 = {
+    # 0026: peticiones de pausa o cancelación de una investigación (Fase 25)
+    "investigation_controls",
+}
+
 # Tablas creadas después de 0024 (Fase 24B en adelante).
 TABLES_AFTER_0024 = {
     # 0025: columnas marcadas como desconocidas por el usuario (Fase 24B)
     "column_meaning_marks",
-}
+} | TABLES_AFTER_0025
 
 # Tablas creadas después de 0023 (Fase 24 en adelante).
 TABLES_AFTER_0023 = {
@@ -218,3 +224,9 @@ def insert_report(db: Session, owner: UUID, project: UUID) -> UUID:
     )
     db.flush()
     return revision
+
+
+def modelled_at_0025(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0025

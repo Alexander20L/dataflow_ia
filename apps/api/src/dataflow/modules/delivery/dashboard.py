@@ -108,6 +108,9 @@ def result_item(result: ExploreResult) -> DashboardItem:
             widgets.append("pie")
     if dimensions == 2 and single:
         widgets.append("heatmap")
+    # Fase 25: la evolución mensual (`explore-v2`) es una serie en orden cronológico.
+    if query.kind == "evolution" and single and len(result.rows) >= 2:
+        widgets.extend(["line", "bar"])
     widgets.append("table")
     return DashboardItem(
         id=result_key(result),

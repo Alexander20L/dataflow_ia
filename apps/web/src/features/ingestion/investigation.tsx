@@ -93,7 +93,7 @@ export function InvestigationPanel({
     >
       <header className="section-heading">
         <div>
-          <h2>Investigación</h2>
+          <h2>Seguimiento de los hallazgos</h2>
           <p>
             Seguimientos de los hallazgos: primero por reglas y después
             propuestos por la IA. Python valida cada propuesta y calcula las

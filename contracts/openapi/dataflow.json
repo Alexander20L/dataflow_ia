@@ -2807,6 +2807,34 @@
         "title": "CreateProjectRequest",
         "type": "object"
       },
+      "Criterion": {
+        "additionalProperties": false,
+        "description": "Un criterio de la evaluación (`relevance-v1`); las cifras salen del motor.",
+        "properties": {
+          "assessment": {
+            "title": "Assessment",
+            "type": "string"
+          },
+          "name": {
+            "enum": [
+              "magnitude",
+              "business",
+              "quality",
+              "consistency",
+              "evidence",
+              "limitations"
+            ],
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "assessment"
+        ],
+        "title": "Criterion",
+        "type": "object"
+      },
       "Dashboard": {
         "additionalProperties": false,
         "properties": {
@@ -4323,6 +4351,16 @@
             "title": "Calls",
             "type": "array"
           },
+          "consumption": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/InvestigationConsumption"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "excluded": {
             "items": {
               "type": "string"
@@ -4340,9 +4378,19 @@
           "limits": {
             "$ref": "#/components/schemas/ExplorationLimits"
           },
+          "nodes": {
+            "items": {
+              "$ref": "#/components/schemas/InvestigationNode"
+            },
+            "title": "Nodes",
+            "type": "array"
+          },
           "operation": {
-            "const": "exploration.explore@1",
             "default": "exploration.explore@1",
+            "enum": [
+              "exploration.explore@1",
+              "exploration.explore@2"
+            ],
             "title": "Operation",
             "type": "string"
           },
@@ -4360,14 +4408,64 @@
             "title": "Results",
             "type": "array"
           },
+          "resumed_from": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resumed From"
+          },
           "rules_version": {
-            "const": "explore-v1",
             "default": "explore-v1",
+            "enum": [
+              "explore-v1",
+              "investigation-v2"
+            ],
             "title": "Rules Version",
             "type": "string"
           },
           "scope": {
             "$ref": "#/components/schemas/ExplorationScope"
+          },
+          "stopped": {
+            "anyOf": [
+              {
+                "enum": [
+                  "completed",
+                  "max_nodes",
+                  "max_seconds",
+                  "paused",
+                  "cancelled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "enum": [
+                  "load",
+                  "feedback",
+                  "restart",
+                  "resume"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger"
           }
         },
         "required": [
@@ -4405,11 +4503,44 @@
             "title": "Max Ai Proposals",
             "type": "integer"
           },
+          "max_children": {
+            "default": 3,
+            "maximum": 5.0,
+            "minimum": 0.0,
+            "title": "Max Children",
+            "type": "integer"
+          },
+          "max_cost_usd": {
+            "default": "0.05",
+            "title": "Max Cost Usd",
+            "type": "string"
+          },
+          "max_depth": {
+            "default": 2,
+            "maximum": 3.0,
+            "minimum": 0.0,
+            "title": "Max Depth",
+            "type": "integer"
+          },
+          "max_nodes": {
+            "default": 20,
+            "maximum": 40.0,
+            "minimum": 1.0,
+            "title": "Max Nodes",
+            "type": "integer"
+          },
           "max_queries": {
             "default": 20,
             "maximum": 40.0,
             "minimum": 1.0,
             "title": "Max Queries",
+            "type": "integer"
+          },
+          "max_seconds": {
+            "default": 60,
+            "maximum": 600.0,
+            "minimum": 5.0,
+            "title": "Max Seconds",
             "type": "integer"
           }
         },
@@ -4450,6 +4581,21 @@
       "ExplorationView": {
         "additionalProperties": false,
         "properties": {
+          "control": {
+            "anyOf": [
+              {
+                "enum": [
+                  "pause",
+                  "cancel"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Control"
+          },
           "execution_id": {
             "anyOf": [
               {
@@ -4482,6 +4628,11 @@
               }
             ],
             "title": "Reason"
+          },
+          "resumable": {
+            "default": false,
+            "title": "Resumable",
+            "type": "boolean"
           },
           "state": {
             "enum": [
@@ -4648,7 +4799,10 @@
               "crosstab",
               "ratio",
               "top",
-              "correlation_by_group"
+              "correlation_by_group",
+              "evolution",
+              "period_change",
+              "outliers"
             ],
             "title": "Kind",
             "type": "string"
@@ -6097,6 +6251,73 @@
         "title": "Investigation",
         "type": "object"
       },
+      "InvestigationCommand": {
+        "additionalProperties": false,
+        "description": "Control del usuario: pausar o cancelar la investigación en marcha, reanudar la pausada o\nvolver a investigar la versión (Fase 25).",
+        "properties": {
+          "action": {
+            "enum": [
+              "pause",
+              "cancel",
+              "resume",
+              "restart"
+            ],
+            "title": "Action",
+            "type": "string"
+          }
+        },
+        "required": [
+          "action"
+        ],
+        "title": "InvestigationCommand",
+        "type": "object"
+      },
+      "InvestigationConsumption": {
+        "additionalProperties": false,
+        "properties": {
+          "ai_calls": {
+            "title": "Ai Calls",
+            "type": "integer"
+          },
+          "cost_usd": {
+            "title": "Cost Usd",
+            "type": "string"
+          },
+          "elapsed_ms": {
+            "title": "Elapsed Ms",
+            "type": "integer"
+          },
+          "nodes": {
+            "title": "Nodes",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "nodes",
+          "ai_calls",
+          "cost_usd",
+          "elapsed_ms"
+        ],
+        "title": "InvestigationConsumption",
+        "type": "object"
+      },
+      "InvestigationHistory": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/InvestigationRun"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "InvestigationHistory",
+        "type": "object"
+      },
       "InvestigationLimits": {
         "additionalProperties": false,
         "description": "Límites duros del ciclo; se guardan con cada investigación.",
@@ -6143,6 +6364,387 @@
           }
         },
         "title": "InvestigationLimits",
+        "type": "object"
+      },
+      "InvestigationNode": {
+        "additionalProperties": false,
+        "description": "Una investigación del plan o del árbol (Fase 25): pregunta, hipótesis, operación del\ncatálogo, evidencia, clasificación y decisión de profundizar o terminar.",
+        "properties": {
+          "classification": {
+            "anyOf": [
+              {
+                "enum": [
+                  "relevant",
+                  "secondary",
+                  "descriptive",
+                  "inconclusive",
+                  "discarded"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Classification"
+          },
+          "columns": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Columns",
+            "type": "array"
+          },
+          "criteria": {
+            "items": {
+              "$ref": "#/components/schemas/Criterion"
+            },
+            "title": "Criteria",
+            "type": "array"
+          },
+          "decision": {
+            "anyOf": [
+              {
+                "enum": [
+                  "deepen",
+                  "finish"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision"
+          },
+          "decision_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Decision Reason"
+          },
+          "depends_on": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Depends On",
+            "type": "array"
+          },
+          "depth": {
+            "default": 0,
+            "title": "Depth",
+            "type": "integer"
+          },
+          "execution_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Execution Id"
+          },
+          "expected": {
+            "title": "Expected",
+            "type": "string"
+          },
+          "filters": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Filters",
+            "type": "array"
+          },
+          "hypothesis": {
+            "title": "Hypothesis",
+            "type": "string"
+          },
+          "id": {
+            "title": "Id",
+            "type": "string"
+          },
+          "interpretation": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Interpretation"
+          },
+          "judged": {
+            "default": false,
+            "title": "Judged",
+            "type": "boolean"
+          },
+          "key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Key"
+          },
+          "limitations": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Limitations",
+            "type": "array"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "motive": {
+            "title": "Motive",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "rule",
+              "ai"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "parent": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Parent"
+          },
+          "priority": {
+            "enum": [
+              1,
+              2,
+              3
+            ],
+            "title": "Priority",
+            "type": "integer"
+          },
+          "query": {
+            "additionalProperties": true,
+            "title": "Query",
+            "type": "object"
+          },
+          "question": {
+            "title": "Question",
+            "type": "string"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "rows_considered": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Rows Considered"
+          },
+          "status": {
+            "enum": [
+              "pending",
+              "rejected",
+              "computed",
+              "failed"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "total_rows": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total Rows"
+          }
+        },
+        "required": [
+          "id",
+          "origin",
+          "question",
+          "motive",
+          "hypothesis",
+          "expected",
+          "columns",
+          "method",
+          "priority",
+          "query",
+          "status"
+        ],
+        "title": "InvestigationNode",
+        "type": "object"
+      },
+      "InvestigationRun": {
+        "additionalProperties": false,
+        "description": "Una ejecución del historial de investigaciones de la versión (Fase 25).",
+        "properties": {
+          "computed": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Computed"
+          },
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "execution_id": {
+            "format": "uuid",
+            "title": "Execution Id",
+            "type": "string"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "nodes": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nodes"
+          },
+          "relevant": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Relevant"
+          },
+          "resumed_from": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Resumed From"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed",
+              "cancelled"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "stopped": {
+            "anyOf": [
+              {
+                "enum": [
+                  "completed",
+                  "max_nodes",
+                  "max_seconds",
+                  "paused",
+                  "cancelled"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stopped"
+          },
+          "trigger": {
+            "anyOf": [
+              {
+                "enum": [
+                  "load",
+                  "feedback",
+                  "restart",
+                  "resume"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Trigger"
+          }
+        },
+        "required": [
+          "execution_id",
+          "state",
+          "created_at"
+        ],
+        "title": "InvestigationRun",
         "type": "object"
       },
       "InvestigationScope": {
@@ -10983,7 +11585,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.32.0"
+    "version": "0.33.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -17093,7 +17695,7 @@
     },
     "/api/v1/versions/{version_id}/exploration": {
       "get": {
-        "description": "Consultas propuestas (reglas e IA), su validación, resultados exactos y relevancia.",
+        "description": "Plan, árbol, resultados exactos, evidencias y clasificación de la investigación. Con\n`execution_id`, una investigación anterior del historial.",
         "operationId": "getExploration",
         "parameters": [
           {
@@ -17104,6 +17706,23 @@
               "format": "uuid",
               "title": "Version Id",
               "type": "string"
+            }
+          },
+          {
+            "in": "query",
+            "name": "execution_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "format": "uuid",
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Execution Id"
             }
           },
           {
@@ -17251,6 +17870,346 @@
           }
         ],
         "summary": "Exploration",
+        "tags": [
+          "Exploración guiada"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/exploration/control": {
+      "post": {
+        "description": "Fase 25: pausar o cancelar la investigación en marcha (se detiene al terminar la\ninvestigación en curso y conserva lo calculado), reanudar la pausada o volver a investigar.\nResponde 409 si la acción no corresponde al estado.",
+        "operationId": "controlInvestigation",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InvestigationCommand"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ExplorationView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Control",
+        "tags": [
+          "Exploración guiada"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/exploration/history": {
+      "get": {
+        "description": "Fase 25: las investigaciones de la versión, de la más reciente a la primera.",
+        "operationId": "getInvestigationHistory",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/InvestigationHistory"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "History",
         "tags": [
           "Exploración guiada"
         ]

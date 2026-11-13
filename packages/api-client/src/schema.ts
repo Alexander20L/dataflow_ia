@@ -625,9 +625,52 @@ export interface paths {
         };
         /**
          * Exploration
-         * @description Consultas propuestas (reglas e IA), su validación, resultados exactos y relevancia.
+         * @description Plan, árbol, resultados exactos, evidencias y clasificación de la investigación. Con
+         *     `execution_id`, una investigación anterior del historial.
          */
         get: operations["getExploration"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/exploration/control": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Control
+         * @description Fase 25: pausar o cancelar la investigación en marcha (se detiene al terminar la
+         *     investigación en curso y conserva lo calculado), reanudar la pausada o volver a investigar.
+         *     Responde 409 si la acción no corresponde al estado.
+         */
+        post: operations["controlInvestigation"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/versions/{version_id}/exploration/history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * History
+         * @description Fase 25: las investigaciones de la versión, de la más reciente a la primera.
+         */
+        get: operations["getInvestigationHistory"];
         put?: never;
         post?: never;
         delete?: never;
@@ -1979,6 +2022,19 @@ export interface components {
             /** Name */
             name: string;
         };
+        /**
+         * Criterion
+         * @description Un criterio de la evaluación (`relevance-v1`); las cifras salen del motor.
+         */
+        Criterion: {
+            /** Assessment */
+            assessment: string;
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "magnitude" | "business" | "quality" | "consistency" | "evidence" | "limitations";
+        };
         /** Dashboard */
         Dashboard: {
             /** Ai Reason */
@@ -2498,28 +2554,37 @@ export interface components {
             calls?: {
                 [key: string]: unknown;
             }[];
+            consumption?: components["schemas"]["InvestigationConsumption"] | null;
             /** Excluded */
             excluded?: string[];
             /** Limitations */
             limitations: string[];
             limits: components["schemas"]["ExplorationLimits"];
+            /** Nodes */
+            nodes?: components["schemas"]["InvestigationNode"][];
             /**
              * Operation
              * @default exploration.explore@1
-             * @constant
+             * @enum {string}
              */
-            operation: "exploration.explore@1";
+            operation: "exploration.explore@1" | "exploration.explore@2";
             /** Proposals */
             proposals: components["schemas"]["ExploreProposal"][];
             /** Results */
             results: components["schemas"]["ExploreResult"][];
+            /** Resumed From */
+            resumed_from?: string | null;
             /**
              * Rules Version
              * @default explore-v1
-             * @constant
+             * @enum {string}
              */
-            rules_version: "explore-v1";
+            rules_version: "explore-v1" | "investigation-v2";
             scope: components["schemas"]["ExplorationScope"];
+            /** Stopped */
+            stopped?: ("completed" | "max_nodes" | "max_seconds" | "paused" | "cancelled") | null;
+            /** Trigger */
+            trigger?: ("load" | "feedback" | "restart" | "resume") | null;
         };
         /** ExplorationLimits */
         ExplorationLimits: {
@@ -2539,10 +2604,35 @@ export interface components {
              */
             max_ai_proposals: number;
             /**
+             * Max Children
+             * @default 3
+             */
+            max_children: number;
+            /**
+             * Max Cost Usd
+             * @default 0.05
+             */
+            max_cost_usd: string;
+            /**
+             * Max Depth
+             * @default 2
+             */
+            max_depth: number;
+            /**
+             * Max Nodes
+             * @default 20
+             */
+            max_nodes: number;
+            /**
              * Max Queries
              * @default 20
              */
             max_queries: number;
+            /**
+             * Max Seconds
+             * @default 60
+             */
+            max_seconds: number;
         };
         /** ExplorationScope */
         ExplorationScope: {
@@ -2563,11 +2653,18 @@ export interface components {
         };
         /** ExplorationView */
         ExplorationView: {
+            /** Control */
+            control?: ("pause" | "cancel") | null;
             /** Execution Id */
             execution_id?: string | null;
             exploration?: components["schemas"]["Exploration"] | null;
             /** Reason */
             reason?: string | null;
+            /**
+             * Resumable
+             * @default false
+             */
+            resumable: boolean;
             /**
              * State
              * @enum {string}
@@ -2623,7 +2720,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "aggregate" | "crosstab" | "ratio" | "top" | "correlation_by_group";
+            kind: "aggregate" | "crosstab" | "ratio" | "top" | "correlation_by_group" | "evolution" | "period_change" | "outliers";
             /** Limit */
             limit?: number | null;
             /** Measure */
@@ -3106,6 +3203,34 @@ export interface components {
             stopped: "max_iterations" | "no_new_proposals" | "ai_unavailable" | "ai_error" | "max_ai_calls" | "max_cost" | "max_seconds" | "max_queries" | "nothing_to_investigate";
         };
         /**
+         * InvestigationCommand
+         * @description Control del usuario: pausar o cancelar la investigación en marcha, reanudar la pausada o
+         *     volver a investigar la versión (Fase 25).
+         */
+        InvestigationCommand: {
+            /**
+             * Action
+             * @enum {string}
+             */
+            action: "pause" | "cancel" | "resume" | "restart";
+        };
+        /** InvestigationConsumption */
+        InvestigationConsumption: {
+            /** Ai Calls */
+            ai_calls: number;
+            /** Cost Usd */
+            cost_usd: string;
+            /** Elapsed Ms */
+            elapsed_ms: number;
+            /** Nodes */
+            nodes: number;
+        };
+        /** InvestigationHistory */
+        InvestigationHistory: {
+            /** Items */
+            items: components["schemas"]["InvestigationRun"][];
+        };
+        /**
          * InvestigationLimits
          * @description Límites duros del ciclo; se guardan con cada investigación.
          */
@@ -3140,6 +3265,121 @@ export interface components {
              * @default 60
              */
             max_seconds: number;
+        };
+        /**
+         * InvestigationNode
+         * @description Una investigación del plan o del árbol (Fase 25): pregunta, hipótesis, operación del
+         *     catálogo, evidencia, clasificación y decisión de profundizar o terminar.
+         */
+        InvestigationNode: {
+            /** Classification */
+            classification?: ("relevant" | "secondary" | "descriptive" | "inconclusive" | "discarded") | null;
+            /** Columns */
+            columns: string[];
+            /** Criteria */
+            criteria?: components["schemas"]["Criterion"][];
+            /** Decision */
+            decision?: ("deepen" | "finish") | null;
+            /** Decision Reason */
+            decision_reason?: string | null;
+            /** Depends On */
+            depends_on?: string[];
+            /**
+             * Depth
+             * @default 0
+             */
+            depth: number;
+            /** Execution Id */
+            execution_id?: string | null;
+            /** Expected */
+            expected: string;
+            /** Filters */
+            filters?: string[];
+            /** Hypothesis */
+            hypothesis: string;
+            /** Id */
+            id: string;
+            /** Interpretation */
+            interpretation?: string | null;
+            /**
+             * Judged
+             * @default false
+             */
+            judged: boolean;
+            /** Key */
+            key?: string | null;
+            /** Limitations */
+            limitations?: string[];
+            /** Method */
+            method: string;
+            /** Motive */
+            motive: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "rule" | "ai";
+            /** Parent */
+            parent?: string | null;
+            /**
+             * Priority
+             * @enum {integer}
+             */
+            priority: 1 | 2 | 3;
+            /** Query */
+            query: {
+                [key: string]: unknown;
+            };
+            /** Question */
+            question: string;
+            /** Reason */
+            reason?: string | null;
+            /** Rows Considered */
+            rows_considered?: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "pending" | "rejected" | "computed" | "failed";
+            /** Total Rows */
+            total_rows?: number | null;
+        };
+        /**
+         * InvestigationRun
+         * @description Una ejecución del historial de investigaciones de la versión (Fase 25).
+         */
+        InvestigationRun: {
+            /** Computed */
+            computed?: number | null;
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Error Code */
+            error_code?: string | null;
+            /**
+             * Execution Id
+             * Format: uuid
+             */
+            execution_id: string;
+            /** Finished At */
+            finished_at?: string | null;
+            /** Nodes */
+            nodes?: number | null;
+            /** Relevant */
+            relevant?: number | null;
+            /** Resumed From */
+            resumed_from?: string | null;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "succeeded" | "failed" | "cancelled";
+            /** Stopped */
+            stopped?: ("completed" | "max_nodes" | "max_seconds" | "paused" | "cancelled") | null;
+            /** Trigger */
+            trigger?: ("load" | "feedback" | "restart" | "resume") | null;
         };
         /** InvestigationScope */
         InvestigationScope: {
@@ -9337,7 +9577,9 @@ export interface operations {
     };
     getExploration: {
         parameters: {
-            query?: never;
+            query?: {
+                execution_id?: string | null;
+            };
             header?: {
                 "X-CSRF-Token"?: string | null;
             };
@@ -9355,6 +9597,256 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ExplorationView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    controlInvestigation: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["InvestigationCommand"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ExplorationView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getInvestigationHistory: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["InvestigationHistory"];
                 };
             };
             /** @description Bad Request */

@@ -115,7 +115,7 @@ def exploration_service(db: Db, objects: Objects) -> ExplorationAccess:
     from dataflow.platform.runtime import require_ready
 
     require_ready(db)
-    return ExplorationAccess(make_datasets(db), make_executions(db), objects)
+    return ExplorationAccess(make_datasets(db), make_executions(db), objects, db)
 
 
 Explorations = Annotated[ExplorationAccess, Depends(exploration_service)]

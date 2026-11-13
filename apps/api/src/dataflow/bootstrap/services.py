@@ -22,6 +22,7 @@ from dataflow.bootstrap.delivery_job import ReportInput, ReportStep, enqueue_rep
 from dataflow.bootstrap.exploration_job import (
     ExplorationInput,
     ExplorationStep,
+    InvestigationTreeStep,
     enqueue_exploration,
     record_exploration_calls,
 )
@@ -94,6 +95,7 @@ from dataflow.modules.executions.contracts import (
     RunKind,
 )
 from dataflow.modules.executions.infrastructure import SQLExecutionRepository
+from dataflow.modules.exploration.infrastructure import SQLInvestigationControls
 from dataflow.modules.ingestion.analytical import IsolatedAnalyzer, PolarsPreview
 from dataflow.modules.ingestion.application import AnalysisService, Analyzer, IngestionService
 from dataflow.modules.ingestion.contracts import SourceReview
@@ -527,6 +529,10 @@ def make_runner(
                 ),
                 "exploration.explore@1": ExplorationStep(
                     objects, make_copilot(db, provider, ai_config)
+                ),
+                # Fase 25: investigación con plan, árbol, evidencias y control.
+                "exploration.explore@2": InvestigationTreeStep(
+                    objects, make_copilot(db, provider, ai_config), SQLInvestigationControls(db)
                 ),
                 "inspection.inspect@1": InspectionStep(
                     objects, engine if isinstance(engine, IsolatedAnalyzer) else None
