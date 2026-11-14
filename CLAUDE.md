@@ -1,0 +1,260 @@
+# DataFlow AI — guía para Claude
+
+Plataforma de análisis de datos **completamente automático** sobre archivos propios (CSV, Excel): subir →
+resultados, sin formularios ni aprobaciones. Monorepo: `apps/api` (FastAPI, monolito
+modular + worker del mismo código), `apps/web` (Next.js), `packages/api-client` (cliente generado desde
+OpenAPI), `contracts/` (OpenAPI vigente y contratos de diseño `analysis/v1`), `docs/` (arquitectura y ADR).
+Documentación y UI en español.
+
+## Principio: automático, determinista y trazable (desde la Fase 13, ADR-026)
+
+- **Sin intervención manual**: al subir una fuente el sistema lee, perfila, limpia, evalúa, analiza, publica
+  el dashboard y lo explica. No hay aprobaciones, políticas, mapeos ni formularios en el recorrido.
+  Sustituye al antiguo «principio híbrido» (la persona aprobaba el `effect_sha256`; ADR-013/015/022/023).
+- **El motor determinista decide y calcula** con reglas versionadas (Polars, hashes canónicos, conteos
+  exactos sobre todo el dataset). Sólo transformaciones seguras y sin pérdida; ante la duda, no se
+  transforma y se explica la limitación.
+- **La IA explica y propone, nunca calcula** (Fase 16, ADR-033): explica resultados publicados y propone
+  investigaciones en un esquema cerrado que Python valida y el motor calcula; ninguna cifra sale del modelo
+  (sólo `{{evidence:id}}`).
+  `DATAFLOW_AI_PROVIDER=auto` por defecto: activa sólo si hay clave (Fase 13B, ADR-027).
+- **Excel sin elegir hoja**: la regla `xlsx-selection-v2` (Fase 18) decide la hoja/tabla principal y
+  su cabecera al subir y analiza las demás tablas con datos como versiones propias; la decisión queda en
+  el plan (`source_selection`); la interfaz no ofrece opciones de lectura.
+- **Valores regionales** (Fase 18, `regional-values-v1` en `platform/regional.py`): una columna se
+  reescribe a la celda canónica sólo si todos sus valores admiten una única lectura; si no, texto con
+  motivo. La decisión va en los metadatos del Parquet leído (`dataflow:source_reading`).
+- El original y las versiones publicadas son inmutables: limpiar crea una versión derivada con linaje y el
+  efecto exacto (`effect_sha256`) queda registrado como decisión del sistema.
+
+Referencias obligatorias: `docs/architecture/phase-1/execution-contract.md` (catálogo objetivo, gramáticas
+de conversión §3, hash canónico §6), `docs/architecture/phase-N.md` y `docs/adr/0NN-*.md`.
+
+## Arquitectura y reglas de módulos
+
+Módulos en `apps/api/src/dataflow/modules/`: identity, projects, audit, datasets, ingestion, understanding,
+quality, planning, executions, cleaning, analytics, copilot, investigation, delivery, comprehension, exploration, curation, inspection; dashboards y reports sólo conservan sus clases
+de tabla (Fase 13). Adaptador de IA en `integrations/ai` (puerto `AIProvider`, proveedor falso; sólo
+`anthropic_provider.py` importa el SDK); lectores de fuentes en `integrations/sources` (sólo desde el
+subproceso de ingesta; `pymssql` y `pdfplumber` sólo allí). SQL Server sin credenciales guardadas y
+sólo a servidores de `DATAFLOW_SQLSERVER_ALLOWED_HOSTS`.
+Composición en `bootstrap/` (`bootstrap/operations.py` une
+descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
+
+- Capas: domain (sin frameworks) → application (dominio + puertos) → infrastructure → presentation (HTTP/DTO).
+  Domain y application no importan infrastructure.
+- Entre módulos **sólo** `dataflow.modules.<m>.public` o `.contracts`. Dependencias acíclicas.
+- **executions** no importa planning, cleaning, quality, ingestion, understanding ni analytics: recibe puertos
+  (`StepRegistry`, `StepExecutor`, `InputResolver`, finalizadores, ganchos de publicación).
+- planning no importa polars/duckdb ni implementaciones de operaciones (validación pura en `planning/domain.py`).
+- copilot sólo usa `integrations.ai` y `audit`: explica el dashboard publicado (C2, `bootstrap/overview_audit.py`)
+  y, desde la Fase 16, propone investigaciones y explica hallazgos (`copilot/investigation.py`); controla
+  disponibilidad y presupuesto y verifica cifras. No conversa ni ejecuta acciones.
+- investigation (Fase 16): ciclo acotado puro con puertos; `bootstrap/investigation_job.py` lo une a la cola,
+  al motor (`analytics.followup@1`) y a la IA.
+- comprehension (Fase 19, ADR-036): escalas de medida, asociaciones (Polars sólo en `measures.py`) y
+  relaciones con evidencia; la IA (`copilot/comprehension.py`) sólo ve nombres y perfil agregado.
+  `bootstrap/comprehension_job.py` lo une a la cola. La valoración del usuario es opcional
+  (`comprehension_feedback`, 0020) y nunca bloquea.
+- exploration (Fase 20, ADR-037): lenguaje cerrado `explore-v1` (validación pura en `domain.py`,
+  cálculo exacto en `engine.py`); la IA (`copilot/exploration.py`) propone y juzga con hasta 100
+  filas por resultado. `bootstrap/exploration_job.py` lo une a la cola tras la comprensión.
+- Dashboard adaptado (Fase 21, ADR-038): diseño puro en `delivery/dashboard.py` (catálogo
+  `kpi/bar/line/heatmap/pie/table` según la forma de cada elemento, sin cifras ni código); la IA
+  (`copilot/dashboard.py`) sólo elige secciones, orden y gráficos. `curation` guarda las marcas
+  «sí va / no va» (`finding_feedback`, 0021); `bootstrap/dashboard_job.py` encola el dashboard y
+  una versión nueva del informe tras cada marca. El informe se reclama el último de la cola.
+- inspection (Fase 22, ADR-039): pestaña Dataset. Inspección `dataset-inspection-v1` (reglas puras en
+  `domain.py`, Polars sólo en `engine.py`, sin IA ni BD) como trabajo de fondo `inspection` (el primero tras
+  la carga, `bootstrap/inspection_job.py`); datos del original `source-facts-v1` en el subproceso de ingesta.
+  Correcciones del diccionario en `column_annotations` (0022): metadato por fuente y columna, heredado, que
+  nunca cambia el archivo. `/preview` ordena por ID de columna y busca literal.
+  Fase 23 (ADR-040, modifica el punto 7 de ADR-039): `dataset-inspection-v2` (rangos por nombre, atípicos
+  Tukey, repetidas sin identificador, dicotómicas, ordinal candidata, datos personales). Las correcciones
+  cuentan: la comprensión `business-comprehension-v2` parte de la misma clasificación (`classify_table`)
+  con las correcciones encima y se recalcula al corregir (y tras ella exploración, dashboard e informe);
+  los datos personales no van a la IA; los textos «sin dato» declarados (`column_annotation_details`, 0023)
+  crean una versión derivada (`null_cleaning`, `bootstrap/null_cleaning_job.py`) que se analiza como una
+  carga. `bootstrap/loads.py` acepta su tabla de `null_cleaning` y su análisis de `table_analysis`.
+- Pestaña Comprensión (Fase 24, ADR-041, modifica ADR-036): `business-comprehension-v3` añade grano,
+  columnas calculadas (sumas ponderadas por mínimos cuadrados en Python puro, productos de `profile@4`,
+  umbrales), misma entidad 1:1, periodo, medidas y dimensiones (Polars sólo en `measures.py`). Las
+  relaciones tienen familia y estado; las asociaciones de una fórmula con sus fuentes no se proponen ni
+  llegan a la exploración. Validar o rechazar encola otra exploración (`request_exploration_update`) y
+  tras ella dashboard e informe. Significados con confianza (prompt v2, nombres de código siempre
+  «baja») y editables por el usuario (`column_meanings`, 0024). Interfaz en `features/comprehension`.
+- Pestaña Investigación (Fase 25, ADR-043): `investigation-v2` vive en `exploration` (operación
+  `exploration.explore@2`, lenguaje `explore-v2` con `evolution`, `period_change` y `outliers`).
+  Plan, árbol y clasificación `relevance-v1` puros en `exploration/plan.py`; ciclo con puertos en
+  `exploration/investigator.py` (control, límites, juicio de la IA que sólo rebaja y propone
+  hijos validados). Pausa/cancelación en `investigation_controls` (0026), revisadas entre
+  investigaciones; reanudar y volver a investigar crean otra ejecución. El artefacto conserva
+  `results`/`proposals` (dashboard e informe sin cambios de lectura). La investigación v1
+  (Fase 16) sigue como «Seguimiento de hallazgos» y entrada del informe. Interfaz en
+  `features/investigation`.
+- Pestaña Dashboard (Fase 26, ADR-044, modifica ADR-038): `delivery.dashboard@2`
+  (`dashboard-design-v2`). Consultas, indicadores (unidad sólo declarada, comparación sólo con
+  base), origen (`Trace`), orden por clase y filtros puros en `delivery/dashboard.py`; el trabajo
+  las calcula con el motor de la exploración (tipos internos `distribution` y `scatter`, que la
+  investigación no acepta). Filtros al momento en la API (`subset` en `exploration/engine.py`, no
+  se guardan); versión personalizada en `dashboard_customizations` (0027, revisiones con
+  `expected_revision`) sin tocar la automática ni el informe. Interfaz en `features/dashboard`.
+- Pestaña Informe (Fase 27, ADR-045, modifica ADR-034 y ADR-038): `delivery.report@2`
+  (`automatic-report-v2`) parte del dashboard; secciones, revisión y conclusiones por reglas
+  puras en `delivery/report.py` (lee inspección, comprensión, investigación y dashboard sin
+  recalcular). Artefacto `report_document`; el PDF se dibuja al descargarlo. Revisión =
+  marcas de `finding_feedback` (aprobado/rechazado/pendiente); sólo aprobados como principales
+  (sin revisión, los relevantes «Sin revisar»); la versión nueva la pide el usuario. Narrativa
+  de la IA en `copilot/report.py` (sólo `{{evidence:id}}`, sin frases causales). Las cargas
+  nuevas ya no encolan el seguimiento de la Fase 16. Interfaz en `features/report`.
+- Criterio analítico (Fase 28, ADR-046): `date-role-v1` (regla pura en `platform/timing.py`,
+  compartida por inspección v3 y comprensión v4): una fecha con clave de entidad y mediana < 2
+  registros por mes describe al registro (`dated_attributes`, sin periodo ni evolución).
+  `relevance-v2`: promedios, medianas y tasas sólo cuentan grupos o meses con ≥ 10 registros.
+  `explore-v3` (`exploration.explore@3`, `investigation-v3`): `rate` y `cohort` sólo de reglas
+  (no se ofrecen a la IA); el plan no repite `top`/`aggregate` equivalentes.
+- Analista con objetivo (Fase 29, ADR-047): comprensión v5 con `target` (usuario › IA ›
+  reglas; elección en `analysis_targets`, 0028, heredada) y variables derivadas («antigüedad de
+  X», «cuartil de X», resueltas por el motor por su nombre). `explore-v4`
+  (`exploration.explore@4`, `investigation-v4`): `factor` (intervalo + chi² o Kruskal-Wallis) y
+  `stratified` (estandarización indirecta); estadística en Python puro
+  (`exploration/statistics.py`, sin scipy). `relevance-v3`: magnitud y p < 0,05, y al final
+  Benjamini-Hochberg. `DATAFLOW_AI_REQUIRED` impide arrancar sin IA activa.
+- delivery (Fase 17): informe automático (`delivery.report@1`, sólo reordena lo publicado; ReportLab
+  sólo en `delivery/pdf.py`) y progreso por etapas; `bootstrap/delivery_job.py` lo une a la cola.
+- No volver a crear `automation`, `templates` ni `analysis_sessions` (prueba AST). La detección pura de
+  contextos vive en `understanding/templates.py`.
+- El cómputo de cleaning (`domain`, `contracts`, `infrastructure`, `engine`, `processor`) no accede a la BD.
+- Todo esto lo verifica `apps/api/tests/test_architecture.py` (AST). No debilitar esas pruebas.
+- Web: comportamiento por funcionalidad en `apps/web/src/features/<f>`; tipos HTTP sólo del cliente generado.
+
+## Convenciones
+
+- **Operaciones versionadas** `modulo.nombre@N` (p. ej. `cleaning.trim_whitespace@1`). Cambiar semántica =
+  nueva versión u operación; el catálogo (`analysis-vN`) se versiona y los planes guardados conservan el suyo.
+  Columnas siempre por ID (`x-dataflow-column-ref`), nunca por nombre; en Polars, alias neutros (no `pl.col(nombre)`).
+- **Revisiones inmutables** (planes, semántica): crear con `Idempotency-Key`, nuevas revisiones con
+  `expected_revision` (409 si cambió); sin cambios no se crea revisión. Triggers `dataflow_immutable_record`.
+- **Migraciones aditivas** en `apps/api/migrations/versions/NNNN_*.py`, cada una con `tests/test_migration_NNNN.py`
+  (ida y vuelta, `compare_metadata`, inmutabilidad, downgrade bloqueado si hay datos nuevos). Preferir tablas
+  nuevas a columnas nuevas en tablas existentes (ver ADR-014/015). Única excepción: 0019 (Fase 13, ADR-026)
+  elimina las tablas de 0013–0017 por decisión explícita; un borrado de datos siempre se consulta antes.
+- **OpenAPI y cliente se regeneran con scripts, nunca a mano** (`contracts/openapi/dataflow.json`,
+  `packages/api-client/src/schema.ts`). Exportar **con Python 3.12** (3.13+ cambia frases HTTP).
+- Errores API estables con `code` y `correlation_id`; excepciones de dominio sin HTTP.
+- Python snake_case y mypy strict; TypeScript estricto; commits convencionales en español.
+- Cada fase: `docs/architecture/phase-N.md`, ADR nuevo, versión de API y README actualizados.
+
+## Comandos (PowerShell, desde la raíz salvo indicación)
+
+```powershell
+# Preparación
+npm install
+docker compose -f infrastructure/compose/compose.yaml up -d postgres   # requerido por pytest y la API
+
+# Backend
+apps/api/.venv/Scripts/python.exe -m pytest apps/api/tests -q
+apps/api/.venv/Scripts/python.exe -m ruff check apps/api/src apps/api/tests apps/api/migrations apps/api/scripts
+apps/api/.venv/Scripts/python.exe -m ruff format --check apps/api
+Push-Location apps/api; .venv/Scripts/python.exe -m mypy; Pop-Location
+
+# Web y contratos
+npm run typecheck
+npm run lint
+npm run build
+npm run format:check
+npm run contracts:check
+
+# Contrato HTTP (el .venv usa Python 3.12.10; no usar `py` por defecto, que es 3.14)
+apps/api/.venv/Scripts/python.exe apps/api/scripts/export_openapi.py
+npm run api:generate
+apps/api/.venv/Scripts/python.exe apps/api/scripts/export_openapi.py --check
+
+# E2E (requiere `npm run build`; API en 8001, web en 3100, base dataflow_e2e; en serie, workers: 1)
+apps/api/.venv/Scripts/python.exe apps/api/scripts/prepare_e2e_db.py
+npm run test:e2e
+
+# Ejecutar en local
+Push-Location apps/api; .\.venv\Scripts\python.exe -m dataflow.bootstrap.run --with-worker; Pop-Location
+npm run dev --workspace @dataflow/web -- --port 3002
+```
+
+Batería completa = pytest + ruff + mypy + typecheck + lint + build + format:check + contracts:check +
+`export_openapi.py --check` + test:e2e.
+
+## Estado (2026-11-14)
+
+| Fase | API  | Rama                                | Estado                                                                         |
+| ---- | ---- | ----------------------------------- | ------------------------------------------------------------------------------ |
+| 1–3  | 0.5  | `main`                              | contratos, datasets/ejecuciones separados, semántica                           |
+| 4    | 0.6  | `feat/fase-4-planificacion`         | planes versionados, catálogo `analysis-v1`, worker por pasos                   |
+| 5    | 0.7  | `feat/fase-5-limpieza`              | trim/filter_rows, vista previa, aprobación, derivada; con commits, sin push    |
+| 6A   | 0.8  | `feat/fase-6-conversiones`          | tablas tipadas, cast, normalize_null_tokens, deduplicate; migración 0007       |
+| 6B   | 0.9  | `feat/fase-6-conversiones`          | csv-quality-v2, conjuntos de reglas, quality.evaluate@2; migración 0008        |
+| 7A   | 0.10 | `feat/fase-7-analisis`              | métricas, analytics.query@1, evidencia por cifra; migración 0009; con commit   |
+| 7B   | 0.11 | `feat/fase-7-analisis`              | analytics.query@2: comparaciones, ranking, % del total; `analysis-v6`          |
+| 8    | 0.12 | `feat/fase-8-dashboards`            | dashboards persistidos, «Actualizar» explícito, historial; migración 0010      |
+| 9    | 0.13 | `feat/fase-9-informes`              | informes, PDF en el worker (ReportLab), CSV estándar/Excel; migración 0011     |
+| 10   | 0.14 | `feat/fase-10-copiloto`             | copiloto IA (Anthropic), propuestas validadas, cifras por evidencia; 0012      |
+| 11   | 0.14 | `feat/fase-11*` (PR)                | 11.0 estabilización, query@3; pipeline 0013–0017 y 11F (0018) retirados        |
+| 12A  | 0.14 | `feat/fase-12a-excel` (PR)          | importación .xlsx (`read_xlsx@1`, lector OOXML propio), `analysis-v8`          |
+| A–C  | 0.17 | `develop`                           | dashboard descriptivo (`profile@2/@3`), interpretación, explicación IA (C2)    |
+| 13   | 0.18 | `feat/fase-13-solo-automatico`      | un solo recorrido automático; manual y política retirados; migración 0019      |
+| 13B  | 0.19 | `feat/fase-13b-excel-ia-auto`       | Excel sin elegir hoja (`xlsx-selection-v1`), `/new` con .xlsx, IA `auto`       |
+| 13C  | 0.20 | `feat/fase-13c-cola`                | las cargas esperan en cola (sin `PROJECT_BUSY`); 3 en marcha por propietario   |
+| 14   | 0.21 | `feat/fase-14-comprender`           | `profile@4`, `quality.evaluate@3`, dashboard por medidas, `analysis-v11`       |
+| 15   | 0.22 | `feat/fase-15-criterio`             | plan automático, `analytics.automatic@1` (hallazgos), `analysis-v12`           |
+| 16   | 0.23 | `feat/fase-16-investigar`           | módulo `investigation`, reglas + propuestas IA validadas, límites duros        |
+| 17   | 0.24 | `feat/fase-17-entrega`              | módulo `delivery`: informe PDF automático, progreso por etapas, resumen        |
+| 18   | 0.25 | `feat/fase-18-fuentes`              | CSV/Excel regionales, varias tablas, estructura, SQL Server y PDF              |
+| 19   | 0.26 | `feat/fase-19-comprender-negocio`   | comprensión del negocio (IA + medidas), escalas, valoración opcional; 0020     |
+| 20   | 0.27 | `feat/fase-20-consultas`            | exploración guiada: consultas `explore-v1` de reglas e IA, relevancia          |
+| 21   | 0.28 | `feat/fase-21-dashboard-adaptado`   | dashboard adaptado (IA + validación), marcas «sí va / no va», informe; 0021    |
+| 22   | 0.29 | `feat/fase-22-dataset`              | pestaña Dataset: inspección completa, registros, diccionario corregible; 0022  |
+| 23   | 0.30 | `feat/fase-23-dataset-cierre`       | Dataset v2 (rangos, atípicos, personales); correcciones que cuentan; 0023      |
+| 24   | 0.31 | `feat/fase-24-comprension`          | pestaña Comprensión: grano, fórmulas, relaciones por familia, validación; 0024 |
+| 24B  | 0.32 | `feat/fase-24b-comprension-mejoras` | significados en el informe, «desconocida», justificación, 3 decimales; 0025    |
+| 25   | 0.33 | `feat/fase-25-investigacion`        | pestaña Investigación: plan, árbol, evidencias, clases, control; 0026          |
+| 26   | 0.34 | `feat/fase-26-dashboard`            | pestaña Dashboard: indicadores, filtros, origen, versión personalizada; 0027   |
+| 27   | 0.35 | `feat/fase-27-informe`              | pestaña Informe: documento v2, revisión, versiones, historial, narrativa IA    |
+| 28   | 0.36 | `feat/fase-28-criterio-analitico`   | criterio: fecha atributo, mínimo por grupo, tasas y cohortes, sin repetidos    |
+| 29   | 0.37 | `feat/fase-29-analista-objetivo`    | objetivo, factores con prueba y corrección, control, IA obligatoria; 0028      |
+
+Tipos y celdas canónicas: `platform/tabular.py` (hash lógico único). `tests/test_text_golden.py` protege los
+resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` los de `analytics.query@1`:
+no regenerar sus referencias para hacer pasar una prueba.
+Integración: `develop` contiene las Fases 4 a 14 y A–C (merge `--no-ff` o PR; desde 2026-11-09, siempre PR). Fase 13: ADR-026 sustituye
+al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
+`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 18: ADR-035. Fase 19: ADR-036 (valoración opcional del usuario). Fase 20: ADR-037. Fase 21: ADR-038. Fase 22: ADR-039. Fase 23: ADR-040 (modifica el punto 7 de ADR-039). Fase 24: ADR-041 (modifica ADR-036). Fase 24B: ADR-042 (las cifras se muestran con 3 decimales como mucho: `delivery/numbers.py` y `apps/web/src/lib/numbers.ts`; nunca se redondean los cálculos). Fase 25: ADR-043 (la exploración pasa a ser la investigación). Fase 26: ADR-044 (dashboard con indicadores, filtros, origen y versión personalizada). Fase 27: ADR-045 (informe v2, revisión humana, historial; el seguimiento de la Fase 16 se retira de las cargas nuevas). Fase 28: ADR-046 (papel de las fechas, mínimo por grupo, tasas y cohortes). Fase 29: ADR-047 (objetivo, factores con significancia, control e IA obligatoria). Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
+(limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
+contradiga el enfoque automático. Fase 7 completa (7A y 7B): ADR-018 y
+ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa
+planning, executions ni analytics (puerto en `bootstrap/dashboards_access.py`, prueba AST). Fase 9:
+ADR-021; el PDF es una ejecución `report_render` (entrada `report` y operación interna fuera del
+catálogo, `bootstrap/reports_access.py`). El perfil CSV `standard` (`platform/csv_export.py`) no cambia
+nunca: garantiza la ida y vuelta con la ingesta.
+IA: `DATAFLOW_AI_PROVIDER=fake` en E2E y pytest fuerza `disabled` si queda en `auto` (conftest); `tests/ai/test_ai_live.py` sólo corre con `DATAFLOW_AI_LIVE_TESTS=1` y
+clave. Cambiar el prompt de `copilot/overview.py` exige subir su versión. Al escribir archivos desde scripts en Windows, forzar LF.
+Pendientes conocidos: deuda de nombre `dataset_import_bindings` (ADR-015). Las tablas sin uso de las Fases 4–10
+se conservan como archivo histórico de sólo lectura (ADR-034); `reportlab` se usa en el informe automático. Al añadir una migración, las pruebas de migraciones
+anteriores excluyen sus tablas nuevas (`LATER_TABLES`).
+
+## Forma de trabajo
+
+Ritmo desde la Fase 8 (para avanzar más rápido):
+
+- **1 o 2 etapas por fase.** Normalmente: etapa 1 = backend (dominio, migración, API, contrato y cliente
+  regenerados, pruebas); etapa 2 = interfaz, E2E y documentación.
+- **Una sola propuesta corta antes de programar**: contradicciones con el código real, plan de 1 o 2 etapas
+  y sólo las decisiones que bloqueen o no se puedan deshacer (cambios de contrato existente, borrado de
+  datos, dependencias nuevas). Las demás se toman con la opción recomendada y se registran en el ADR de
+  la fase. Si no hay decisiones bloqueantes, decirlo y esperar sólo el «adelante».
+- **Durante el trabajo**: sólo las pruebas del área que se toca (rápidas).
+- **Al final de cada etapa**: batería completa y resumen breve (qué se hizo, resultados, decisiones tomadas
+  por cuenta propia). Sin tablas de detalle salvo que algo falle.
+- **Al terminar la fase**: commits convencionales (puede ser uno por etapa), push de la rama a `origin`
+  y **PR hacia `develop`** (no merge local). Si `develop` avanzó desde que se creó la rama, integrarlo en
+  la rama y repetir la batería antes de abrir el PR. Pedir confirmación **una sola vez**, con el resumen
+  final, antes del commit, el push y el PR. El merge del PR lo decide el usuario.
+- No cambia: migraciones aditivas, OpenAPI y cliente regenerados con scripts (nunca a mano), regresión de
+  resultados existentes, reglas de módulos y señalar contradicciones entre el diseño pedido y el código.

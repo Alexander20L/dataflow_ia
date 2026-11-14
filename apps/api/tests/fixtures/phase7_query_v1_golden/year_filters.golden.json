@@ -1,0 +1,209 @@
+{
+  "schema_version": 1,
+  "operation": "analytics.query@1",
+  "scope": {
+    "execution_id": "00000000-0000-4000-8000-000000000003",
+    "step_id": "query",
+    "slot": "analysis_result",
+    "input": {
+      "version_id": "00000000-0000-4000-8000-000000000001",
+      "artifact_id": "00000000-0000-4000-8000-000000000002",
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "semantic_ref": {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "revision": 2,
+      "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "query_filters": [
+      {
+        "column_id": "00000000-0000-4000-8000-000000000101",
+        "operator": "in",
+        "values": [
+          "Norte",
+          "Este"
+        ]
+      },
+      {
+        "column_id": "00000000-0000-4000-8000-000000000103",
+        "operator": "between",
+        "values": [
+          "-5",
+          "9.99"
+        ]
+      }
+    ],
+    "time_grain": "year",
+    "time_range": null
+  },
+  "avg_scale": 4,
+  "dimensions": [
+    {
+      "key": "d0",
+      "column_id": "00000000-0000-4000-8000-000000000101",
+      "name": "region",
+      "technical_type": "string",
+      "time_grain": null
+    },
+    {
+      "key": "period",
+      "column_id": "00000000-0000-4000-8000-000000000102",
+      "name": "fecha",
+      "technical_type": "date",
+      "time_grain": "year"
+    }
+  ],
+  "metrics": [
+    {
+      "key": "m0",
+      "revision_id": "00000000-0000-4000-8000-000000000201",
+      "revision": 1,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "sum importe",
+      "aggregation": "sum",
+      "measure_column_id": "00000000-0000-4000-8000-000000000103",
+      "measure_column": "importe",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": "EUR",
+      "scale": 2,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 7,
+        "excluded_by_nulls": 0,
+        "included_rows": 5
+      }
+    },
+    {
+      "key": "m1",
+      "revision_id": "00000000-0000-4000-8000-000000000203",
+      "revision": 3,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "count unidades",
+      "aggregation": "count",
+      "measure_column_id": "00000000-0000-4000-8000-000000000104",
+      "measure_column": "unidades",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": null,
+      "scale": null,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 7,
+        "excluded_by_nulls": 0,
+        "included_rows": 5
+      }
+    }
+  ],
+  "rows": [
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Este"
+          }
+        ],
+        "period": {
+          "grain": "year",
+          "start": "2025-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Este",
+        "period": "2025"
+      },
+      "values": {
+        "m0": "3.00",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "65fd2866fafe20168bfab766cf8b530c832b507a6d5e1f6a7a2adcf286ac7129",
+        "m1": "b949877520cf15cb297e6d561ce8d36552abd04bc2431705eec846ffbba0ade7"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Este"
+          }
+        ],
+        "period": {
+          "grain": "year",
+          "start": "2026-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Este",
+        "period": "2026"
+      },
+      "values": {
+        "m0": "-4.25",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "325115386d10901229fa9f7a9954707d36925b851ab278cde70c6b9aabfaf180",
+        "m1": "0b12e500744b0b602adda9365adfff6a771e162e5b4fa80c43b561b6c6c01fd2"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Norte"
+          }
+        ],
+        "period": {
+          "grain": "year",
+          "start": "2025-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Norte",
+        "period": "2025"
+      },
+      "values": {
+        "m0": "7.77",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "eb70e06a1a98e9b4557703ef0384ccb705a25615d60bd24759f024383f28a8d1",
+        "m1": "7f540e762263efdcc16ae6aa30a49edb0c5fa7113e6802d8e0a10b221a8d9ba4"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Norte"
+          }
+        ],
+        "period": {
+          "grain": "year",
+          "start": "2026-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Norte",
+        "period": "2026"
+      },
+      "values": {
+        "m0": "0.30",
+        "m1": "2"
+      },
+      "evidence": {
+        "m0": "b54bb67dce8f66072f1fe692b29e7d870f7d98765a124f5aca80bf1d547e3821",
+        "m1": "60f72d1f8f0786e61962970202ef5e122cda7ac7c00db1172dfc025e234d2ae4"
+      }
+    }
+  ],
+  "row_count": 4
+}

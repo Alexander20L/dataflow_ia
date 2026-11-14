@@ -1,0 +1,449 @@
+{
+  "cleaning": {
+    "drop_null_any": {
+      "counts": {
+        "created_nulls": 0,
+        "excluded_rows": 1,
+        "input_rows": 6,
+        "modified_cells": 0,
+        "modified_rows": 0,
+        "output_rows": 5
+      },
+      "logical_content_sha256": "9d95df835945c60bae07ee359d95f177dbf48902cfa2534800b24c63292b42c4",
+      "row_lineage_sha256": "c03c10747430d5e26f54d56b3523856ba7069e65903eb0ce16c82d5066fdb4bb",
+      "samples": [
+        {
+          "after": null,
+          "before": {
+            "6c6e4096-1109-5a0c-a85f-3ed47293147b": "1",
+            "91720205-8ffd-5741-a572-5cb849f84585": null,
+            "dd7a263a-4703-5632-816a-cffd0d1086f6": "Sur",
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc": "002",
+            "e8183db1-be9a-54ac-a649-47b4e9452df7": "2026-01-02"
+          },
+          "change": "excluded",
+          "column_ids": [
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc",
+            "e8183db1-be9a-54ac-a649-47b4e9452df7",
+            "dd7a263a-4703-5632-816a-cffd0d1086f6",
+            "91720205-8ffd-5741-a572-5cb849f84585",
+            "6c6e4096-1109-5a0c-a85f-3ed47293147b"
+          ],
+          "source_row": 2
+        }
+      ]
+    },
+    "drop_whitespace_all": {
+      "counts": {
+        "created_nulls": 0,
+        "excluded_rows": 0,
+        "input_rows": 6,
+        "modified_cells": 0,
+        "modified_rows": 0,
+        "output_rows": 6
+      },
+      "logical_content_sha256": "4787cd27650187cda3d10423c5fb33dd3c0a960b37cf93f4e20a418195386a3b",
+      "row_lineage_sha256": "31d7d8f2e845af63c9b9da60d13780aef4cfe87871debf872bb898e3cee91cef",
+      "samples": []
+    },
+    "trim_all": {
+      "counts": {
+        "created_nulls": 1,
+        "excluded_rows": 0,
+        "input_rows": 6,
+        "modified_cells": 1,
+        "modified_rows": 1,
+        "output_rows": 6
+      },
+      "logical_content_sha256": "44552e7fa4e4d1eef1f0e6df225768959d12a244b1eaa2be50892522bc85350d",
+      "row_lineage_sha256": "31d7d8f2e845af63c9b9da60d13780aef4cfe87871debf872bb898e3cee91cef",
+      "samples": [
+        {
+          "after": {
+            "91720205-8ffd-5741-a572-5cb849f84585": null
+          },
+          "before": {
+            "91720205-8ffd-5741-a572-5cb849f84585": " "
+          },
+          "change": "modified",
+          "column_ids": [
+            "91720205-8ffd-5741-a572-5cb849f84585"
+          ],
+          "source_row": 5
+        }
+      ]
+    },
+    "trim_then_drop_null": {
+      "counts": {
+        "created_nulls": 0,
+        "excluded_rows": 2,
+        "input_rows": 6,
+        "modified_cells": 0,
+        "modified_rows": 0,
+        "output_rows": 4
+      },
+      "logical_content_sha256": "8f18b270d8cbf737c32ed28fa49beb054b33d88d0c2e59882ce9591938203f2d",
+      "row_lineage_sha256": "81f6311d713fa78cbdbb6097eb02dc0f9ce4f2b2e2744cc31ac9ed02eec1e66f",
+      "samples": [
+        {
+          "after": null,
+          "before": {
+            "6c6e4096-1109-5a0c-a85f-3ed47293147b": "1",
+            "91720205-8ffd-5741-a572-5cb849f84585": null,
+            "dd7a263a-4703-5632-816a-cffd0d1086f6": "Sur",
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc": "002",
+            "e8183db1-be9a-54ac-a649-47b4e9452df7": "2026-01-02"
+          },
+          "change": "excluded",
+          "column_ids": [
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc",
+            "e8183db1-be9a-54ac-a649-47b4e9452df7",
+            "dd7a263a-4703-5632-816a-cffd0d1086f6",
+            "91720205-8ffd-5741-a572-5cb849f84585",
+            "6c6e4096-1109-5a0c-a85f-3ed47293147b"
+          ],
+          "source_row": 2
+        },
+        {
+          "after": null,
+          "before": {
+            "6c6e4096-1109-5a0c-a85f-3ed47293147b": "1",
+            "91720205-8ffd-5741-a572-5cb849f84585": " ",
+            "dd7a263a-4703-5632-816a-cffd0d1086f6": "Norte",
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc": "004",
+            "e8183db1-be9a-54ac-a649-47b4e9452df7": "2026-01-04"
+          },
+          "change": "excluded",
+          "column_ids": [
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc",
+            "e8183db1-be9a-54ac-a649-47b4e9452df7",
+            "dd7a263a-4703-5632-816a-cffd0d1086f6",
+            "91720205-8ffd-5741-a572-5cb849f84585",
+            "6c6e4096-1109-5a0c-a85f-3ed47293147b"
+          ],
+          "source_row": 5
+        }
+      ]
+    }
+  },
+  "columns": [
+    {
+      "id": "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc",
+      "name": "id",
+      "nullable": true,
+      "ordinal": 0,
+      "technical_type": "string",
+      "type_parameters": {}
+    },
+    {
+      "id": "e8183db1-be9a-54ac-a649-47b4e9452df7",
+      "name": "fecha",
+      "nullable": true,
+      "ordinal": 1,
+      "technical_type": "string",
+      "type_parameters": {}
+    },
+    {
+      "id": "dd7a263a-4703-5632-816a-cffd0d1086f6",
+      "name": "region",
+      "nullable": true,
+      "ordinal": 2,
+      "technical_type": "string",
+      "type_parameters": {}
+    },
+    {
+      "id": "91720205-8ffd-5741-a572-5cb849f84585",
+      "name": "importe",
+      "nullable": true,
+      "ordinal": 3,
+      "technical_type": "string",
+      "type_parameters": {}
+    },
+    {
+      "id": "6c6e4096-1109-5a0c-a85f-3ed47293147b",
+      "name": "unidades",
+      "nullable": true,
+      "ordinal": 4,
+      "technical_type": "string",
+      "type_parameters": {}
+    }
+  ],
+  "logical_content_sha256": "4787cd27650187cda3d10423c5fb33dd3c0a960b37cf93f4e20a418195386a3b",
+  "preview": {
+    "Q-001-3": {
+      "columns": [
+        "id",
+        "fecha",
+        "region",
+        "importe",
+        "unidades"
+      ],
+      "limit": 10,
+      "offset": 0,
+      "rows": [
+        {
+          "row_number": 2,
+          "values": {
+            "fecha": "2026-01-02",
+            "id": "002",
+            "importe": null,
+            "region": "Sur",
+            "unidades": "1"
+          }
+        }
+      ],
+      "total": 1
+    },
+    "Q-002": {
+      "columns": [
+        "id",
+        "fecha",
+        "region",
+        "importe",
+        "unidades"
+      ],
+      "limit": 10,
+      "offset": 0,
+      "rows": [
+        {
+          "row_number": 4,
+          "values": {
+            "fecha": "2026-01-01",
+            "id": "001",
+            "importe": "100.50",
+            "region": "Norte",
+            "unidades": "2"
+          }
+        }
+      ],
+      "total": 1
+    },
+    "Q-003-3": {
+      "columns": [
+        "id",
+        "fecha",
+        "region",
+        "importe",
+        "unidades"
+      ],
+      "limit": 10,
+      "offset": 0,
+      "rows": [
+        {
+          "row_number": 5,
+          "values": {
+            "fecha": "2026-01-04",
+            "id": "004",
+            "importe": " ",
+            "region": "Norte",
+            "unidades": "1"
+          }
+        }
+      ],
+      "total": 1
+    },
+    "all": {
+      "columns": [
+        "id",
+        "fecha",
+        "region",
+        "importe",
+        "unidades"
+      ],
+      "limit": 10,
+      "offset": 0,
+      "rows": [
+        {
+          "row_number": 1,
+          "values": {
+            "fecha": "2026-01-01",
+            "id": "001",
+            "importe": "100.50",
+            "region": "Norte",
+            "unidades": "2"
+          }
+        },
+        {
+          "row_number": 2,
+          "values": {
+            "fecha": "2026-01-02",
+            "id": "002",
+            "importe": null,
+            "region": "Sur",
+            "unidades": "1"
+          }
+        },
+        {
+          "row_number": 3,
+          "values": {
+            "fecha": "2026-01-03",
+            "id": "003",
+            "importe": "80.00",
+            "region": "Oeste",
+            "unidades": "3"
+          }
+        },
+        {
+          "row_number": 4,
+          "values": {
+            "fecha": "2026-01-01",
+            "id": "001",
+            "importe": "100.50",
+            "region": "Norte",
+            "unidades": "2"
+          }
+        },
+        {
+          "row_number": 5,
+          "values": {
+            "fecha": "2026-01-04",
+            "id": "004",
+            "importe": " ",
+            "region": "Norte",
+            "unidades": "1"
+          }
+        },
+        {
+          "row_number": 6,
+          "values": {
+            "fecha": "2026-01-05",
+            "id": "005",
+            "importe": "120.25",
+            "region": "Este",
+            "unidades": "2"
+          }
+        }
+      ],
+      "total": 6
+    }
+  },
+  "profile": {
+    "column_count": 5,
+    "columns": [
+      {
+        "examples": [
+          "001",
+          "002",
+          "003"
+        ],
+        "name": "id",
+        "null_count": 0,
+        "numeric": null,
+        "suggested_type": "string",
+        "technical_type": "string",
+        "unique_count": 5
+      },
+      {
+        "examples": [
+          "2026-01-01",
+          "2026-01-02",
+          "2026-01-03"
+        ],
+        "name": "fecha",
+        "null_count": 0,
+        "numeric": null,
+        "suggested_type": "date",
+        "technical_type": "string",
+        "unique_count": 5
+      },
+      {
+        "examples": [
+          "Norte",
+          "Sur",
+          "Oeste"
+        ],
+        "name": "region",
+        "null_count": 0,
+        "numeric": null,
+        "suggested_type": "string",
+        "technical_type": "string",
+        "unique_count": 4
+      },
+      {
+        "examples": [
+          "100.50",
+          "80.00",
+          " "
+        ],
+        "name": "importe",
+        "null_count": 1,
+        "numeric": null,
+        "suggested_type": "string",
+        "technical_type": "string",
+        "unique_count": 4
+      },
+      {
+        "examples": [
+          "2",
+          "1",
+          "3"
+        ],
+        "name": "unidades",
+        "null_count": 0,
+        "numeric": {
+          "count": 6,
+          "maximum": "3",
+          "mean": "1.8333333333333333333333333333333333333333333333333",
+          "minimum": "1",
+          "total": "11"
+        },
+        "suggested_type": "integer",
+        "technical_type": "string",
+        "unique_count": 3
+      }
+    ],
+    "encoding": "utf-8-sig",
+    "engine_version": "csv-ingestion-1",
+    "row_count": 6,
+    "schema_version": 1,
+    "separator": "auto",
+    "source_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "quality": {
+    "cell_count": 30,
+    "completeness_percent": 96.67,
+    "duplicate_rows": 1,
+    "issues": [
+      {
+        "affected_rows": 1,
+        "column": "importe",
+        "description": "Campo vacío (nulo).",
+        "id": "Q-001-3",
+        "proposed_action": "Revisar la fuente antes de imputar o excluir.",
+        "rule": "Q-001",
+        "sample_row_numbers": [
+          2
+        ],
+        "severity": "medium"
+      },
+      {
+        "affected_rows": 1,
+        "column": "importe",
+        "description": "Valor compuesto sólo de espacios.",
+        "id": "Q-003-3",
+        "proposed_action": "Revisar si el espacio es significativo antes de normalizar.",
+        "rule": "Q-003",
+        "sample_row_numbers": [
+          5
+        ],
+        "severity": "low"
+      },
+      {
+        "affected_rows": 1,
+        "column": null,
+        "description": "Fila idéntica a una anterior, considerando todas las columnas.",
+        "id": "Q-002",
+        "proposed_action": "Confirmar si es una repetición válida antes de eliminarla.",
+        "rule": "Q-002",
+        "sample_row_numbers": [
+          4
+        ],
+        "severity": "medium"
+      }
+    ],
+    "missing_cells": 1,
+    "row_count": 6,
+    "rule_version": "csv-quality-v1",
+    "whitespace_cells": 1
+  }
+}

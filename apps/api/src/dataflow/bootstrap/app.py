@@ -11,11 +11,19 @@ from starlette.middleware.base import RequestResponseEndpoint
 from starlette.responses import Response
 
 from dataflow.bootstrap.schemas import ErrorResponse
+from dataflow.modules.analytics.presentation import router as analytics_router
+from dataflow.modules.cleaning.presentation import router as cleaning_router
+from dataflow.modules.comprehension.presentation import router as comprehension_router
+from dataflow.modules.copilot.presentation import router as copilot_router
+from dataflow.modules.delivery.presentation import router as delivery_router
 from dataflow.modules.executions.presentation import router as executions_router
+from dataflow.modules.exploration.presentation import router as exploration_router
 from dataflow.modules.identity.presentation import router as identity_router
+from dataflow.modules.ingestion.presentation import analysis_router
 from dataflow.modules.ingestion.presentation import router as ingestion_router
+from dataflow.modules.inspection.presentation import router as inspection_router
+from dataflow.modules.investigation.presentation import router as investigation_router
 from dataflow.modules.projects.presentation import router as projects_router
-from dataflow.modules.understanding.presentation import router as understanding_router
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import engine, session_factory
 from dataflow.platform.errors import ApplicationError
@@ -23,10 +31,12 @@ from dataflow.platform.runtime import require_ready
 
 logger = logging.getLogger("dataflow.http")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
+# Fase 29 (ADR-047): con DATAFLOW_AI_REQUIRED=true no se arranca sin IA activa.
+get_settings().require_ai()
 app = FastAPI(
     title="DataFlow AI API",
-    version="0.5.0",
-    description="Identidad y proyectos del monolito modular.",
+    version="0.37.0",
+    description="DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     responses={
         status: {"model": ErrorResponse}
         for status in [400, 401, 403, 404, 409, 413, 415, 422, 429, 500, 503]
@@ -139,4 +149,12 @@ app.include_router(identity_router)
 app.include_router(projects_router)
 app.include_router(ingestion_router)
 app.include_router(executions_router)
-app.include_router(understanding_router)
+app.include_router(analysis_router)
+app.include_router(cleaning_router)
+app.include_router(analytics_router)
+app.include_router(copilot_router)
+app.include_router(investigation_router)
+app.include_router(delivery_router)
+app.include_router(comprehension_router)
+app.include_router(exploration_router)
+app.include_router(inspection_router)

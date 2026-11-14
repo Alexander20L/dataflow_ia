@@ -5,8 +5,7 @@ export default function ErrorPage({ reset }: { reset: () => void }) {
     <main className="error-page">
       <h1>No pudimos abrir esta vista</h1>
       <p>
-        Intenta cargarla de nuevo. Los datos de demostración guardados no se
-        modificarán.
+        Intenta cargarla de nuevo. Tus proyectos y archivos no se modificarán.
       </p>
       <Button onClick={reset}>Volver a intentar</Button>
     </main>

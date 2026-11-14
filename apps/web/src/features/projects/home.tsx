@@ -9,7 +9,6 @@ import {
   CheckCircle2,
   Clock3,
   Database,
-  Ellipsis,
   FileSpreadsheet,
   FolderKanban,
   Plus,
@@ -20,16 +19,9 @@ import {
   Workflow,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Chart, seriesOption } from "@/components/ui/chart";
 import { useApp } from "@/lib/providers";
-import {
-  cleanSales,
-  monthlyTotals,
-  originalSales,
-  statusLabels,
-  summarize,
-} from "@/lib/demo";
-import { currency, number } from "@/lib/utils";
+import { statusLabels } from "@/lib/project";
+import { number } from "@/lib/utils";
 import { projectView, useProjects } from "./api";
 import { errorMessage } from "@/lib/api";
 import { useAuth } from "@/features/identity/auth-provider";
@@ -202,18 +194,14 @@ export function ProjectTable({ limit }: { limit?: number }) {
         )}
         <span>Guardados en PostgreSQL</span>
       </div>
-      <Link className="activity-link" href="/workspace/ventas-2026">
-        Explorar ventas 2026 · dataset de demostración <ArrowRight size={14} />
-      </Link>
     </section>
   );
 }
 
 export function Home() {
-  const { projectTotal, cleaned } = useApp();
+  const { projectTotal } = useApp();
   const { session } = useAuth();
   const summary = useIngestionSummary();
-  const totals = summarize(cleaned ? cleanSales : originalSales);
   return (
     <>
       <div className="page-heading">
@@ -330,26 +318,6 @@ export function Home() {
       <div className="home-grid">
         <div className="home-main">
           <ProjectTable limit={4} />
-          <section className="panel">
-            <div className="panel-heading">
-              <div>
-                <h2>Explora el ejemplo de ventas</h2>
-                <p>Ingresos de ventas · enero a junio de 2026</p>
-              </div>
-              <span className="badge calculated">Calculado · demo</span>
-            </div>
-            <div className="chart-summary">
-              <strong>{currency(totals.total)}</strong>
-              <span>Importes válidos · los nulos no se imputan</span>
-            </div>
-            <Chart
-              option={seriesOption(
-                ["Ene", "Feb", "Mar", "Abr", "May", "Jun"],
-                monthlyTotals(originalSales),
-              )}
-              label="Ingresos por mes del dataset sintético de ventas"
-            />
-          </section>
         </div>
         <aside className="home-side">
           <section className="panel quick-import">
@@ -361,7 +329,6 @@ export function Home() {
             <div className="format-tags">
               <span>CSV</span>
               <span>XLSX</span>
-              <span>PARQUET</span>
             </div>
             <Button asChild variant="outline">
               <Link href="/new">
@@ -375,52 +342,40 @@ export function Home() {
           </section>
           <section className="panel activity-panel">
             <div className="panel-heading">
-              <h2>Actividad del ejemplo</h2>
-              <Link
-                className="icon-button"
-                href="/history"
-                aria-label="Ver historial"
-              >
-                <Ellipsis size={19} />
-              </Link>
+              <h2>Cómo funciona</h2>
             </div>
             <div className="timeline">
-              {cleaned && (
-                <div className="timeline-item">
-                  <span className="timeline-icon green">
-                    <Check size={14} />
-                  </span>
-                  <div>
-                    <strong>Limpieza aprobada</strong>
-                    <p>Ventas · versión v2</p>
-                    <small>En esta demostración</small>
-                  </div>
-                </div>
-              )}
-              <div className="timeline-item">
-                <span className="timeline-icon amber">
-                  <ShieldCheck size={14} />
-                </span>
-                <div>
-                  <strong>Diagnóstico disponible</strong>
-                  <p>8 importes faltantes detectados</p>
-                  <small>Dataset sintético</small>
-                </div>
-              </div>
               <div className="timeline-item">
                 <span className="timeline-icon indigo">
                   <ArrowDownToLine size={14} />
                 </span>
                 <div>
-                  <strong>Proyecto de ejemplo listo</strong>
-                  <p>240 registros · 6 columnas</p>
-                  <small>Fixture incluido</small>
+                  <strong>Subes un archivo</strong>
+                  <p>CSV o Excel; el original se conserva intacto.</p>
+                </div>
+              </div>
+              <div className="timeline-item">
+                <span className="timeline-icon amber">
+                  <ShieldCheck size={14} />
+                </span>
+                <div>
+                  <strong>El sistema lo analiza solo</strong>
+                  <p>Perfil, calidad e interpretación, sin formularios.</p>
+                </div>
+              </div>
+              <div className="timeline-item">
+                <span className="timeline-icon green">
+                  <Check size={14} />
+                </span>
+                <div>
+                  <strong>Recibes tu dashboard</strong>
+                  <p>
+                    Cada cifra con su evidencia y, si está activa, una
+                    explicación de IA.
+                  </p>
                 </div>
               </div>
             </div>
-            <Link className="activity-link" href="/workspace/ventas-2026">
-              Explorar el ejemplo <ArrowRight size={14} />
-            </Link>
           </section>
         </aside>
       </div>
@@ -428,7 +383,7 @@ export function Home() {
         <ShieldCheck size={16} />
         <span>Originales intactos</span>
         <i />
-        <span>Limpieza supervisada</span>
+        <span>Análisis automático</span>
         <i />
         <span>Resultados con evidencia</span>
       </div>

@@ -38,6 +38,13 @@ class ImportBinding:
     quality_artifact_id: UUID | None
 
 
+@dataclass(frozen=True)
+class VersionLineage:
+    version_id: UUID
+    parent_version_id: UUID
+    producer_execution_id: UUID
+
+
 class ObjectStore(Protocol):
     def put(self, key: str, content: bytes) -> StoredObject: ...
     def read(self, reference: StoredObject) -> bytes: ...
@@ -61,3 +68,17 @@ class DatasetRepository(Protocol):
     def materialized(
         self, version_id: UUID, execution_id: UUID, artifacts: dict[str, UUID]
     ) -> None: ...
+    def register_derived(
+        self,
+        parent: DatasetVersion,
+        version_id: UUID,
+        producer_execution_id: UUID,
+        content: StoredObject,
+    ) -> DatasetVersion: ...
+    def bind_derived(
+        self, version_id: UUID, execution_id: UUID, table_artifact_id: UUID
+    ) -> None: ...
+    def materialize_derived(
+        self, version_id: UUID, execution_id: UUID, artifacts: dict[str, UUID]
+    ) -> bool: ...
+    def lineage(self, owner_id: UUID, version_id: UUID) -> VersionLineage | None: ...

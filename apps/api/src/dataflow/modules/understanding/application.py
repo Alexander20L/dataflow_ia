@@ -14,6 +14,7 @@ from dataflow.modules.understanding.semantic_contracts import (
     RepresentationAccess,
     RevisionPage,
     SemanticDraft,
+    SemanticOrigin,
     SemanticReference,
     SemanticRepository,
     SemanticRevision,
@@ -98,6 +99,39 @@ class SemanticService:
             suggestions=suggestions(source),
             warnings=warnings,
             key_assessment=key_facts,
+            origin=self.origin(actor, artifact, draft),
+        )
+
+    def origin(self, actor: UUID, artifact: UUID, current: SemanticDraft) -> SemanticOrigin | None:
+        """Decisiones confirmadas de la versión de origen, combinadas por ID de columna con
+        el borrador actual (las columnas que no existen en origen no cambian)."""
+        origin = self.access.origin_table(actor, artifact)
+        if origin is None:
+            return None
+        version, number, table = origin
+        head = self.repository.head(actor, table)
+        if head is None:
+            return None
+        parent = editable(head.content)
+        by_id = {column.column_id: column for column in parent.columns}
+        ids = {column.column_id for column in current.columns}
+        draft = current.model_copy(
+            update={
+                "dataset_description": parent.dataset_description,
+                "row_grain": parent.row_grain,
+                "columns": [by_id.get(c.column_id, c) for c in current.columns],
+                "key": parent.key.model_copy(
+                    update={"column_ids": [c for c in parent.key.column_ids if c in ids]}
+                ),
+            }
+        )
+        return SemanticOrigin(
+            version_id=version,
+            version_number=number,
+            revision=SemanticReference(
+                id=head.id, revision=head.revision, content_sha256=head.content_sha256
+            ),
+            draft=draft,
         )
 
     def save(

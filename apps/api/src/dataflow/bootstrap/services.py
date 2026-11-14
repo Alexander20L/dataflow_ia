@@ -1,21 +1,136 @@
+from uuid import uuid5
+
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.ai import configured
+from dataflow.bootstrap.analytics_access import AnalyticsMetricSource, AnalyticsTableAccess
+from dataflow.bootstrap.cleaning_access import CleaningPlanAccess, CleaningProposalAccess
+from dataflow.bootstrap.comprehension_job import (
+    ComprehensionInput,
+    ComprehensionStep,
+    enqueue_comprehension,
+    record_comprehension_calls,
+)
+from dataflow.bootstrap.dashboard_job import (
+    DashboardInput,
+    DashboardStep,
+    enqueue_dashboard,
+    record_dashboard_calls,
+    request_report_update,
+)
+from dataflow.bootstrap.delivery_job import (
+    ReportInput,
+    ReportInputV2,
+    ReportStep,
+    ReportStepV2,
+    enqueue_report,
+    enqueue_report_v2,
+    record_report_calls,
+)
+from dataflow.bootstrap.exploration_job import (
+    ExplorationInput,
+    ExplorationStep,
+    InvestigationTreeStep,
+    enqueue_exploration,
+    record_exploration_calls,
+)
+from dataflow.bootstrap.inspection_job import (
+    InspectionInput,
+    InspectionStep,
+    enqueue_inspection,
+)
+from dataflow.bootstrap.investigation_job import (
+    InvestigationInput,
+    InvestigationStep,
+    record_investigation_calls,
+)
+from dataflow.bootstrap.operations import OperationCatalog, OperationRegistry, WorkerRegistry
+from dataflow.bootstrap.overview_audit import (
+    OverviewAuditStep,
+    OverviewInput,
+    enqueue_audit,
+    record_audit_call,
+)
+from dataflow.bootstrap.planning_access import PlanningTableAccess
 from dataflow.bootstrap.provenance import environment_snapshot
+from dataflow.bootstrap.quality_access import QualityTableAccess
 from dataflow.bootstrap.semantic_access import SemanticRepresentationAccess
+from dataflow.integrations.ai import AIProvider
+from dataflow.modules.analytics.application import MetricService
+from dataflow.modules.analytics.infrastructure import SQLMetricRepository
+from dataflow.modules.analytics.steps import (
+    AnalyticsQueryStep,
+    AutomaticAnalysisStep,
+    FollowUpComputer,
+    MetricSource,
+)
+from dataflow.modules.audit.public import record_event
+from dataflow.modules.cleaning.application import CleaningProposals, CleaningService
+from dataflow.modules.cleaning.engine import IsolatedCleaner
+from dataflow.modules.cleaning.public import (
+    ApprovalSource,
+    derived_version_id,
+    require_valid_approval,
+)
+from dataflow.modules.cleaning.repository import SQLApprovalRepository, SQLApprovalSource
+from dataflow.modules.cleaning.steps import (
+    ApplyFinalizer,
+    CastStep,
+    DeclaredNullsFinalizer,
+    DeduplicateStep,
+    FilterRowsStep,
+    NormalizeNullTokensStep,
+    PreviewFinalizer,
+    TrimWhitespaceStep,
+)
+from dataflow.modules.comprehension.infrastructure import (
+    SQLFeedbackRepository,
+    SQLMeaningRepository,
+    SQLTargetRepository,
+)
+from dataflow.modules.copilot.application import CopilotConfig, CopilotService
+from dataflow.modules.copilot.infrastructure import SQLCopilotRepository
+from dataflow.modules.curation.public import SQLFindingFeedback
 from dataflow.modules.datasets.application import Datasets
 from dataflow.modules.datasets.infrastructure import SQLDatasetRepository
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.executions.application import ExecutionRunner, Executions
-from dataflow.modules.executions.contracts import Artifact, Lease, ProcessingConfig
+from dataflow.modules.executions.contracts import (
+    Artifact,
+    ArtifactOutput,
+    Lease,
+    ProcessingConfig,
+    RunKind,
+)
 from dataflow.modules.executions.infrastructure import SQLExecutionRepository
+from dataflow.modules.exploration.infrastructure import SQLInvestigationControls
 from dataflow.modules.ingestion.analytical import IsolatedAnalyzer, PolarsPreview
 from dataflow.modules.ingestion.application import AnalysisService, Analyzer, IngestionService
-from dataflow.modules.ingestion.executor import CsvExecutor, TableExecutor
+from dataflow.modules.ingestion.contracts import SourceReview
+from dataflow.modules.ingestion.executor import (
+    ProfileStep,
+    QualityRulesStep,
+    QualityStep,
+    ReadCsvStep,
+    ReadCsvV2Step,
+    ReadPdfStep,
+    ReadXlsxStep,
+    RulesetSource,
+    SourceInputResolver,
+    TableInputResolver,
+)
+from dataflow.modules.ingestion.plans import analysis_fingerprint, build_plan
+from dataflow.modules.inspection.public import SQLColumnAnnotations
+from dataflow.modules.planning.application import PlanningService
+from dataflow.modules.planning.infrastructure import SQLPlanningRepository
 from dataflow.modules.projects.public import ProjectPermissions
+from dataflow.modules.quality.application import RulesetService
+from dataflow.modules.quality.infrastructure import SQLRulesetRepository
 from dataflow.modules.understanding.application import SemanticService
 from dataflow.modules.understanding.semantic_repository import SQLSemanticRepository
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import SQLUnitOfWork
+from dataflow.platform.errors import ApplicationError
 from dataflow.platform.runtime import require_ready
 
 
@@ -49,6 +164,12 @@ def make_ingestion(db: Session, objects: LocalObjects) -> IngestionService:
         processing_config(),
         settings.max_owner_storage_bytes,
         settings.max_upload_bytes,
+        IsolatedAnalyzer(
+            objects.root,
+            settings.processing_timeout_seconds,
+            settings.max_csv_rows,
+            settings.max_csv_columns,
+        ),
     )
 
 
@@ -65,6 +186,22 @@ def make_analysis(db: Session, objects: LocalObjects) -> AnalysisService:
     )
 
 
+def make_metrics(db: Session, objects: LocalObjects) -> MetricService:
+    require_ready(db)
+    access = AnalyticsTableAccess(
+        make_datasets(db), make_executions(db), ProjectPermissions(db), objects
+    )
+    return MetricService(SQLMetricRepository(db), access, SQLUnitOfWork(db))
+
+
+def make_rulesets(db: Session, objects: LocalObjects) -> RulesetService:
+    require_ready(db)
+    access = QualityTableAccess(
+        make_datasets(db), make_executions(db), ProjectPermissions(db), objects
+    )
+    return RulesetService(SQLRulesetRepository(db), access, SQLUnitOfWork(db))
+
+
 def make_semantics(db: Session, objects: LocalObjects) -> SemanticService:
     require_ready(db)
     access = SemanticRepresentationAccess(
@@ -74,37 +211,438 @@ def make_semantics(db: Session, objects: LocalObjects) -> SemanticService:
 
 
 class DatasetPublication:
-    def __init__(self, datasets: Datasets) -> None:
-        self.datasets = datasets
+    """Efectos de publicación entre módulos, dentro de la transacción de stage/succeed."""
+
+    def __init__(
+        self,
+        db: Session,
+        datasets: Datasets,
+        executions: Executions,
+        approvals: ApprovalSource,
+        config: ProcessingConfig,
+        objects: LocalObjects,
+    ) -> None:
+        self.db, self.datasets, self.executions = db, datasets, executions
+        self.approvals, self.config = approvals, config
+        self.objects = objects
+
+    def prepare(self, lease: Lease, outputs: list[ArtifactOutput]) -> None:
+        if lease.execution.kind == "dashboard":
+            record_dashboard_calls(
+                self.db, lease, next(o for o in outputs if o.kind == "dashboard"), self.objects
+            )
+            return
+        if lease.execution.kind == "exploration":
+            record_exploration_calls(
+                self.db, lease, next(o for o in outputs if o.kind == "exploration"), self.objects
+            )
+            return
+        if lease.execution.kind == "comprehension":
+            record_comprehension_calls(
+                self.db, lease, next(o for o in outputs if o.kind == "comprehension"), self.objects
+            )
+            return
+        if lease.execution.kind == "automatic_report":
+            # Fase 27: la narrativa del informe v2 (el v1 no llama a la IA).
+            document = next((o for o in outputs if o.kind == "report_document"), None)
+            if document is not None:
+                record_report_calls(self.db, lease, document, self.objects)
+            return
+        if lease.execution.kind == "investigation":
+            record_investigation_calls(
+                self.db, lease, next(o for o in outputs if o.kind == "investigation"), self.objects
+            )
+            return
+        if lease.execution.kind == "overview_audit":
+            record_audit_call(
+                self.db, lease, next(o for o in outputs if o.kind == "overview_audit"), self.objects
+            )
+            return
+        if lease.execution.kind not in {"cleaning_apply", "null_cleaning"}:
+            return
+        if lease.execution.kind == "cleaning_apply":
+            # Revocación comprobada otra vez al confirmar, no sólo al empezar el cálculo.
+            require_valid_approval(self.approvals, lease)
+        # null_cleaning (Fase 23): decisión del sistema por textos declarados como nulos; su
+        # efecto exacto queda registrado en los artefactos `effect`.
+        table = next(output for output in outputs if output.kind == "table")
+        version = derived_version_id(lease.execution_id)
+        if table.version_id != version:
+            raise ApplicationError("OUTPUT_MANIFEST_INVALID", "Tabla derivada inválida.", 409)
+        self.datasets.register_derived(
+            self.datasets.get(lease.owner_id, lease.version_id),
+            version,
+            lease.execution_id,
+            table.content,
+        )
+
+    def background(self, lease: Lease, artifacts: list[Artifact]) -> bool:
+        """Trabajos de fondo del recorrido automático tras una carga (o, desde la Fase 23, tras
+        analizar una versión derivada por textos declarados como nulos)."""
+        analysis = next((a for a in artifacts if a.kind == "automatic_analysis"), None)
+        table = next((a for a in artifacts if a.kind == "table"), None)
+        if analysis is None or table is None:
+            return False
+        # Fase 22: la inspección de la pestaña Dataset, la primera de los trabajos de
+        # fondo (sólo en el recorrido automático actual, como la comprensión).
+        enqueue_inspection(self.executions, self.datasets, lease, artifacts, self.config)
+        # Fase 19: primero la comprensión del negocio (se reclama antes por llegar
+        # antes); después la investigación (Fase 16), que explica los hallazgos.
+        profile = next((a for a in artifacts if a.kind == "profile"), None)
+        if profile is not None:
+            enqueue_comprehension(
+                self.executions,
+                self.datasets,
+                SQLFeedbackRepository(self.db),
+                lease,
+                profile,
+                table,
+                self.config,
+                SQLColumnAnnotations(self.db),
+                SQLTargetRepository(self.db),
+            )
+        # Fase 27 (ADR-045): el seguimiento de la Fase 16 ya no se encola en las cargas nuevas;
+        # el informe v2 parte del dashboard.
+        return True
 
     def published(self, lease: Lease, artifacts: list[Artifact]) -> None:
-        if lease.execution.kind == "csv_import":
+        kind = lease.execution.kind
+        if kind == "csv_import":
             self.datasets.materialized(
                 lease.version_id,
                 lease.execution_id,
                 {artifact.kind: artifact.id for artifact in artifacts},
             )
+            if self.background(lease, artifacts):
+                return
+            profile = next((a for a in artifacts if a.kind == "profile"), None)
+            if (
+                profile is not None
+                and lease.execution.plan
+                and any(
+                    s.get("operation") == "understanding.profile" and s.get("version") in {2, 3, 4}
+                    for s in lease.execution.plan.content["steps"]
+                )
+            ):
+                enqueue_audit(self.executions, lease, profile, self.config)
+        elif kind == "comprehension":
+            # Fase 20: la exploración guiada parte de la comprensión publicada.
+            enqueue_exploration(
+                self.executions,
+                lease,
+                next(a for a in artifacts if a.kind == "comprehension"),
+                self.config,
+            )
+        elif kind == "exploration":
+            # Fase 21: el dashboard adaptado parte de la exploración publicada.
+            enqueue_dashboard(
+                self.executions,
+                lease,
+                next(a for a in artifacts if a.kind == "exploration"),
+                self.config,
+            )
+        elif kind == "dashboard":
+            # Fase 21: si el informe ya se generó sin este dashboard, se genera otra versión.
+            # Fase 27: si aún no hay informe, el v2 parte de este dashboard.
+            dashboard = next(a for a in artifacts if a.kind == "dashboard")
+            if any(
+                r.kind == "automatic_report"
+                for r in self.executions.for_version(lease.owner_id, lease.version_id)
+            ):
+                request_report_update(
+                    self.executions,
+                    lease.owner_id,
+                    lease.version_id,
+                    f"dashboard:{dashboard.content.sha256}",
+                )
+            else:
+                enqueue_report_v2(
+                    self.executions,
+                    self.datasets,
+                    lease,
+                    dashboard,
+                    self.config,
+                    self.review(lease),
+                )
+        elif kind == "investigation":
+            # Fase 17: el informe automático se genera al publicarse la investigación.
+            enqueue_report(
+                self.executions,
+                self.datasets,
+                lease,
+                next(a for a in artifacts if a.kind == "investigation"),
+                self.config,
+                self.review(lease),
+            )
+        elif kind == "table_analysis":
+            self.datasets.materialize_derived(
+                lease.version_id,
+                lease.execution_id,
+                {artifact.kind: artifact.id for artifact in artifacts},
+            )
+            # Fase 23: la versión derivada por textos nulos se analiza como una carga nueva
+            # (su tabla es la entrada fijada del análisis, publicada por `null_cleaning`).
+            run = lease.execution
+            if run.input_artifact_id is not None and any(
+                a.kind == "automatic_analysis" for a in artifacts
+            ):
+                table = self.executions.artifact(lease.owner_id, run.input_artifact_id)
+                self.background(lease, [*artifacts, table])
+        elif kind == "cleaning_apply":
+            self.derived(lease, next(a for a in artifacts if a.kind == "table"))
+        elif kind == "null_cleaning":
+            assert lease.execution.plan
+            self.derived(
+                lease,
+                next(a for a in artifacts if a.kind == "table"),
+                str(lease.execution.plan.content.get("source_key") or "") or None,
+            )
+
+    def review(self, lease: Lease) -> SourceReview | None:
+        """Fase 18: lectura y cambios de estructura de la versión, para el informe. Si no se
+        puede obtener, el informe sale sin esas secciones."""
+        try:
+            return make_ingestion(self.db, self.objects).review(lease.owner_id, lease.version_id)
+        except ApplicationError:
+            return None
+
+    def derived(self, lease: Lease, table: Artifact, source: str | None = None) -> None:
+        """Encola perfil y calidad de la versión derivada y la vincula a ese análisis. Con
+        `source` (Fase 23, textos declarados como nulos) el análisis es el de una carga nueva y
+        conserva la identidad de la fuente."""
+        version = self.datasets.get(lease.owner_id, table.version_id)
+        plan = build_plan(
+            lease.owner_id,
+            version,
+            self.config,
+            table=table,
+            analytical_table=source is not None,
+            source_key=source,
+        )
+        run = self.executions.enqueue_followup(
+            lease.owner_id,
+            version.project_id,
+            version.id,
+            uuid5(lease.execution_id, "derived-analysis"),
+            analysis_fingerprint(version.id, table.id, table.content.sha256, "profile_quality"),
+            plan,
+            str(lease.execution_id),
+            table.id,
+            table.content.sha256,
+        )
+        self.datasets.bind_derived(version.id, run.id, table.id)
+        record_event(
+            self.db,
+            lease.owner_id,
+            version.id,
+            "dataset.derived_published",
+            str(lease.execution_id),
+        )
+
+
+WORKER_KINDS: set[RunKind] = {
+    "inspection",
+    "comprehension",
+    "exploration",
+    "dashboard",
+    "overview_audit",
+    "investigation",
+    "automatic_report",
+    "csv_import",
+    "table_analysis",
+    "plan",
+    "cleaning_preview",
+    "cleaning_apply",
+    "null_cleaning",
+}
+
+
+def make_operations(
+    objects: LocalObjects,
+    analyzer: Analyzer,
+    cleaner: IsolatedCleaner,
+    rulesets: RulesetSource | None = None,
+    metrics: MetricSource | None = None,
+) -> OperationRegistry:
+    return OperationRegistry(
+        {
+            "ingestion.read_csv@1": ReadCsvStep(objects, analyzer),
+            "ingestion.read_csv@2": ReadCsvV2Step(objects, analyzer),
+            "ingestion.read_xlsx@1": ReadXlsxStep(objects, analyzer),
+            "ingestion.read_xlsx@2": ReadXlsxStep(objects, analyzer),
+            "ingestion.read_pdf@1": ReadPdfStep(objects, analyzer),
+            "understanding.profile@1": ProfileStep(objects, analyzer),
+            "understanding.profile@2": ProfileStep(objects, analyzer),
+            "understanding.profile@3": ProfileStep(objects, analyzer),
+            "understanding.profile@4": ProfileStep(objects, analyzer),
+            "quality.evaluate@1": QualityStep(objects, analyzer),
+            "quality.evaluate@3": QualityStep(objects, analyzer),
+            "quality.evaluate@2": QualityRulesStep(objects, analyzer, rulesets),
+            "analytics.automatic@1": AutomaticAnalysisStep(objects, objects.root),
+            "analytics.query@1": AnalyticsQueryStep(objects, objects.root, metrics),
+            "analytics.query@2": AnalyticsQueryStep(objects, objects.root, metrics),
+            "analytics.query@3": AnalyticsQueryStep(objects, objects.root, metrics),
+            "cleaning.trim_whitespace@1": TrimWhitespaceStep(objects, cleaner),
+            "cleaning.filter_rows@1": FilterRowsStep(objects, cleaner),
+            "cleaning.normalize_null_tokens@1": NormalizeNullTokensStep(objects, cleaner),
+            "cleaning.cast@1": CastStep(objects, cleaner),
+            "cleaning.deduplicate@1": DeduplicateStep(objects, cleaner),
+        }
+    )
 
 
 def make_runner(
-    db: Session, objects: LocalObjects, analyzer: Analyzer | None = None
+    db: Session,
+    objects: LocalObjects,
+    analyzer: Analyzer | None = None,
+    kinds: set[RunKind] | None = None,
 ) -> ExecutionRunner:
     require_ready(db)
     datasets, executions = make_datasets(db), make_executions(db)
     config = processing_config()
-    executor = analyzer or IsolatedAnalyzer(
+    engine = analyzer or IsolatedAnalyzer(
         objects.root, config.timeout_seconds, config.max_rows, config.max_columns
     )
     projects = ProjectPermissions(db)
+    cleaner = IsolatedCleaner(objects.root)
+    approvals = SQLApprovalSource(db)
+    settings = get_settings()
+    provider, ai_config = configured(
+        settings.model_copy(
+            update={
+                "ai_timeout_seconds": min(
+                    settings.ai_timeout_seconds, max(1, config.timeout_seconds - 5)
+                )
+            }
+        ),
+        max_retries=0,
+    )
     return ExecutionRunner(
         SQLExecutionRepository(db, datasets),
         SQLUnitOfWork(db),
+        set(WORKER_KINDS if kinds is None else kinds),
         {
-            "csv_import": CsvExecutor(datasets, executions, objects, executor, projects),
-            "table_analysis": TableExecutor(
-                datasets, executions, objects, executor, projects, make_semantics(db, objects)
+            "source": SourceInputResolver(datasets, projects),
+            "table": TableInputResolver(
+                datasets, executions, projects, make_semantics(db, objects)
             ),
+            "overview": OverviewInput(datasets, executions, projects),
+            "automatic": InvestigationInput(datasets, executions, projects),
+            "comprehension": ComprehensionInput(datasets, executions, projects),
+            "exploration": ExplorationInput(datasets, executions, projects),
+            "dashboard": DashboardInput(datasets, executions, projects),
+            "inspection": InspectionInput(datasets, executions, projects),
+            "investigation": ReportInput(datasets, executions, projects),
+            "report_v2": ReportInputV2(datasets, executions, projects),
         },
-        DatasetPublication(datasets),
+        WorkerRegistry(
+            make_operations(
+                objects,
+                engine,
+                cleaner,
+                make_rulesets(db, objects),
+                AnalyticsMetricSource(make_metrics(db, objects), make_semantics(db, objects)),
+            ),
+            {
+                "copilot.audit_overview@1": OverviewAuditStep(
+                    objects, make_copilot(db, provider, ai_config)
+                ),
+                "investigation.investigate@1": InvestigationStep(
+                    objects,
+                    FollowUpComputer(objects, objects.root),
+                    make_copilot(db, provider, ai_config),
+                ),
+                "delivery.report@1": ReportStep(
+                    objects, executions, SQLFindingFeedback(db), SQLMeaningRepository(db)
+                ),
+                # Fase 27: informe v2 con revisión humana, historial y narrativa verificada.
+                "delivery.report@2": ReportStepV2(
+                    objects,
+                    executions,
+                    make_copilot(db, provider, ai_config),
+                    SQLFindingFeedback(db),
+                    SQLMeaningRepository(db),
+                ),
+                "delivery.dashboard@1": DashboardStep(
+                    objects, make_copilot(db, provider, ai_config)
+                ),
+                # Fase 26: indicadores, filtros, origen y versión personalizada.
+                "delivery.dashboard@2": DashboardStep(
+                    objects, make_copilot(db, provider, ai_config)
+                ),
+                "exploration.explore@1": ExplorationStep(
+                    objects, make_copilot(db, provider, ai_config)
+                ),
+                # Fase 25: investigación con plan, árbol, evidencias y control.
+                "exploration.explore@2": InvestigationTreeStep(
+                    objects, make_copilot(db, provider, ai_config), SQLInvestigationControls(db)
+                ),
+                # Fase 28: explore-v3 (tasas y cohortes) y relevance-v2.
+                "exploration.explore@3": InvestigationTreeStep(
+                    objects, make_copilot(db, provider, ai_config), SQLInvestigationControls(db)
+                ),
+                # Fase 29: explore-v4 (objetivo, factores, control) y relevance-v3.
+                "exploration.explore@4": InvestigationTreeStep(
+                    objects, make_copilot(db, provider, ai_config), SQLInvestigationControls(db)
+                ),
+                "inspection.inspect@1": InspectionStep(
+                    objects, engine if isinstance(engine, IsolatedAnalyzer) else None
+                ),
+                "comprehension.understand@1": ComprehensionStep(
+                    objects, make_copilot(db, provider, ai_config)
+                ),
+            },
+        ),
+        DatasetPublication(db, datasets, executions, approvals, config, objects),
         environment_snapshot(),
+        {
+            "cleaning_preview": PreviewFinalizer(objects, cleaner),
+            "cleaning_apply": ApplyFinalizer(objects, cleaner, approvals),
+            "null_cleaning": DeclaredNullsFinalizer(objects, cleaner),
+        },
+    )
+
+
+def make_copilot(db: Session, provider: AIProvider | None, config: CopilotConfig) -> CopilotService:
+    require_ready(db)
+    return CopilotService(SQLCopilotRepository(db), provider, config)
+
+
+def make_planning(db: Session, objects: LocalObjects) -> PlanningService:
+    require_ready(db)
+    datasets, executions = make_datasets(db), make_executions(db)
+    return PlanningService(
+        executions,
+        PlanningTableAccess(
+            datasets,
+            executions,
+            ProjectPermissions(db),
+            make_semantics(db, objects),
+            make_rulesets(db, objects),
+            make_metrics(db, objects),
+        ),
+        SQLPlanningRepository(db),
+        OperationCatalog(),
+        SQLUnitOfWork(db),
+        processing_config(),
+    )
+
+
+def make_cleaning(db: Session, objects: LocalObjects) -> CleaningService:
+    require_ready(db)
+    datasets = make_datasets(db)
+    return CleaningService(
+        make_executions(db),
+        CleaningPlanAccess(make_planning(db, objects), ProjectPermissions(db), datasets),
+        SQLApprovalRepository(db),
+        OperationCatalog(),
+        datasets,
+        objects,
+        SQLUnitOfWork(db),
+    )
+
+
+def make_cleaning_proposals(db: Session, objects: LocalObjects) -> CleaningProposals:
+    return CleaningProposals(
+        CleaningProposalAccess(make_semantics(db, objects), make_ingestion(db, objects))
     )

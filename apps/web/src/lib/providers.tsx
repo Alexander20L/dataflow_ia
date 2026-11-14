@@ -10,27 +10,24 @@ import {
 } from "react";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CheckCircle2, X } from "lucide-react";
-import { initialProjects, type Project } from "./demo";
+import type { Project } from "./project";
 import { AuthProvider, useAuth } from "@/features/identity/auth-provider";
 import { AuthGate } from "@/features/identity/auth-gate";
 import { projectView, useProjects } from "@/features/projects/api";
 import {
-  getDemoSnapshot,
+  getUiSnapshot,
   initialSnapshot,
-  subscribeDemo,
-  updateDemo,
-} from "./demo-store";
+  subscribeUi,
+  updateUi,
+} from "./ui-store";
 
 type AppState = {
   projects: Project[];
   projectTotal: number;
-  cleaned: boolean;
-  setCleaned: (v: boolean) => void;
   notify: (message: string) => void;
   dark: boolean;
   toggleTheme: () => void;
   ready: boolean;
-  resetDemo: () => void;
 };
 const AppContext = createContext<AppState | null>(null);
 export function useApp() {
@@ -53,17 +50,14 @@ export function Providers({ children }: { children: ReactNode }) {
 function WorkspaceProvider({ children }: { children: ReactNode }) {
   const { session } = useAuth();
   const remote = useProjects("", undefined, 100, 0, !!session);
-  const projects = [
-    ...(remote.data?.items.map(projectView) ?? []),
-    initialProjects[0],
-  ];
-  const { cleaned, dark } = useSyncExternalStore(
-    subscribeDemo,
-    getDemoSnapshot,
+  const projects = remote.data?.items.map(projectView) ?? [];
+  const { dark } = useSyncExternalStore(
+    subscribeUi,
+    getUiSnapshot,
     () => initialSnapshot,
   );
   const ready = useSyncExternalStore(
-    subscribeDemo,
+    subscribeUi,
     () => true,
     () => false,
   );
@@ -83,13 +77,10 @@ function WorkspaceProvider({ children }: { children: ReactNode }) {
       value={{
         projects,
         projectTotal: remote.data?.total ?? 0,
-        cleaned,
-        setCleaned: (value) => updateDemo((s) => ({ ...s, cleaned: value })),
         notify: setMessage,
         dark,
-        toggleTheme: () => updateDemo((s) => ({ ...s, dark: !s.dark })),
+        toggleTheme: () => updateUi((s) => ({ ...s, dark: !s.dark })),
         ready,
-        resetDemo: () => updateDemo(() => initialSnapshot),
       }}
     >
       {children}

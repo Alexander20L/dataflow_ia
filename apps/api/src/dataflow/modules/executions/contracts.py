@@ -7,14 +7,81 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataflow.modules.datasets.contracts import StoredObject
 
-RunKind = Literal["csv_import", "table_analysis"]
+# report_render (Fase 9): informe exacto a PDF; su entrada es una instantánea del informe.
+# automatic_report (Fase 17): informe automático en PDF; su entrada es la investigación.
+# null_cleaning (Fase 23): textos declarados como nulos en el Diccionario → versión derivada.
+RunKind = Literal[
+    "csv_import",
+    "table_analysis",
+    "plan",
+    "cleaning_preview",
+    "cleaning_apply",
+    "report_render",
+    "overview_audit",
+    "investigation",
+    "automatic_report",
+    "comprehension",
+    "exploration",
+    "dashboard",
+    "inspection",
+    "null_cleaning",
+]
 RunState = Literal["queued", "running", "succeeded", "failed", "cancelled"]
-ArtifactKind = Literal["table", "profile", "quality", "legacy_diagnostic"]
+ArtifactKind = Literal[
+    "table",
+    "profile",
+    "quality",
+    "legacy_diagnostic",
+    "effect",
+    "effect_samples",
+    "row_lineage",
+    "quality_rules",
+    "analysis_result",
+    "report_pdf",
+    "overview_audit",
+    "automatic_analysis",
+    "investigation",
+    "comprehension",
+    "exploration",
+    "dashboard",
+    "inspection",
+    # Fase 27: documento del informe v2 (el PDF se dibuja a partir de él).
+    "report_document",
+]
 
 
 class ProcessingConfig(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
-    operation_catalog: Literal["analysis-v1"] = "analysis-v1"
+    # analysis-v1: Fase 4 (lectura, perfil, calidad); analysis-v2: añade cleaning.* (Fase 5);
+    # analysis-v3: conversiones, tokens nulos y deduplicación (Fase 6A);
+    # analysis-v4: quality.evaluate@2 con reglas del usuario (Fase 6B);
+    # analysis-v5: analytics.query@1 con métricas definidas (Fase 7A);
+    # analysis-v6: analytics.query@2 con comparaciones, ranking y participación (Fase 7B);
+    # analysis-v7: analytics.query@3 con sum_product y último corte (Fase 11E);
+    # analysis-v8: ingestion.read_xlsx@1 (Fase 12A).
+    # analysis-v9: understanding.profile@2 (perfil y dashboard descriptivo automático).
+    # analysis-v10: understanding.profile@3 (interpretación técnica y contextos candidatos).
+    # analysis-v11: understanding.profile@4 y quality.evaluate@3 (Fase 14: interpretación
+    # analítica, dashboard por medidas y calidad que indica los análisis afectados).
+    # analysis-v12: analytics.automatic@1 (Fase 15: plan analítico automático y hallazgos).
+    # analysis-v13: ingestion.read_csv@2 y read_xlsx@2 (Fase 18: codificación Windows-1252 y
+    # valores regionales con `regional-values-v1`).
+    # Los planes guardados conservan el valor con el que se crearon (y su hash).
+    operation_catalog: Literal[
+        "analysis-v1",
+        "analysis-v2",
+        "analysis-v3",
+        "analysis-v4",
+        "analysis-v5",
+        "analysis-v6",
+        "analysis-v7",
+        "analysis-v8",
+        "analysis-v9",
+        "analysis-v10",
+        "analysis-v11",
+        "analysis-v12",
+        "analysis-v13",
+    ] = "analysis-v13"
     rule_catalog: Literal["csv-quality-v1"] = "csv-quality-v1"
     max_rows: int = Field(ge=1, le=100000)
     max_columns: int = Field(ge=1, le=128)
@@ -43,6 +110,23 @@ class PlanRevision:
 
 
 @dataclass(frozen=True)
+class PlanBinding:
+    """Vínculo de un plan de usuario con su proyecto, tabla exacta y revisión semántica."""
+
+    project_id: UUID
+    input_artifact_id: UUID
+    input_artifact_sha256: str
+    semantic_revision_id: UUID | None
+
+
+@dataclass(frozen=True)
+class UserPlan:
+    revision: PlanRevision
+    binding: PlanBinding
+    head_revision: int
+
+
+@dataclass(frozen=True)
 class Execution:
     id: UUID
     project_id: UUID
@@ -61,6 +145,8 @@ class Execution:
     reproducibility: Literal["complete", "legacy_partial"]
     created_at: datetime
     finished_at: datetime | None
+    # Clave idempotente de la solicitud; en cleaning_apply identifica la aprobación aplicada.
+    request_key: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -95,6 +181,8 @@ class ArtifactOutput:
     column_count: int
     columns: list[dict[str, Any]] | None = None
     logical_content_sha256: str | None = None
+    # Versión a la que pertenece el artefacto; por defecto, la de la ejecución (su entrada).
+    version_id: UUID | None = None
 
 
 @dataclass(frozen=True)
@@ -113,21 +201,153 @@ class Artifact:
     logical_content_sha256: str | None
 
 
+InputKind = Literal[
+    "source",
+    "table",
+    "report",
+    "overview",
+    "automatic",
+    "investigation",
+    "comprehension",
+    "exploration",
+    "dashboard",
+    "inspection",
+    "report_v2",  # Fase 27: el informe v2 parte del dashboard publicado
+]
+
+
 @dataclass(frozen=True)
-class PreparedWork:
-    reference: StoredObject
+class StepInput:
+    """Entrada de un paso: el input fijado del plan o la tabla producida por un paso anterior."""
+
+    kind: InputKind
+    content: StoredObject
+    # Procedencia que conservan los diagnósticos: hash del original y separador efectivo.
     source_sha256: str
-    config: ProcessingConfig
-    separator: str
-    quality_only: bool = False
+    separator: str = ","
+    # Esquema publicado (IDs de columna) y si la tabla lleva la columna interna de linaje.
+    columns: list[dict[str, Any]] | None = None
+    lineage: bool = False
 
 
-class Executor(Protocol):
-    def prepare(self, lease: Lease) -> PreparedWork: ...
-    def compute(self, lease: Lease, work: PreparedWork) -> list[ArtifactOutput]: ...
+@dataclass(frozen=True)
+class PlanStepSpec:
+    id: str
+    operation: str
+    version: int
+    input_step: str | None  # None: consume el input del plan.
+    parameters: dict[str, Any]
+
+
+@dataclass(frozen=True)
+class StepResult:
+    outputs: list[ArtifactOutput]
+    table: StepInput | None = None
+
+
+class InputResolver(Protocol):
+    """Verifica autorización y hashes del input fijado; único punto con acceso a metadatos."""
+
+    def prepare(self, lease: Lease) -> StepInput: ...
+
+
+class StepExecutor(Protocol):
+    """Calcula un paso sin acceso a la base de datos dentro de `timeout` segundos."""
+
+    @property
+    def output_kind(self) -> ArtifactKind: ...
+    @property
+    def transforms_data(self) -> bool: ...
+    def compute(
+        self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float
+    ) -> StepResult: ...
+
+
+class StepRegistry(Protocol):
+    def executor(self, operation: str, version: int) -> StepExecutor | None: ...
+
+
+class PlanFinalizer(Protocol):
+    """Salidas de un tipo de ejecución que no se publican paso a paso (limpieza: efecto y tabla
+    final). `prepare` se ejecuta con acceso a metadatos; `finalize`, sin base de datos."""
+
+    @property
+    def expected(self) -> set[tuple[str, ArtifactKind]]: ...
+    def prepare(self, lease: Lease) -> Any: ...
+    def finalize(
+        self, lease: Lease, context: Any, source: StepInput, final: StepInput, timeout: float
+    ) -> list[ArtifactOutput]: ...
+
+
+class PlanResponse(BaseModel):
+    schema_version: Literal[1] = 1
+    id: UUID
+    family_id: UUID
+    revision: int
+    previous_revision_id: UUID | None = None
+    content: dict[str, Any]
+    content_sha256: str
+    created_by: UUID
+    created_at: datetime
+
+
+# DTO HTTP compartido por rutas de ejecuciones, ingesta y planificación (sin docstring: cambiaría
+# la descripción del esquema OpenAPI).
+class ExecutionResponse(BaseModel):
+    id: UUID
+    project_id: UUID
+    version_id: UUID
+    kind: RunKind
+    state: RunState
+    attempts: int
+    plan: PlanResponse | None
+    input_artifact_id: UUID | None
+    input_artifact_sha256: str | None
+    row_count: int | None
+    column_count: int | None
+    error_code: str | None
+    error_message: str | None
+    reproducibility: Literal["complete", "legacy_partial"]
+    created_at: datetime
+    finished_at: datetime | None
+
+
+def execution_response(run: Execution) -> ExecutionResponse:
+    plan = (
+        PlanResponse(
+            id=run.plan.id,
+            family_id=run.plan.family_id,
+            revision=run.plan.revision,
+            content=run.plan.content,
+            content_sha256=run.plan.content_sha256,
+            created_by=run.plan.created_by,
+            created_at=run.plan.created_at,
+        )
+        if run.plan
+        else None
+    )
+    return ExecutionResponse(
+        id=run.id,
+        project_id=run.project_id,
+        version_id=run.version_id,
+        kind=run.kind,
+        state=run.state,
+        attempts=run.attempts,
+        plan=plan,
+        input_artifact_id=run.input_artifact_id,
+        input_artifact_sha256=run.input_artifact_sha256,
+        row_count=run.row_count,
+        column_count=run.column_count,
+        error_code=run.error_code,
+        error_message=run.error_message,
+        reproducibility=run.reproducibility,
+        created_at=run.created_at,
+        finished_at=run.finished_at,
+    )
 
 
 class PublicationHook(Protocol):
+    def prepare(self, lease: Lease, outputs: list[ArtifactOutput]) -> None: ...
     def published(self, lease: Lease, artifacts: list[Artifact]) -> None: ...
 
 
@@ -152,14 +372,41 @@ class ExecutionRepository(Protocol):
         input_artifact: UUID | None = None,
         input_sha256: str | None = None,
     ) -> Execution: ...
+    def enqueue_existing_plan(
+        self,
+        owner: UUID,
+        project: UUID,
+        version: UUID,
+        key: UUID,
+        fingerprint: str,
+        plan: UUID,
+        correlation: str,
+        input_artifact: UUID,
+        input_sha256: str,
+        kind: RunKind = "plan",
+    ) -> Execution: ...
+    def save_plan_revision(self, plan: PlanRevision, binding: PlanBinding) -> None: ...
+    def plan_revision(self, owner: UUID, revision: UUID) -> UserPlan: ...
+    def lock_plan_family(self, owner: UUID, family: UUID) -> UserPlan: ...
+    def plans_for_project(
+        self, owner: UUID, project: UUID, limit: int, offset: int
+    ) -> tuple[list[UserPlan], int]: ...
     def get(self, owner: UUID, execution: UUID) -> Execution: ...
     def for_version(self, owner: UUID, version: UUID) -> list[Execution]: ...
     def representations(self, owner: UUID, version: UUID) -> list[Artifact]: ...
     def artifact(self, owner: UUID, artifact: UUID) -> Artifact: ...
     def artifacts(self, owner: UUID, execution: UUID) -> list[Artifact]: ...
     def attempts(self, owner: UUID, execution: UUID) -> list[dict[str, Any]]: ...
+    def error_details(self, owner: UUID, execution: UUID) -> tuple[str, dict[str, Any]] | None: ...
     def cancel(self, owner: UUID, execution: UUID) -> Execution: ...
     def claim(self, kinds: set[RunKind], environment: dict[str, Any]) -> Lease | None: ...
     def stage(self, lease: Lease, outputs: list[ArtifactOutput]) -> list[Artifact] | None: ...
     def succeed(self, lease: Lease) -> bool: ...
-    def fail(self, lease: Lease, code: str, message: str, retryable: bool) -> None: ...
+    def fail(
+        self,
+        lease: Lease,
+        code: str,
+        message: str,
+        retryable: bool,
+        details: dict[str, Any] | None = None,
+    ) -> None: ...

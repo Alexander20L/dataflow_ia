@@ -1,0 +1,239 @@
+{
+  "schema_version": 1,
+  "operation": "analytics.query@1",
+  "scope": {
+    "execution_id": "00000000-0000-4000-8000-000000000003",
+    "step_id": "query",
+    "slot": "analysis_result",
+    "input": {
+      "version_id": "00000000-0000-4000-8000-000000000001",
+      "artifact_id": "00000000-0000-4000-8000-000000000002",
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "semantic_ref": {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "revision": 2,
+      "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "query_filters": [],
+    "time_grain": null,
+    "time_range": null
+  },
+  "avg_scale": 4,
+  "dimensions": [
+    {
+      "key": "d0",
+      "column_id": "00000000-0000-4000-8000-000000000101",
+      "name": "region",
+      "technical_type": "string",
+      "time_grain": null
+    }
+  ],
+  "metrics": [
+    {
+      "key": "m0",
+      "revision_id": "00000000-0000-4000-8000-000000000201",
+      "revision": 1,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "sum importe",
+      "aggregation": "sum",
+      "measure_column_id": "00000000-0000-4000-8000-000000000103",
+      "measure_column": "importe",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": "EUR",
+      "scale": 2,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    },
+    {
+      "key": "m1",
+      "revision_id": "00000000-0000-4000-8000-000000000202",
+      "revision": 2,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "avg importe",
+      "aggregation": "avg",
+      "measure_column_id": "00000000-0000-4000-8000-000000000103",
+      "measure_column": "importe",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": "EUR",
+      "scale": 4,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    },
+    {
+      "key": "m2",
+      "revision_id": "00000000-0000-4000-8000-000000000205",
+      "revision": 5,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "min importe",
+      "aggregation": "min",
+      "measure_column_id": "00000000-0000-4000-8000-000000000103",
+      "measure_column": "importe",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": "EUR",
+      "scale": 2,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    },
+    {
+      "key": "m3",
+      "revision_id": "00000000-0000-4000-8000-000000000206",
+      "revision": 6,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "max importe",
+      "aggregation": "max",
+      "measure_column_id": "00000000-0000-4000-8000-000000000103",
+      "measure_column": "importe",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [
+        {
+          "column_id": "00000000-0000-4000-8000-000000000101",
+          "operator": "eq",
+          "values": [
+            "Norte"
+          ]
+        }
+      ],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": "EUR",
+      "scale": 2,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 7,
+        "excluded_by_nulls": 1,
+        "included_rows": 4
+      }
+    }
+  ],
+  "rows": [
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Este"
+          }
+        ],
+        "period": null
+      },
+      "labels": {
+        "d0": "Este"
+      },
+      "values": {
+        "m0": "-1.25",
+        "m1": "-0.6250",
+        "m2": "-4.25",
+        "m3": null
+      },
+      "evidence": {
+        "m0": "de16cd0e336b63edeb08ac729b9cf10ad307960c62d70d1554ae723ac8681147",
+        "m1": "9081c0356f971c16e03ff944311117631ec9a0a78e4cca19e3015d1480cd4941",
+        "m2": "5e66d79c8971c6173afe8a94ce16c741b6d26696ed2f5ae7d503c0987074481f",
+        "m3": "044a41ea166261883b0cc17059d838372e7adcabac0284ef848fe01bdefb91d5"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Norte"
+          }
+        ],
+        "period": null
+      },
+      "labels": {
+        "d0": "Norte"
+      },
+      "values": {
+        "m0": "18.07",
+        "m1": "4.5175",
+        "m2": "0.10",
+        "m3": "10.00"
+      },
+      "evidence": {
+        "m0": "77a905a3eb78e4e97be6bcb902e84f9bea1d47a90dcc0e8e4add3b3d18d3f69b",
+        "m1": "db7913d9c1e2d0ae9c1d910476c41f97ca75a98bbe261eb13049ca2843608406",
+        "m2": "7aa98fbe54e95ba488a792c0b0b82219d5828919b29672360f1b148a974a948a",
+        "m3": "256892ebe0fa47ed458e3c4ba7660250dc7c3c4a307814ceeb5f51c5047e9ad4"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Sur"
+          }
+        ],
+        "period": null
+      },
+      "labels": {
+        "d0": "Sur"
+      },
+      "values": {
+        "m0": "2.95",
+        "m1": "0.7375",
+        "m2": "0.12",
+        "m3": null
+      },
+      "evidence": {
+        "m0": "06e4cef1bc272e106fbb929c358fcc257b29138da46aa121b786929dc36ff941",
+        "m1": "72612738ef8d596d8cfbb73a0510e851a5d79a08fc9d3aa14bf9309a77579ba6",
+        "m2": "e1228f31da0201f71e0d405e56f2e1bfe2f613134649712ea2c539130ab69d0c",
+        "m3": "980ee1ce7b023bd45c5c0b932447545fbb8616586ed6e27164cd1acbd18a5976"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": {
+              "missing": true
+            }
+          }
+        ],
+        "period": null
+      },
+      "labels": {
+        "d0": "(sin valor)"
+      },
+      "values": {
+        "m0": "1.00",
+        "m1": "1.0000",
+        "m2": "1.00",
+        "m3": null
+      },
+      "evidence": {
+        "m0": "ffd8c34a06b3a90450e3f3ac7a39df5ec6f18c8ca2c5b6f088a4815afcc0244b",
+        "m1": "a91629f4e25b662c417134edc2cb8b23e0328efbdac758ab46c9c8377da54aab",
+        "m2": "b89b0816bb56eaf52827bda005ccb8770cdb45b63a558dee6a190238fb4989f3",
+        "m3": "6dfaf6b785857fd9a7034e7e25043b092c710f6a9b58367d235e2859281bfac4"
+      }
+    }
+  ],
+  "row_count": 4
+}

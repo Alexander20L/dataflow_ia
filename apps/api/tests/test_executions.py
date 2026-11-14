@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 from test_csv_ingestion import CSV, account, process, project, upload
 
 from dataflow.bootstrap.services import (
+    WORKER_KINDS,
     make_analysis,
     make_datasets,
     make_executions,
@@ -24,7 +25,7 @@ from dataflow.modules.datasets.infrastructure import (
     VersionRecord,
 )
 from dataflow.modules.datasets.objects import LocalObjects
-from dataflow.modules.executions.contracts import Artifact, Lease
+from dataflow.modules.executions.contracts import Artifact, ArtifactOutput, Lease
 from dataflow.modules.executions.infrastructure import (
     ArtifactRecord,
     ExecutionRecord,
@@ -89,7 +90,10 @@ def test_multiple_plans_same_table_preserve_legacy_baseline(
         )
         assert history[0]["environment"]["dependency_lock_sha256"]
         assert "fencing_token" not in history[0]
-        assert client.get(f"/api/v1/executions/{run['id']}/quality").json() == baseline["quality"]
+        # Los análisis de tabla usan quality.evaluate@1: misma calidad técnica que la carga, sin
+        # los hallazgos analíticos de quality.evaluate@3 (Fase 14).
+        technical = {**baseline["quality"], "analytical": None}
+        assert client.get(f"/api/v1/executions/{run['id']}/quality").json() == technical
     first_outputs = client.get(f"/api/v1/executions/{runs[0]['id']}/artifacts").json()
     second_outputs = client.get(f"/api/v1/executions/{runs[1]['id']}/artifacts").json()
     assert {a["kind"] for a in first_outputs} == {"profile", "quality"}
@@ -174,6 +178,9 @@ def test_publication_rollback_includes_baseline_and_objects(
     original = runner.publisher
 
     class FailingHook:
+        def prepare(self, lease: Lease, outputs: list[ArtifactOutput]) -> None:
+            original.prepare(lease, outputs)
+
         def published(self, lease: Lease, artifacts: list[Artifact]) -> None:
             original.published(lease, artifacts)
             raise ApplicationError("PUBLICATION_ABORTED", "Publicación rechazada en prueba.", 409)
@@ -244,7 +251,13 @@ def test_two_workers_claim_and_publish_independent_runs(
     def worker() -> bool:
         with Session(committed_engine, expire_on_commit=False) as db:
             barrier.wait(timeout=10)
-            return make_runner(db, store).run_once()
+            # La investigación de la carga (Fase 16) queda en cola: aquí compiten por los análisis.
+            return make_runner(
+                db,
+                store,
+                kinds=WORKER_KINDS
+                - {"investigation", "comprehension", "exploration", "dashboard", "inspection"},
+            ).run_once()
 
     with ThreadPoolExecutor(max_workers=2) as pool:
         futures = [pool.submit(worker) for _ in range(2)]

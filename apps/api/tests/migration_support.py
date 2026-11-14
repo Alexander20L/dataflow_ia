@@ -1,0 +1,256 @@
+"""Apoyo de las pruebas de migraciones.
+
+Las pruebas de migraciones anteriores comparan su esquema con los modelos registrados. Las tablas
+creadas por migraciones posteriores a 0012 todavía no existen en esas revisiones y se excluyen de
+la comparación; cada migración nueva añade aquí sus tablas.
+
+Las tablas del pipeline por política (0013-0017) ya no tienen modelos: la migración 0019 (Fase 13,
+ADR-026) las elimina. Al comparar una revisión anterior a 0019 se excluyen.
+"""
+
+from datetime import UTC, datetime
+from uuid import UUID, uuid4
+
+from sqlalchemy.orm import Session
+
+from dataflow.modules.dashboards.infrastructure import (
+    DashboardFamilyRecord,
+    DashboardRevisionRecord,
+    DashboardSaveRequest,
+)
+from dataflow.modules.reports.infrastructure import (
+    ReportFamilyRecord,
+    ReportRevisionRecord,
+    ReportSaveRequest,
+)
+
+# Tablas creadas después de 0027 (Fase 29 en adelante).
+TABLES_AFTER_0027 = {
+    # 0028: objetivo del análisis elegido por el usuario (Fase 29)
+    "analysis_targets",
+}
+
+# Tablas creadas después de 0026 (Fase 26 en adelante).
+TABLES_AFTER_0026 = {
+    # 0027: versiones personalizadas del dashboard (Fase 26)
+    "dashboard_customizations",
+} | TABLES_AFTER_0027
+
+# Tablas creadas después de 0025 (Fase 25 en adelante).
+TABLES_AFTER_0025 = {
+    # 0026: peticiones de pausa o cancelación de una investigación (Fase 25)
+    "investigation_controls",
+} | TABLES_AFTER_0026
+
+# Tablas creadas después de 0024 (Fase 24B en adelante).
+TABLES_AFTER_0024 = {
+    # 0025: columnas marcadas como desconocidas por el usuario (Fase 24B)
+    "column_meaning_marks",
+} | TABLES_AFTER_0025
+
+# Tablas creadas después de 0023 (Fase 24 en adelante).
+TABLES_AFTER_0023 = {
+    # 0024: significados de columnas escritos o confirmados por el usuario (Fase 24)
+    "column_meanings",
+} | TABLES_AFTER_0024
+
+# Tablas creadas después de 0022 (Fase 23 en adelante).
+TABLES_AFTER_0022 = {
+    # 0023: textos nulos declarados y decisión sobre datos personales (Fase 23)
+    "column_annotation_details",
+} | TABLES_AFTER_0023
+
+# Tablas creadas después de 0021 (Fase 22 en adelante).
+TABLES_AFTER_0021 = {
+    # 0022: correcciones manuales del diccionario de datos (Fase 22)
+    "column_annotations",
+} | TABLES_AFTER_0022
+
+# Tablas creadas después de 0020 (Fase 21 en adelante).
+TABLES_AFTER_0020 = {
+    # 0021: valoraciones de hallazgos del dashboard (Fase 21)
+    "finding_feedback",
+} | TABLES_AFTER_0021
+
+# Tablas creadas después de 0019 (Fase 19 en adelante).
+TABLES_AFTER_0019 = {
+    # 0020: valoraciones del usuario sobre las relaciones (Fase 19)
+    "comprehension_feedback",
+} | TABLES_AFTER_0020
+
+TABLES_AFTER_0012 = {
+    # 0018: auditorías textuales guardadas (11F)
+    "copilot_text_audits",
+} | TABLES_AFTER_0019
+
+# Tablas creadas en 0013-0017 y eliminadas por 0019.
+RETIRED_IN_0019 = {
+    "analysis_sessions",
+    "analysis_session_input_revisions",
+    "automation_policy_families",
+    "automation_policy_revisions",
+    "automation_policy_save_requests",
+    "automation_approvals",
+    "automation_runs",
+    "automation_step_attempts",
+    "template_mapping_families",
+    "template_mapping_revisions",
+    "template_mapping_save_requests",
+    "automation_run_interpretations",
+    "automation_run_analyses",
+}
+
+
+def table_of(obj: object, name: str | None, type_: str) -> str | None:
+    return name if type_ == "table" else getattr(getattr(obj, "table", None), "name", None)
+
+
+def exists_at_0012(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0012
+
+
+def modelled_before_0019(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in RETIRED_IN_0019 | TABLES_AFTER_0019
+
+
+def modelled_at_0019(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0019
+
+
+def modelled_at_0020(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0020
+
+
+def modelled_at_0021(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0021
+
+
+def modelled_at_0022(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0022
+
+
+def modelled_at_0023(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0023
+
+
+def modelled_at_0024(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0024
+
+
+def insert_dashboard(db: Session, owner: UUID, project: UUID) -> UUID:
+    """Una revisión de dashboard (Fase 8) con su solicitud idempotente, sin el servicio retirado
+    en la Fase 13: las tablas se conservan y sus garantías se siguen probando."""
+    family, revision, now = uuid4(), uuid4(), datetime.now(UTC)
+    db.add(
+        DashboardFamilyRecord(
+            id=family,
+            project_id=project,
+            owner_id=owner,
+            head_revision=1,
+            head_revision_id=None,
+            created_at=now,
+        )
+    )
+    db.flush()
+    db.add(
+        DashboardRevisionRecord(
+            id=revision,
+            family_id=family,
+            revision=1,
+            previous_revision_id=None,
+            cause="create",
+            refreshed_version_id=None,
+            content={"title": "Ventas", "cards": []},
+            content_sha256="d" * 64,
+            created_by=owner,
+            created_at=now,
+        )
+    )
+    db.flush()
+    db.add(
+        DashboardSaveRequest(
+            owner_id=owner,
+            scope_id=project,
+            request_key=uuid4(),
+            fingerprint="f" * 64,
+            revision_id=revision,
+        )
+    )
+    db.flush()
+    return revision
+
+
+def insert_report(db: Session, owner: UUID, project: UUID) -> UUID:
+    """Una revisión de informe (Fase 9) con su solicitud idempotente (ver `insert_dashboard`)."""
+    family, revision, now = uuid4(), uuid4(), datetime.now(UTC)
+    db.add(
+        ReportFamilyRecord(
+            id=family,
+            project_id=project,
+            owner_id=owner,
+            head_revision=1,
+            head_revision_id=None,
+            created_at=now,
+        )
+    )
+    db.flush()
+    db.add(
+        ReportRevisionRecord(
+            id=revision,
+            family_id=family,
+            revision=1,
+            previous_revision_id=None,
+            cause="create",
+            refreshed_version_id=None,
+            content={"title": "Informe", "blocks": []},
+            content_sha256="r" * 64,
+            created_by=owner,
+            created_at=now,
+        )
+    )
+    db.flush()
+    db.add(
+        ReportSaveRequest(
+            owner_id=owner,
+            scope_id=project,
+            request_key=uuid4(),
+            fingerprint="f" * 64,
+            revision_id=revision,
+        )
+    )
+    db.flush()
+    return revision
+
+
+def modelled_at_0025(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0025
+
+
+def modelled_at_0026(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0026
+
+
+def modelled_at_0027(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0027
