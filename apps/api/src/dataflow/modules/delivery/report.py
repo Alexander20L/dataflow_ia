@@ -666,7 +666,9 @@ def rules_conclusions(
             result = results[item.item]
             first = result.rows[0] if result.rows else None
             # La tasa (Fase 28) lleva la proporción primero; el resto, la cifra principal al final.
-            position = 0 if result.query.kind == "rate" else -1
+            position = (
+                0 if result.query.kind in {"rate", "factor", "stratified"} else -1
+            )  # tasa, objetivo y comprobación llevan su cifra principal primero
             figure = first.figures[position] if first and first.figures else None
             group = f" en {' · '.join(first.groups)}" if first and first.groups else ""
             conclusions.append(
@@ -687,6 +689,11 @@ def rules_conclusions(
                 "encontrada: no implica una causa.",
                 "rate": "Revisar los grupos con la tasa más alta y comprobar que tienen casos "
                 "suficientes antes de actuar: una diferencia de tasas no explica su causa.",
+                "factor": "Priorizar los grupos donde el objetivo es peor: la diferencia es "
+                "estadísticamente significativa, pero sigue sin explicar su causa; conviene "
+                "validarla con quien conoce el negocio.",
+                "stratified": "Antes de actuar sobre un grupo, tener en cuenta las variables que "
+                "explican parte de su diferencia.",
             }.get(kind, "Evaluar la dependencia de los grupos que concentran el resultado.")
             if text not in recommendations:
                 recommendations.append(text)

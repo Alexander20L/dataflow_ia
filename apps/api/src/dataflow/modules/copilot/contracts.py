@@ -94,6 +94,16 @@ class RelacionIA(OutputModel):
     hipotesis: str = Field(max_length=300, description="Qué relación de negocio se espera.")
 
 
+class ObjetivoIA(OutputModel):
+    columna: str = Field(max_length=200, description="Nombre exacto de la columna objetivo.")
+    motivo: str = Field(max_length=300, description="Por qué es lo que importa, sin cifras.")
+
+
+class DerivadaIA(OutputModel):
+    tipo: str = Field(max_length=20, description="antiguedad (de una fecha) o cuartiles.")
+    columna: str = Field(max_length=200, description="Nombre exacto de la columna base.")
+
+
 class ComprensionIA(OutputModel):
     """Comprensión del negocio a partir de nombres y perfil agregado (Fase 19, ADR-036)."""
 
@@ -103,6 +113,9 @@ class ComprensionIA(OutputModel):
     ordenes: list[OrdenIA] = Field(default_factory=list, max_length=20)
     relaciones: list[RelacionIA] = Field(max_length=15)
     preguntas: list[str] = Field(max_length=8)
+    # Fase 29 (prompt v4): el objetivo del análisis y variables derivadas útiles.
+    objetivo: ObjetivoIA | None = None
+    derivadas: list[DerivadaIA] = Field(default_factory=list, max_length=4)
 
 
 class ConsultaIA(OutputModel):
@@ -116,6 +129,9 @@ class ConsultaIA(OutputModel):
     filtro_columna: str | None = Field(default=None, max_length=200)
     filtro_valor: str | None = Field(default=None, max_length=200)
     limite: int | None = None
+    # Fase 29 (prompt v3): objetivo de una tasa, de un factor o de una comprobación.
+    objetivo: str | None = Field(default=None, max_length=200)
+    valor_objetivo: str | None = Field(default=None, max_length=200)
     motivo: str = Field(max_length=300, description="Qué pregunta de negocio responde.")
     # Fase 25 (prompt v2): la consulta como investigación del plan; textos sin cifras.
     pregunta: str = Field(default="", max_length=300, description="Pregunta que responde.")

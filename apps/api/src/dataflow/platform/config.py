@@ -46,6 +46,10 @@ class Settings(BaseSettings):
     ai_max_output_tokens: int = Field(default=4000, ge=500, le=16000)
     ai_user_daily_tokens: int = Field(default=200_000, ge=1)
     ai_project_monthly_cost_usd: Decimal = Field(default=Decimal("5"), ge=0)
+    # Fase 29 (ADR-047): en producción la IA debe estar activa. Con `true`, la API y el worker no
+    # arrancan sin un proveedor activo (clave configurada); por defecto, `false` (sin IA todo
+    # sigue funcionando y la interfaz avisa de que el análisis se hizo sin IA).
+    ai_required: bool = False
     # Fase 16: límites de cada investigación automática (ADR-033).
     investigation_max_iterations: int = Field(default=3, ge=1, le=10)
     investigation_max_ai_calls: int = Field(default=4, ge=0, le=20)
@@ -57,6 +61,17 @@ class Settings(BaseSettings):
         if self.ai_provider == "auto":
             return "anthropic" if self.ai_key() else "disabled"
         return self.ai_provider
+
+    def require_ai(self) -> None:
+        """Fase 29: con `DATAFLOW_AI_REQUIRED=true` y sin IA activa, no se arranca."""
+        if not self.ai_required:
+            return
+        provider = self.effective_ai_provider()
+        if provider == "disabled" or (provider == "anthropic" and self.ai_key() is None):
+            raise RuntimeError(
+                "DATAFLOW_AI_REQUIRED=true pero la IA no está activa: configura la clave "
+                "(DATAFLOW_AI_API_KEY o DATAFLOW_AI_API_KEY_FILE) o desactiva el requisito."
+            )
 
     def ai_key(self) -> str | None:
         """Clave del proveedor: el archivo (secreto de Docker) tiene prioridad sobre la

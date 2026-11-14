@@ -27,6 +27,7 @@ from dataflow.modules.exploration.domain import Catalog, validate
 from dataflow.modules.exploration.plan import (
     CLASSES,
     Draft,
+    adjust,
     ai_draft,
     evaluate,
     lower,
@@ -139,6 +140,7 @@ class Investigator:
                 if reason is not None:
                     return self.finish(state, results, reason)
                 state[item.id] = self.calculate(state[item.id], state, results)
+                self.control_parent(state[item.id], state, results)
             if any(n.status == "computed" and not n.judged for n in state.values()):
                 reason = self.stop_reason()
                 if reason is not None:
@@ -207,6 +209,29 @@ class Investigator:
                 "limitations": limitations,
             }
         )
+
+    @staticmethod
+    def control_parent(
+        item: InvestigationNode,
+        state: dict[str, InvestigationNode],
+        results: dict[str, ExploreResult],
+    ) -> None:
+        """Fase 29: la comprobación con una variable de control se anota en el factor que
+        comprueba; si la diferencia se explica por esa variable, el factor baja un nivel."""
+        if item.parent is None or item.parent not in state or item.key not in results:
+            return
+        check = results[item.key or ""].control
+        if check is None:
+            return
+        parent = state[item.parent]
+        if any(c.name == "control" and c.assessment == check.text for c in parent.criteria):
+            return
+        update: dict[str, object] = {
+            "criteria": [*parent.criteria, Criterion(name="control", assessment=check.text)]
+        }
+        if check.verdict == "explained" and parent.classification in {"relevant", "secondary"}:
+            update["classification"] = lower(parent.classification)
+        state[item.parent] = parent.model_copy(update=update)
 
     def assess(
         self, depth: int, state: dict[str, InvestigationNode], results: dict[str, ExploreResult]
@@ -347,6 +372,8 @@ class Investigator:
         if pending and stopped == "cancelled":
             self.note(f"Se canceló con {len(pending)} investigaciones sin calcular.")
         nodes = sorted(state.values(), key=lambda n: [int(p) for p in n.id.split(".")])
+        # Fase 29: corrección por comparaciones múltiples sobre todas las pruebas.
+        nodes = adjust(nodes, results)
         return Outcome(nodes, results, stopped, self.limitations, self.ai_calls, self.cost)
 
 

@@ -86,6 +86,7 @@ from dataflow.modules.cleaning.steps import (
 from dataflow.modules.comprehension.infrastructure import (
     SQLFeedbackRepository,
     SQLMeaningRepository,
+    SQLTargetRepository,
 )
 from dataflow.modules.copilot.application import CopilotConfig, CopilotService
 from dataflow.modules.copilot.infrastructure import SQLCopilotRepository
@@ -298,6 +299,7 @@ class DatasetPublication:
                 table,
                 self.config,
                 SQLColumnAnnotations(self.db),
+                SQLTargetRepository(self.db),
             )
         # Fase 27 (ADR-045): el seguimiento de la Fase 16 ya no se encola en las cargas nuevas;
         # el informe v2 parte del dashboard.
@@ -577,6 +579,10 @@ def make_runner(
                 ),
                 # Fase 28: explore-v3 (tasas y cohortes) y relevance-v2.
                 "exploration.explore@3": InvestigationTreeStep(
+                    objects, make_copilot(db, provider, ai_config), SQLInvestigationControls(db)
+                ),
+                # Fase 29: explore-v4 (objetivo, factores, control) y relevance-v3.
+                "exploration.explore@4": InvestigationTreeStep(
                     objects, make_copilot(db, provider, ai_config), SQLInvestigationControls(db)
                 ),
                 "inspection.inspect@1": InspectionStep(

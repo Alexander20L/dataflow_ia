@@ -15,9 +15,12 @@ from decimal import Decimal
 
 from dataflow.modules.comprehension.contracts import (
     AIComprehension,
+    AnalysisTarget,
     Association,
     ColumnMeaning,
     ColumnScale,
+    DatedAttribute,
+    DerivedVariable,
     DimensionInfo,
     Entity,
     Formula,
@@ -26,6 +29,7 @@ from dataflow.modules.comprehension.contracts import (
     Period,
     Relationship,
     Strength,
+    TargetChoice,
     UserMeaning,
     Verdict,
 )
@@ -361,6 +365,21 @@ def accept_ai(reply: AIComprehension, columns: Sequence[str]) -> tuple[AICompreh
         relationships.append((a, b, kind, text(hypothesis, f"Relación {a} – {b}") or ""))
     questions = [q for q in (text(q, "Pregunta", 200) for q in reply.questions[:8]) if q]
     orders = {k: v for k, v in reply.orders.items() if k in known}
+    # Fase 29: el objetivo y las variables derivadas propuestos (se validan contra el tipo de cada
+    # columna al decidir el objetivo).
+    target = None
+    if reply.target is not None:
+        column, motive = reply.target
+        if column in known:
+            target = (column, text(motive, "Motivo del objetivo") or "")
+        else:
+            discarded.append(f"Objetivo «{column[:60]}»: la columna no existe.")
+    derived = []
+    for kind, column in reply.derived[:4]:
+        if column not in known or plain(kind) not in {"antiguedad", "cuartiles"}:
+            discarded.append(f"Variable derivada de «{column[:60]}»: no es válida.")
+            continue
+        derived.append((plain(kind), column))
     return (
         AIComprehension(
             domain=domain,
@@ -369,6 +388,8 @@ def accept_ai(reply: AIComprehension, columns: Sequence[str]) -> tuple[AICompreh
             orders=orders,
             relationships=relationships,
             questions=questions,
+            target=target,
+            derived=derived,
         ),
         discarded,
     )
@@ -807,3 +828,176 @@ def with_user_meanings(
         c for c in by_column if c not in {m.column for m in meanings}
     ]
     return [by_column[c] for c in order]
+
+
+# --- Fase 29 (`business-comprehension-v5`): objetivo y variables derivadas ----------------------
+
+# Palabras de un nombre que indican un resultado (lo que el negocio quiere explicar).
+OUTCOME_WORDS = frozenset(
+    {
+        "activo",
+        "activa",
+        "estado",
+        "baja",
+        "bajas",
+        "churn",
+        "abandono",
+        "abandona",
+        "aprobado",
+        "aprobada",
+        "aprobo",
+        "renuncia",
+        "renuncio",
+        "desercion",
+        "deserto",
+        "cancelado",
+        "cancelada",
+        "cancelacion",
+        "fraude",
+        "impago",
+        "mora",
+        "moroso",
+        "default",
+        "resultado",
+        "exito",
+        "convertido",
+        "conversion",
+        "compro",
+        "respondio",
+        "retenido",
+        "retencion",
+        "vigente",
+        "cesado",
+        "despedido",
+        "renovo",
+        "reclamo",
+    }
+)
+MAX_QUARTILES = 2
+TENURE_PREFIX = "antigüedad de "  # el motor de la exploración reconoce estos nombres
+QUARTILE_PREFIX = "cuartil de "
+
+
+def outcome_like(name: str) -> bool:
+    return any(word in OUTCOME_WORDS for word in words(name))
+
+
+def target_candidates(
+    dimensions: Sequence[DimensionInfo], measures: Sequence[MeasureInfo]
+) -> list[str]:
+    """Columnas que pueden ser objetivo: las de dos valores y las medidas (también las
+    calculadas, como unos ingresos = unidades × precio)."""
+    return [d.column for d in dimensions if d.distinct == 2] + [m.column for m in measures]
+
+
+def analysis_target(
+    dimensions: Sequence[DimensionInfo],
+    measures: Sequence[MeasureInfo],
+    proposed: tuple[str, str] | None,
+    chosen: TargetChoice | None,
+) -> AnalysisTarget | None:
+    """El objetivo del análisis: el del usuario si es válido; si no, el de la IA si es válido;
+    si no, por reglas una columna de dos valores con nombre de resultado (activo, baja,
+    aprobado…) y, a falta de ella, la medida principal (monetaria, después aditiva)."""
+    binary = {d.column for d in dimensions if d.distinct == 2}
+    numeric = {m.column for m in measures}
+
+    def build(column: str, value: str | None, origin: str, reason: str) -> AnalysisTarget | None:
+        if column in binary:
+            return AnalysisTarget(
+                column=column,
+                kind="rate",
+                value=value,
+                origin=origin,
+                reason=reason,
+            )
+        if column in numeric:
+            return AnalysisTarget(
+                column=column,
+                kind="measure",
+                origin=origin,
+                reason=reason,
+            )
+        return None
+
+    if chosen is not None and chosen.column:
+        found = build(chosen.column, chosen.value, "user", "Elegido por ti.")
+        if found is not None:
+            return found
+    if proposed is not None:
+        column, motive = proposed
+        found = build(column, None, "ai", motive or "Propuesto por la IA.")
+        if found is not None:
+            return found
+    for item in dimensions:
+        if item.column in binary and outcome_like(item.column):
+            return build(
+                item.column,
+                None,
+                "rules",
+                f"«{item.column}» tiene dos valores y su nombre indica un resultado: se analiza "
+                "su tasa y qué factores se asocian con ella.",
+            )
+    ranked = sorted(measures, key=lambda m: (not m.monetary, m.additivity != "additive", m.derived))
+    if ranked:
+        return build(
+            ranked[0].column,
+            None,
+            "rules",
+            f"No hay una columna de resultado clara: se toma «{ranked[0].column}», la medida "
+            "principal, y se analiza qué factores se asocian con su promedio.",
+        )
+    return None
+
+
+def derived_variables(
+    dated: Sequence[DatedAttribute],
+    measures: Sequence[MeasureInfo],
+    target: AnalysisTarget | None,
+    proposed: Sequence[tuple[str, str]],
+    formulas: Sequence[Formula] = (),
+) -> list[DerivedVariable]:
+    """Variables que el motor deriva para agrupar: la antigüedad de una fecha que describe al
+    registro y los cuartiles de las medidas (no del objetivo ni de las columnas con las que se
+    calcula: su relación sería la fórmula, no un hallazgo). La IA puede proponer otras de esos
+    dos tipos sobre columnas válidas."""
+    dates = {d.column for d in dated}
+    numeric = [m.column for m in measures if not m.derived]
+    excluded = {target.column} if target is not None and target.kind == "measure" else set()
+    if target is not None:
+        for formula in formulas:
+            if formula.column == target.column:
+                excluded |= set(formula.sources)
+    found: dict[str, DerivedVariable] = {}
+    for column in [d.column for d in dated][:1]:
+        found[TENURE_PREFIX + column] = DerivedVariable(
+            name=TENURE_PREFIX + column,
+            kind="tenure",
+            base=column,
+            origin="rules",
+            reason=f"Años desde «{column}» hasta la fecha más reciente del archivo, en tramos.",
+        )
+    for column in [c for c in numeric if c not in excluded][:MAX_QUARTILES]:
+        found[QUARTILE_PREFIX + column] = DerivedVariable(
+            name=QUARTILE_PREFIX + column,
+            kind="quartile",
+            base=column,
+            origin="rules",
+            reason=f"«{column}» en cuartiles, para compararlo como grupos.",
+        )
+    for kind, column in proposed:
+        if kind == "antiguedad" and column in dates:
+            name, variable = TENURE_PREFIX + column, "tenure"
+        elif kind == "cuartiles" and column in numeric and column not in excluded:
+            name, variable = QUARTILE_PREFIX + column, "quartile"
+        else:
+            continue
+        if name not in found:
+            found[name] = DerivedVariable(
+                name=name,
+                kind=variable,
+                base=column,
+                origin="ai",
+                reason="Propuesta por la IA.",
+            )
+    return list(found.values())

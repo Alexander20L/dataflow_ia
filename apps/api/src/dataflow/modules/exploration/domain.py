@@ -6,12 +6,14 @@ interpretación (aditividad): sólo se suman medidas aditivas, sólo se agrupa p
 (nominales u ordinales) y las relaciones marcadas «No relevante» por el usuario no se exploran.
 """
 
+import re
 from collections.abc import Mapping, Sequence
-from typing import get_args
+from typing import Literal, get_args
 
 from dataflow.modules.comprehension.contracts import Comprehension
 from dataflow.modules.exploration.contracts import (
     RULE_KINDS,
+    TARGET_KINDS,
     Aggregation,
     ExploreQuery,
     QueryKind,
@@ -43,6 +45,38 @@ TEMPORAL: dict[str, str] = {
     "aggregation, dimensions (cero o una), limit.",
 }
 AGGREGATIONS = {"sum": "Suma", "mean": "Promedio", "median": "Mediana", "count": "Registros"}
+# Fase 29 (`explore-v4`): tipos que se ofrecen a la IA cuando hay objetivo (y tasas y cohortes,
+# que desde ahora también puede proponer).
+TARGETED: dict[str, str] = {
+    "factor": "El objetivo por cada grupo de UNA dimensión (o variable derivada), con intervalo "
+    "de confianza y prueba estadística. Campos: dimensions (una). El objetivo lo pone Python.",
+    "stratified": "Comprueba si la diferencia del objetivo entre los grupos de una dimensión se "
+    "mantiene al tener en cuenta otra (posible variable de confusión). Campos: dimensions (dos: "
+    "la dimensión y la de control).",
+}
+RULE_OFFERED: dict[str, str] = {
+    "rate": "Proporción de una categoría de una columna de dos valores, en total o por una "
+    "dimensión. Campos: objetivo (la columna de dos valores), dimensions (cero o una).",
+    "cohort": "Registros por año de una fecha que describe al registro. Campos: objetivo (la "
+    "fecha).",
+}
+
+# Fase 29: variables derivadas. El nombre dice cómo se calculan, así el motor las resuelve sin
+# más datos: «antigüedad de X» (tramos de años hasta la fecha más reciente de X) y «cuartil de X».
+TENURE = "antigüedad de "
+QUARTILE = "cuartil de "
+DERIVED = re.compile(r"^(antigüedad|cuartil) de (.+)$")
+
+
+def derived_name(kind: Literal["tenure", "quartile"], base: str) -> str:
+    return (TENURE if kind == "tenure" else QUARTILE) + base
+
+
+def derived_base(name: str) -> tuple[Literal["tenure", "quartile"], str] | None:
+    found = DERIVED.match(name)
+    if not found:
+        return None
+    return ("tenure" if found.group(1) == "antigüedad" else "quartile"), found.group(2)
 
 
 class Catalog:
@@ -71,15 +105,57 @@ class Catalog:
             d.column for d in comprehension.dimensions if d.distinct == 2 and d.column in scales
         ]
         self.dated = [d.column for d in comprehension.dated_attributes]
+        # Fase 29 (`explore-v4`): el objetivo y las variables derivadas (que se agrupan como
+        # cualquier dimensión).
+        real = set(scales)
+        self.derived = [
+            d.name for d in comprehension.derived if d.name not in real and d.base in real
+        ]
+        self.dimensions += self.derived
+        self.groupable |= set(self.derived)
+        # Grupos de cada dimensión (las derivadas tienen cuatro tramos o cuartiles).
+        self.distinct = {d.column: d.distinct for d in comprehension.dimensions} | {
+            name: 4 for name in self.derived
+        }
+        target = comprehension.target
+        self.target = (
+            target
+            if target is not None
+            and (
+                (target.kind == "rate" and target.column in self.dichotomous)
+                or (target.kind == "measure" and target.column in self.measures)
+            )
+            else None
+        )
 
     def kinds(self) -> dict[str, str]:
-        """Catálogo de tipos que se ofrece a la IA (los temporales sólo con periodo)."""
-        return {**KINDS, **(TEMPORAL if self.period else {})}
+        """Catálogo de tipos que se ofrece a la IA (los temporales sólo con periodo; desde la
+        Fase 29, con objetivo, también factores, comprobaciones, tasas y cohortes)."""
+        targeted = {**TARGETED, **RULE_OFFERED} if self.target is not None else {}
+        return {**KINDS, **(TEMPORAL if self.period else {}), **targeted}
+
+    def factors(self) -> list[str]:
+        """Dimensiones y variables derivadas por las que se explica el objetivo (Fase 29)."""
+        target = self.target.column if self.target else None
+        own = {target} | (
+            {n for n in self.derived if derived_base(n) == ("quartile", target)}
+            if target
+            else set()
+        )
+        found = [d for d in self.dimensions if d in self.groupable and d not in own]
+        # Primero las que tienen menos grupos: comparan grupos con más registros cada uno.
+        return sorted(found, key=lambda d: (self.distinct.get(d, 1000), found.index(d)))
 
     def describe(self) -> list[dict[str, object]]:
-        return [
-            {"columna": c, "tipo": "medida", "aditiva": c in self.additive} for c in self.measures
-        ] + [{"columna": c, "tipo": "dimension"} for c in self.dimensions]
+        return (
+            [{"columna": c, "tipo": "medida", "aditiva": c in self.additive} for c in self.measures]
+            + [
+                {"columna": c, "tipo": "dimension"}
+                for c in self.dimensions
+                if c not in self.derived
+            ]
+            + [{"columna": c, "tipo": "derivada"} for c in self.derived]
+        )
 
 
 def title(query: ExploreQuery) -> str:
@@ -114,6 +190,17 @@ def title(query: ExploreQuery) -> str:
         base = f"Proporción de {category} en {query.target}" + (f" por {dims}" if dims else "")
     elif query.kind == "cohort":
         base = f"Registros por año de {query.target}"
+    elif query.kind in {"factor", "stratified"}:
+        if query.target:
+            category = (
+                f"«{query.target_value}»" if query.target_value else "la categoría menos frecuente"
+            )
+            what = f"Tasa de {category} en {query.target}"
+        else:
+            what = f"Promedio de {query.measure}"
+        base = f"{what} por {query.dimensions[0]}"
+        if query.kind == "stratified":
+            base += f", teniendo en cuenta {query.dimensions[1]}"
     elif query.kind == "top":
         what = (
             "registros"
@@ -136,6 +223,8 @@ def validate(
     """Convierte una propuesta en consulta válida o explica por qué se rechaza."""
     if raw.kind in RULE_KINDS:
         return validate_rule_kind(raw, catalog, done)
+    if raw.kind in TARGET_KINDS:
+        return validate_target_kind(raw, catalog, done)
     if raw.kind not in get_args(QueryKind) or raw.kind not in {**KINDS, **TEMPORAL}:
         return None, f"«{raw.kind}» no es un tipo de consulta del catálogo."
     dims = list(raw.dimensions)
@@ -248,6 +337,43 @@ def validate_rule_kind(
         if dims:
             return None, "Una cohorte no lleva dimensiones."
         query = ExploreQuery(kind="cohort", aggregation="count", target=raw.target)
+    if query.key in done:
+        return None, "Ya se exploró."
+    return query, None
+
+
+def validate_target_kind(
+    raw: RawQuery, catalog: Catalog, done: set[str]
+) -> tuple[ExploreQuery | None, str | None]:
+    """Fase 29: `factor` (el objetivo por una dimensión) y `stratified` (el mismo factor
+    teniendo en cuenta una variable de control). El objetivo lo fija Python: la propuesta sólo
+    elige las dimensiones."""
+    target = catalog.target
+    if target is None:
+        return None, "Este análisis no tiene objetivo: no hay factores que explicar."
+    if raw.filter_column is not None or raw.filter_value is not None:
+        return None, "Este tipo no admite filtros."
+    dims = list(raw.dimensions)
+    needed = 1 if raw.kind == "factor" else 2
+    if len(dims) != needed or len(set(dims)) != needed:
+        wanted = "una dimensión" if needed == 1 else "dos dimensiones distintas"
+        return None, f"Este tipo necesita {wanted}."
+    allowed = catalog.factors()
+    for dim in dims:
+        if dim not in allowed:
+            return None, f"«{dim}» no es una dimensión con la que explicar el objetivo."
+    columns = {target.column, *dims}
+    for pair in catalog.excluded_pairs:
+        if pair <= columns:
+            return None, "El usuario marcó esta relación como «No relevante»."
+    if target.kind == "rate":
+        query = ExploreQuery(
+            kind=raw.kind, dimensions=dims, target=target.column, target_value=target.value
+        )
+    else:
+        query = ExploreQuery(
+            kind=raw.kind, dimensions=dims, measure=target.column, aggregation="mean"
+        )
     if query.key in done:
         return None, "Ya se exploró."
     return query, None

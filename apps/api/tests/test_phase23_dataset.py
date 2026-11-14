@@ -232,7 +232,7 @@ def test_corrections_recalculate_the_analysis_and_declared_nulls_create_a_derive
     view = get(client, f"/api/v1/versions/{version}/inspection")
     ids = {c["name"]: c["id"] for c in view["inspection"]["columns"]}
     first = get(client, f"/api/v1/versions/{version}/comprehension")["comprehension"]
-    assert first["rules_version"] == "business-comprehension-v4"
+    assert first["rules_version"] == "business-comprehension-v5"
     assert first["personal_columns"] == ["nombre"] and first["corrected_columns"] == []
     scale = {s["column"]: s for s in first["scales"]}
     assert scale["ciclo"]["scale"] == "ratio" and scale["nombre"]["scale"] == "text"

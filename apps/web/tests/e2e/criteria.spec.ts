@@ -2,7 +2,7 @@ import { expect, test } from "@playwright/test";
 
 // Fase 28: criterio analítico. En un padrón de empleados la fecha de ingreso describe a cada
 // persona (no es una línea de tiempo) y la columna «activo» se analiza como tasa: 9 bajas de 100.
-test("Criterio: fecha que describe al registro y tasa por grupo", async ({
+test("Criterio: fecha que describe al registro, sin evolución mensual", async ({
   page,
 }) => {
   test.setTimeout(150_000);
@@ -50,14 +50,16 @@ test("Criterio: fecha que describe al registro y tasa por grupo", async ({
   await expect(dated).toContainText("no es una línea de tiempo");
   await expect(tab.getByLabel("Periodo")).toHaveCount(0);
 
-  // Dashboard: la tasa de bajas por área es un gráfico de barras (la IA de pruebas sólo destaca
-  // una cifra; el indicador de la tasa lo cubre la prueba del backend) y no hay evolución mensual.
+  // Dashboard: sin evolución mensual (la fecha describe a cada empleado). Desde la Fase 29 la
+  // tasa por área (25 % frente a 5 % con 20 personas por área) no es significativa y no aparece
+  // como hallazgo.
   await page.getByRole("tab", { name: "Dashboard", exact: true }).click();
   const board = page.getByRole("region", { name: "Dashboard", exact: true });
-  const rate = board.getByRole("article", {
-    name: "Proporción de «No» en activo por area",
+  await expect(board.getByText("Diseñado por la IA")).toBeVisible({
+    timeout: 90000,
   });
-  await expect(rate).toBeVisible({ timeout: 90000 });
-  await expect(rate).toContainText("Barras");
   await expect(board.getByText(/Evolución mensual/)).toHaveCount(0);
+  await expect(
+    board.getByRole("article", { name: /en activo por area$/ }),
+  ).toHaveCount(0);
 });

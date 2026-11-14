@@ -244,7 +244,9 @@ def test_upload_is_explored_with_the_fake_ai(
     assert any("no es aditiva" in r for r in reasons)
     assert any("Columna inventada" in r for r in reasons)
     judged = [r for r in result["results"] if r["judged_by"] == "ai"]
-    assert judged and judged[0]["relevant"] is True
+    # Fase 29: la relevancia publicada es la clase de reglas (con su prueba estadística); la IA
+    # sólo interpreta y puede rebajarla.
+    assert judged and any(r["relevant"] is True for r in result["results"])
     # Fase 25 (`investigation-v2`): el «no relevante» de la IA rebaja la clase de reglas (no la
     # sustituye) y queda como criterio de negocio de la investigación.
     business = [
@@ -260,6 +262,7 @@ def test_upload_is_explored_with_the_fake_ai(
             and r["query"]["measure"] == "Revenue"
             and r["query"]["aggregation"] == "sum"
             and len(r["query"]["dimensions"]) == 1
+            and not r["query"].get("filter_column")  # sin filtro: el total de cada grupo
         ),
         None,
     )

@@ -519,6 +519,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/versions/{version_id}/comprehension/target": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Choose Target
+         * @description Fase 29: confirma o cambia el objetivo del análisis (una columna de dos valores, con la
+         *     categoría contada si se quiere, o una medida). Sin columna vuelve al propuesto. Opcional:
+         *     nunca bloquea. Lo heredan las versiones siguientes del mismo archivo y se rehacen la
+         *     comprensión, la investigación, el dashboard y el informe.
+         */
+        post: operations["chooseTarget"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/versions/{version_id}/dashboard": {
         parameters: {
             query?: never;
@@ -1238,6 +1261,31 @@ export interface components {
             share_scale: number;
             /** Shares */
             shares: components["schemas"]["ShareTotal"][];
+        };
+        /**
+         * AnalysisTarget
+         * @description Fase 29 (`business-comprehension-v5`, ADR-047): lo que el análisis intenta explicar. Una
+         *     columna de dos valores (se analiza su tasa: `value` es la categoría contada; sin ella, la
+         *     menos frecuente) o una medida (se analiza su promedio). La proponen las reglas o la IA y el
+         *     usuario la puede confirmar o cambiar; nunca bloquea.
+         */
+        AnalysisTarget: {
+            /** Column */
+            column: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "rate" | "measure";
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "rules" | "ai" | "user";
+            /** Reason */
+            reason: string;
+            /** Value */
+            value?: string | null;
         };
         /**
          * AnalyticalColumn
@@ -2045,6 +2093,8 @@ export interface components {
             corrected_columns?: string[];
             /** Dated Attributes */
             dated_attributes?: components["schemas"]["DatedAttribute"][];
+            /** Derived */
+            derived?: components["schemas"]["DerivedVariable"][];
             /** Dimensions */
             dimensions?: components["schemas"]["DimensionInfo"][];
             /** Discarded */
@@ -2073,13 +2123,16 @@ export interface components {
             relationships: components["schemas"]["Relationship"][];
             /**
              * Rules Version
-             * @default business-comprehension-v4
+             * @default business-comprehension-v5
              * @enum {string}
              */
-            rules_version: "business-comprehension-v1" | "business-comprehension-v2" | "business-comprehension-v3" | "business-comprehension-v4";
+            rules_version: "business-comprehension-v1" | "business-comprehension-v2" | "business-comprehension-v3" | "business-comprehension-v4" | "business-comprehension-v5";
             /** Scales */
             scales: components["schemas"]["ColumnScale"][];
             scope: components["schemas"]["ComprehensionScope"];
+            target?: components["schemas"]["AnalysisTarget"] | null;
+            /** Target Candidates */
+            target_candidates?: string[];
         };
         /** ComprehensionScope */
         ComprehensionScope: {
@@ -2131,6 +2184,27 @@ export interface components {
             elapsed_ms: number;
         };
         /**
+         * ControlCheck
+         * @description Fase 29: ¿la diferencia entre los grupos de un factor se mantiene al tener en cuenta otra
+         *     variable? Se compara lo observado en cada grupo con lo esperado sólo por su composición en la
+         *     variable de control (estandarización indirecta).
+         */
+        ControlCheck: {
+            /** Control */
+            control: string;
+            /** Raw Gap */
+            raw_gap: string;
+            /** Residual Gap */
+            residual_gap: string;
+            /** Text */
+            text: string;
+            /**
+             * Verdict
+             * @enum {string}
+             */
+            verdict: "holds" | "attenuated" | "explained";
+        };
+        /**
          * ConvertedColumn
          * @description Columna leída con un formato regional (Fase 18, `regional-values-v1`).
          */
@@ -2177,7 +2251,7 @@ export interface components {
              * Name
              * @enum {string}
              */
-            name: "magnitude" | "business" | "quality" | "consistency" | "evidence" | "limitations";
+            name: "magnitude" | "business" | "quality" | "consistency" | "evidence" | "limitations" | "significance" | "control";
         };
         /** CustomSection */
         CustomSection: {
@@ -2463,6 +2537,30 @@ export interface components {
                 string,
                 number
             ][];
+            /** Reason */
+            reason: string;
+        };
+        /**
+         * DerivedVariable
+         * @description Fase 29: variable que el motor deriva de otra para agrupar: antigüedad en tramos a partir
+         *     de una fecha que describe al registro, o cuartiles de una medida. `name` es el nombre con el
+         *     que se consulta («antigüedad de X», «cuartil de X»).
+         */
+        DerivedVariable: {
+            /** Base */
+            base: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "tenure" | "quartile";
+            /** Name */
+            name: string;
+            /**
+             * Origin
+             * @enum {string}
+             */
+            origin: "rules" | "ai";
             /** Reason */
             reason: string;
         };
@@ -2872,7 +2970,7 @@ export interface components {
              * @default exploration.explore@1
              * @enum {string}
              */
-            operation: "exploration.explore@1" | "exploration.explore@2" | "exploration.explore@3";
+            operation: "exploration.explore@1" | "exploration.explore@2" | "exploration.explore@3" | "exploration.explore@4";
             /** Proposals */
             proposals: components["schemas"]["ExploreProposal"][];
             /** Results */
@@ -2884,7 +2982,7 @@ export interface components {
              * @default explore-v1
              * @enum {string}
              */
-            rules_version: "explore-v1" | "investigation-v2" | "investigation-v3";
+            rules_version: "explore-v1" | "investigation-v2" | "investigation-v3" | "investigation-v4";
             scope: components["schemas"]["ExplorationScope"];
             /** Stopped */
             stopped?: ("completed" | "max_nodes" | "max_seconds" | "paused" | "cancelled") | null;
@@ -3025,7 +3123,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "aggregate" | "crosstab" | "ratio" | "top" | "correlation_by_group" | "evolution" | "period_change" | "outliers" | "distribution" | "scatter" | "rate" | "cohort";
+            kind: "aggregate" | "crosstab" | "ratio" | "top" | "correlation_by_group" | "evolution" | "period_change" | "outliers" | "distribution" | "scatter" | "rate" | "cohort" | "factor" | "stratified";
             /** Limit */
             limit?: number | null;
             /** Measure */
@@ -3041,6 +3139,7 @@ export interface components {
         ExploreResult: {
             /** Columns */
             columns: string[];
+            control?: components["schemas"]["ControlCheck"] | null;
             /** Covered Rows */
             covered_rows: number;
             /** Judged By */
@@ -3056,6 +3155,7 @@ export interface components {
             relevant?: boolean | null;
             /** Rows */
             rows: components["schemas"]["ExploreRow"][];
+            test?: components["schemas"]["StatisticalTest"] | null;
             /** Title */
             title: string;
             /** Total Groups */
@@ -5451,6 +5551,38 @@ export interface components {
             title: string;
         };
         /**
+         * StatisticalTest
+         * @description Fase 29: prueba de que los grupos difieren (chi-cuadrado para tasas, Kruskal-Wallis para
+         *     medias) sobre los grupos con al menos 10 registros. `q_value`: el valor p corregido por
+         *     Benjamini-Hochberg con todas las pruebas de la investigación.
+         */
+        StatisticalTest: {
+            /** Df */
+            df: number;
+            /** Effect */
+            effect: string;
+            /**
+             * Effect Name
+             * @enum {string}
+             */
+            effect_name: "cramers_v" | "epsilon_squared";
+            /** Groups */
+            groups: number;
+            /** Method */
+            method: string;
+            /**
+             * Name
+             * @enum {string}
+             */
+            name: "chi_square" | "kruskal_wallis";
+            /** P Value */
+            p_value: string;
+            /** Q Value */
+            q_value?: string | null;
+            /** Statistic */
+            statistic: string;
+        };
+        /**
          * StructureComparison
          * @description Cambios de columnas respecto de la versión anterior del mismo archivo (Fase 18).
          *     Sólo se informa: no se renombra ni se mapea nada.
@@ -5497,6 +5629,17 @@ export interface components {
             personal_columns?: string[];
             /** Rows */
             rows: number;
+        };
+        /**
+         * TargetRequest
+         * @description Fase 29: el usuario confirma o cambia el objetivo del análisis. `column` vacío vuelve al
+         *     propuesto; `value` es la categoría contada de una columna de dos valores.
+         */
+        TargetRequest: {
+            /** Column */
+            column?: string | null;
+            /** Value */
+            value?: string | null;
         };
         /** TemporalStats */
         TemporalStats: {
@@ -9467,6 +9610,133 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": components["schemas"]["MeaningRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ComprehensionView"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    chooseTarget: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                version_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TargetRequest"];
             };
         };
         responses: {

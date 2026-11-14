@@ -14,6 +14,7 @@ logger = logging.getLogger("dataflow.worker")
 
 def main() -> None:
     settings = get_settings()
+    settings.require_ai()  # Fase 29: sin IA activa, no arranca si es obligatoria
     objects = LocalObjects(settings.storage_path)
     logger.info(json.dumps({"event": "worker.started"}))
     while True:

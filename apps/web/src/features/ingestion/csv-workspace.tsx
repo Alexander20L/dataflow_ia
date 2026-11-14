@@ -23,6 +23,7 @@ import { InvestigationPanel } from "./investigation";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
 import { ComprehensionTab } from "@/features/comprehension/comprehension-tab";
+import { AiNotice } from "@/features/comprehension/ai-notice";
 import { DashboardTab } from "@/features/dashboard/dashboard-tab";
 import { ReportTab } from "@/features/report/report-tab";
 import { InvestigationTab } from "@/features/investigation/investigation-tab";
@@ -380,6 +381,7 @@ export function CsvWorkspace({
             </div>
           ) : diagnostic.data?.profile.overview ? (
             <>
+              <AiNotice versionId={version.id} />
               <MainTabs
                 value={tab}
                 onChange={(next) => {

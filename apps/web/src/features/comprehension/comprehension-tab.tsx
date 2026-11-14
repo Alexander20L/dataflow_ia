@@ -11,6 +11,7 @@ import { capDecimals, capDecimalsInText } from "@/lib/numbers";
 import { useInspection } from "@/features/dataset/api";
 import { NATURES, TYPES } from "@/features/dataset/labels";
 import {
+  useChooseTarget,
   useComprehensionView,
   useDescribe,
   useJudge,
@@ -142,7 +143,7 @@ export function ComprehensionTab({
         className="inspection-panel"
       >
         {subview === "summary" ? (
-          <Summary result={result} />
+          <Summary result={result} versionId={versionId} />
         ) : subview === "columns" ? (
           <Columns
             result={result}
@@ -157,10 +158,96 @@ export function ComprehensionTab({
   );
 }
 
-function Summary({ result }: { result: Comprehension }) {
+const TARGET_ORIGIN: Record<string, string> = {
+  rules: "Propuesto por reglas",
+  ai: "Propuesto por la IA",
+  user: "Elegido por ti",
+};
+
+/** Fase 29: lo que el análisis intenta explicar. Opcional: el usuario lo confirma o lo cambia
+ * (se rehacen la investigación, el dashboard y el informe) o vuelve al propuesto. */
+function TargetSection({
+  result,
+  versionId,
+}: {
+  result: Comprehension;
+  versionId: string;
+}) {
+  const target = result.target;
+  const choose = useChooseTarget(versionId);
+  const [column, setColumn] = useState(target?.column ?? "");
+  const candidates = result.target_candidates ?? [];
+  if (!target && candidates.length === 0) return null;
+  const derived = result.derived ?? [];
+  return (
+    <section aria-label="Objetivo del análisis">
+      <h3>Qué intenta explicar el análisis</h3>
+      {target ? (
+        <>
+          <p className="comprehension-grain">
+            {target.kind === "rate"
+              ? `La tasa de ${target.value ? `«${target.value}»` : "la categoría menos frecuente"} en «${target.column}»`
+              : `El promedio de «${target.column}»`}{" "}
+            <span className="badge neutral">
+              {TARGET_ORIGIN[target.origin] ?? target.origin}
+            </span>
+          </p>
+          <p className="muted">{target.reason}</p>
+        </>
+      ) : (
+        <p className="muted">No hay un objetivo claro: elige uno si quieres.</p>
+      )}
+      {derived.length > 0 && (
+        <p className="muted">
+          Variables derivadas para explicarlo:{" "}
+          {derived.map((d) => d.name).join(", ")}.
+        </p>
+      )}
+      {candidates.length > 0 && (
+        <form
+          className="target-form"
+          aria-label="Elegir el objetivo"
+          onSubmit={(event) => {
+            event.preventDefault();
+            choose.mutate(column || null);
+          }}
+        >
+          <label htmlFor="analysis-target">Objetivo</label>
+          <select
+            id="analysis-target"
+            value={column}
+            onChange={(event) => setColumn(event.target.value)}
+          >
+            <option value="">El propuesto</option>
+            {candidates.map((name) => (
+              <option key={name} value={name}>
+                {name}
+              </option>
+            ))}
+          </select>
+          <Button type="submit" disabled={choose.isPending}>
+            Usar este objetivo
+          </Button>
+          {choose.isError && (
+            <span role="alert">{errorMessage(choose.error)}</span>
+          )}
+        </form>
+      )}
+    </section>
+  );
+}
+
+function Summary({
+  result,
+  versionId,
+}: {
+  result: Comprehension;
+  versionId: string;
+}) {
   const formulas = result.formulas ?? [];
   return (
     <div className="dataset-summary">
+      <TargetSection result={result} versionId={versionId} />
       <section aria-label="Grano del dataset">
         <h3>Qué representa cada fila</h3>
         {result.grain ? (

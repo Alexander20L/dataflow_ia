@@ -5915,3 +5915,22 @@ tbody tr:hover {
   display: flex;
   gap: 6px;
 }
+
+/* Fase 29: aviso de análisis sin IA y elección del objetivo. */
+.ai-notice {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.target-form {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+  margin-top: 8px;
+}
+.target-form select {
+  min-width: 0;
+  max-width: 100%;
+}

@@ -24,11 +24,17 @@ from dataflow.modules.reports.infrastructure import (
     ReportSaveRequest,
 )
 
+# Tablas creadas después de 0027 (Fase 29 en adelante).
+TABLES_AFTER_0027 = {
+    # 0028: objetivo del análisis elegido por el usuario (Fase 29)
+    "analysis_targets",
+}
+
 # Tablas creadas después de 0026 (Fase 26 en adelante).
 TABLES_AFTER_0026 = {
     # 0027: versiones personalizadas del dashboard (Fase 26)
     "dashboard_customizations",
-}
+} | TABLES_AFTER_0027
 
 # Tablas creadas después de 0025 (Fase 25 en adelante).
 TABLES_AFTER_0025 = {
@@ -242,3 +248,9 @@ def modelled_at_0026(
     obj: object, name: str | None, type_: str, reflected: bool, other: object
 ) -> bool:
     return table_of(obj, name, type_) not in TABLES_AFTER_0026
+
+
+def modelled_at_0027(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0027
