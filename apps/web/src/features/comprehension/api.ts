@@ -75,3 +75,24 @@ export function useDescribe(versionId: string) {
       client.setQueryData(["comprehension", versionId], view),
   });
 }
+
+/** Fase 29: confirmar o cambiar el objetivo del análisis (sin columna vuelve al propuesto). Se
+ * rehacen la comprensión, la investigación, el dashboard y el informe; la siguiente carga del
+ * mismo archivo lo hereda. */
+export function useChooseTarget(versionId: string) {
+  const client = useQueryClient();
+  return useMutation({
+    mutationFn: async (column: string | null) =>
+      requireData(
+        await api.POST("/api/v1/versions/{version_id}/comprehension/target", {
+          params: { path: { version_id: versionId } },
+          body: { column },
+        }),
+      ),
+    onSuccess: (view) => {
+      client.setQueryData(["comprehension", versionId], view);
+      for (const key of ["exploration", "dashboard", "report"])
+        void client.invalidateQueries({ queryKey: [key, versionId] });
+    },
+  });
+}

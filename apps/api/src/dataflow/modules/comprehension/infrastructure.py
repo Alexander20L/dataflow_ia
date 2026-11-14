@@ -14,7 +14,12 @@ from sqlalchemy import Boolean, DateTime, ForeignKey, String, Uuid, select
 from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm import Mapped, Session, mapped_column
 
-from dataflow.modules.comprehension.contracts import FeedbackItem, UserMeaning, Verdict
+from dataflow.modules.comprehension.contracts import (
+    FeedbackItem,
+    TargetChoice,
+    UserMeaning,
+    Verdict,
+)
 from dataflow.platform.database import Base
 
 
@@ -195,3 +200,69 @@ class SQLMeaningRepository:
             for name, row in latest.items()
             if row.meaning or row.confirmed or row.id in marked
         }
+
+
+class TargetRecord(Base):
+    """Fase 29 (migración 0028): el objetivo del análisis elegido por el usuario."""
+
+    __tablename__ = "analysis_targets"
+    id: Mapped[UUID] = mapped_column(Uuid, primary_key=True)
+    owner_id: Mapped[UUID] = mapped_column(ForeignKey("identity_users.id"), index=True)
+    project_id: Mapped[UUID] = mapped_column(ForeignKey("projects.id"), index=True)
+    version_id: Mapped[UUID] = mapped_column(ForeignKey("dataset_version_records.id"), index=True)
+    source_key: Mapped[str] = mapped_column(String(700), index=True)
+    column_name: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    value: Mapped[str | None] = mapped_column(String(200), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+
+class SQLTargetRepository:
+    """Registro inmutable y sólo de añadir: vale el último objetivo de la misma fuente (también
+    en versiones posteriores). Uno sin columna vuelve al propuesto por las reglas o la IA."""
+
+    def __init__(self, db: Session) -> None:
+        self.db = db
+
+    def add(
+        self,
+        owner: UUID,
+        project: UUID,
+        version: UUID,
+        source_key: str,
+        column: str | None,
+        value: str | None,
+    ) -> None:
+        self.db.add(
+            TargetRecord(
+                id=uuid4(),
+                owner_id=owner,
+                project_id=project,
+                version_id=version,
+                source_key=source_key,
+                column_name=column or None,
+                value=(value or None) if column else None,
+                created_at=datetime.now(UTC),
+            )
+        )
+        self.db.flush()
+
+    def for_source(self, owner: UUID, project: UUID, source_key: str) -> TargetChoice | None:
+        """El último objetivo elegido para la fuente. Sin la tabla (esquema anterior a 0028,
+        durante un despliegue) no hay ninguno."""
+        try:
+            with self.db.begin_nested():
+                row = self.db.scalars(
+                    select(TargetRecord)
+                    .where(
+                        TargetRecord.owner_id == owner,
+                        TargetRecord.project_id == project,
+                        TargetRecord.source_key == source_key,
+                    )
+                    .order_by(TargetRecord.created_at.desc(), TargetRecord.id.desc())
+                    .limit(1)
+                ).first()
+        except ProgrammingError:
+            return None
+        if row is None or row.column_name is None:
+            return None
+        return TargetChoice(column=row.column_name, value=row.value)

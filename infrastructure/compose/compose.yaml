@@ -25,6 +25,8 @@ services:
       # Explicación con IA (ADR-027): `auto` la activa sólo si el secreto tiene una clave. La
       # clave nunca va en una variable de este archivo: se monta como secreto de Docker.
       DATAFLOW_AI_PROVIDER: ${DATAFLOW_AI_PROVIDER:-auto}
+      # Fase 29: con true, la API y el worker no arrancan sin IA activa.
+      DATAFLOW_AI_REQUIRED: ${DATAFLOW_AI_REQUIRED:-false}
       DATAFLOW_AI_MODEL: ${DATAFLOW_AI_MODEL:-claude-opus-5-5}
       DATAFLOW_AI_API_KEY_FILE: /run/secrets/ai_api_key
     secrets:
@@ -60,6 +62,8 @@ services:
       DATAFLOW_DATABASE_URL: postgresql+psycopg://dataflow:${POSTGRES_PASSWORD:-dataflow_local}@postgres:5432/dataflow
       POLARS_MAX_THREADS: 2
       DATAFLOW_AI_PROVIDER: ${DATAFLOW_AI_PROVIDER:-auto}
+      # Fase 29: con true, la API y el worker no arrancan sin IA activa.
+      DATAFLOW_AI_REQUIRED: ${DATAFLOW_AI_REQUIRED:-false}
       DATAFLOW_AI_MODEL: ${DATAFLOW_AI_MODEL:-claude-opus-5-5}
       DATAFLOW_AI_API_KEY_FILE: /run/secrets/ai_api_key
     secrets:

@@ -164,7 +164,7 @@ def test_a_roster_is_not_a_time_series_and_its_rates_are_analysed(
     base = f"/api/v1/versions/{version}"
     # Comprensión: sin periodo; la fecha de ingreso describe al empleado.
     understood = get(client, f"{base}/comprehension")["comprehension"]
-    assert understood["rules_version"] == "business-comprehension-v4"
+    assert understood["rules_version"] == "business-comprehension-v5"
     assert understood["period"] is None
     [dated] = understood["dated_attributes"]
     assert dated["column"] == "fecha_ingreso" and sum(n for _, n in dated["per_year"]) == 100
@@ -182,7 +182,7 @@ def test_a_roster_is_not_a_time_series_and_its_rates_are_analysed(
     assert found["dias_ausencia"]["domain"]["kind"] == "non_negative"
     # Investigación: ni evolución ni cambio de periodo; tasa y cohorte con cifras exactas.
     explored = get(client, f"{base}/exploration")["exploration"]
-    assert explored["rules_version"] == "investigation-v3"
+    assert explored["rules_version"] == "investigation-v4"
     kinds = [n["query"]["kind"] for n in explored["nodes"]]
     assert "evolution" not in kinds and "period_change" not in kinds
     results = {r["key"]: r for r in explored["results"]}
@@ -195,7 +195,8 @@ def test_a_roster_is_not_a_time_series_and_its_rates_are_analysed(
     by_area = next(
         r
         for r in results.values()
-        if r["query"]["kind"] == "rate" and r["query"]["dimensions"] == ["area"]
+        # Fase 29: con objetivo (activo), su tasa por área es un factor con su prueba.
+        if r["query"]["kind"] == "factor" and r["query"]["dimensions"] == ["area"]
     )
     rates = {row["groups"][0]: Decimal(row["figures"][0]["value"]) for row in by_area["rows"]}
     assert rates == {
@@ -205,7 +206,10 @@ def test_a_roster_is_not_a_time_series_and_its_rates_are_analysed(
         "D": Decimal("5.00"),
         "E": Decimal("5.00"),
     }
-    assert nodes[by_area["key"]]["classification"] == "relevant"
+    # 25 % frente a 5 % con 20 personas por área no es estadísticamente significativo
+    # (p ≈ 0,099): desde la Fase 29 (`relevance-v3`) no es un hallazgo sino «no concluyente».
+    assert nodes[by_area["key"]]["classification"] == "inconclusive"
+    assert float(by_area["test"]["p_value"]) > 0.05
     cohort = next(r for r in results.values() if r["query"]["kind"] == "cohort")
     assert sum(row["rows"] for row in cohort["rows"]) == 100
     assert [row["groups"][0] for row in cohort["rows"]] == sorted(

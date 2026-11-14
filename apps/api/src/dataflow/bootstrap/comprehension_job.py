@@ -44,14 +44,18 @@ from dataflow.modules.comprehension.contracts import (
     MeasureInfo,
     Period,
     Relationship,
+    TargetChoice,
+    TargetRequest,
     UserMeaning,
     Verdict,
 )
 from dataflow.modules.comprehension.domain import (
     accept_ai,
+    analysis_target,
     classified_roles,
     classify,
     closure,
+    derived_variables,
     dimension_infos,
     grain,
     measure_infos,
@@ -59,11 +63,13 @@ from dataflow.modules.comprehension.domain import (
     relationships,
     scales,
     structural,
+    target_candidates,
     with_user_meanings,
 )
 from dataflow.modules.comprehension.infrastructure import (
     SQLFeedbackRepository,
     SQLMeaningRepository,
+    SQLTargetRepository,
 )
 from dataflow.modules.comprehension.measures import (
     associations,
@@ -105,9 +111,11 @@ from dataflow.platform.errors import ApplicationError
 from dataflow.platform.timing import date_role, explain
 
 STEP = "comprehension.understand"
-RULES = "business-comprehension-v4"
+RULES = "business-comprehension-v5"
+V4 = "business-comprehension-v4"
 V3 = "business-comprehension-v3"
-GROUNDED = {V3, RULES}  # versiones con grano, fórmulas y significados (Fase 24)
+GROUNDED = {V3, V4, RULES}  # versiones con grano, fórmulas y significados (Fase 24)
+DATED = {V4, RULES}  # versiones con papel de las fechas (Fase 28)
 
 
 def source_key(file_name: str, plan: dict[str, Any]) -> str:
@@ -179,6 +187,7 @@ def enqueue_comprehension(
     table: Artifact,
     config: ProcessingConfig,
     annotations: SQLColumnAnnotations | None = None,
+    targets: SQLTargetRepository | None = None,
 ) -> None:
     run = lease.execution
     assert run.plan
@@ -195,6 +204,9 @@ def enqueue_comprehension(
         if annotations is not None
         else []
     )
+    # Fase 29: el objetivo elegido por el usuario para esta fuente (si lo eligió).
+    chosen = targets.for_source(lease.owner_id, run.project_id, source) if targets else None
+    target = [chosen.column, chosen.value or ""] if chosen and chosen.column else []
     fingerprint = digest(
         "comprehension_request",
         {
@@ -202,6 +214,7 @@ def enqueue_comprehension(
             "table_sha256": table.content.sha256,
             "verdicts": verdicts,
             "annotations": corrections,
+            "target": target,
             "operation": f"{STEP}@1",
         },
     )
@@ -228,6 +241,7 @@ def enqueue_comprehension(
             # Fase 23: IDs de las columnas y correcciones del Diccionario de la fuente.
             "column_ids": [str(c["id"]) for c in table.columns or []],
             "annotations": corrections,
+            "target": target,
         },
         "steps": [
             {
@@ -307,6 +321,45 @@ def request_comprehension_update(
         fingerprint,
         plan,
         str(uuid5(version, fingerprint)),  # correlación (36 caracteres)
+        base.input_artifact_id,
+        base.input_artifact_sha256,
+        kind="comprehension",
+    )
+
+
+def request_target_update(
+    executions: Executions, owner: UUID, version: UUID, target: list[str]
+) -> Execution | None:
+    """Fase 29: otra comprensión de la versión con el objetivo elegido por el usuario (misma
+    tabla, perfil, valoraciones y correcciones); tras ella se rehacen la investigación, el
+    dashboard y el informe. Sólo para comprensiones `business-comprehension-v5`."""
+    runs = [r for r in executions.for_version(owner, version) if r.kind == "comprehension"]
+    if not runs:
+        return None
+    base = runs[0]
+    assert base.plan and base.input_artifact_id and base.input_artifact_sha256
+    given = base.plan.content["input"]
+    if given.get("target", []) == target:
+        return None
+    content = {**base.plan.content, "input": {**given, "target": target}, "trigger": "target"}
+    fingerprint = digest(
+        "comprehension_target",
+        {"base_sha256": base.plan.content_sha256, "target": target, "count": len(runs)},
+    )
+    key = uuid5(version, f"comprehension-target:{len(runs)}:{fingerprint}")
+    if executions.find_request(owner, base.project_id, "comprehension", key, fingerprint):
+        return None
+    plan = PlanRevision(
+        uuid4(), uuid4(), 1, content, digest("plan", content), owner, datetime.now(UTC)
+    )
+    return executions.enqueue_followup(
+        owner,
+        base.project_id,
+        version,
+        key,
+        fingerprint,
+        plan,
+        str(uuid5(version, fingerprint)),
         base.input_artifact_id,
         base.input_artifact_sha256,
         kind="comprehension",
@@ -655,6 +708,12 @@ class ComprehensionStep:
                         for r in output.relaciones
                     ],
                     questions=output.preguntas,
+                    target=(output.objetivo.columna, output.objetivo.motivo)
+                    if output.objetivo and rules_asked == RULES
+                    else None,
+                    derived=[(d.tipo, d.columna) for d in output.derivadas]
+                    if rules_asked == RULES
+                    else [],
                 )
                 accepted, discarded = accept_ai(raw, names)
                 ai_state, ai_reason = "ready", None
@@ -671,7 +730,7 @@ class ComprehensionStep:
         understood = Understood()
         if v3:
             understood = understand(
-                table, analysis, roles, dimensions, hidden, verdicts, rules_asked == RULES
+                table, analysis, roles, dimensions, hidden, verdicts, rules_asked in DATED
             )
             if understood.formulas:
                 limitations.append(
@@ -679,6 +738,33 @@ class ComprehensionStep:
                     + ", ".join(f"«{f.column}»" for f in understood.formulas)
                     + ") se muestran como fórmulas: sus asociaciones con sus propias fuentes no "
                     "se proponen como hallazgos."
+                )
+        # Fase 29 (`business-comprehension-v5`): el objetivo (usuario, IA o reglas) y las
+        # variables que el motor deriva para explicarlo.
+        target = None
+        derived = []
+        candidates: list[str] = []
+        if rules_asked == RULES:
+            pair = given.get("target") or []
+            chosen = TargetChoice(column=pair[0], value=pair[1] or None) if pair else None
+            target = analysis_target(
+                understood.dimensions,
+                understood.measures,
+                accepted.target if accepted else None,
+                chosen,
+            )
+            derived = derived_variables(
+                understood.dated,
+                understood.measures,
+                target,
+                accepted.derived if accepted else [],
+                understood.formulas,
+            )
+            candidates = target_candidates(understood.dimensions, understood.measures)
+            if chosen is not None and (target is None or target.origin != "user"):
+                limitations.append(
+                    f"El objetivo que elegiste («{chosen.column}») ya no es válido en esta "
+                    "versión: se usa el propuesto."
                 )
         result = Comprehension(
             rules_version=(rules_asked if rules_asked in GROUNDED else V3)
@@ -720,6 +806,9 @@ class ComprehensionStep:
             dimensions=understood.dimensions,
             period=understood.period,
             dated_attributes=understood.dated,
+            target=target,
+            target_candidates=candidates,
+            derived=derived,
         )
         prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
         stored = self.objects.put(f"{prefix}/comprehension.json", result.model_dump_json().encode())
@@ -792,10 +881,12 @@ class ComprehensionAccess:
         objects: ObjectStore,
         feedback: SQLFeedbackRepository,
         meanings: SQLMeaningRepository | None = None,
+        targets: SQLTargetRepository | None = None,
     ) -> None:
         self.db, self.datasets, self.executions = db, datasets, executions
         self.objects, self.feedback = objects, feedback
         self.meanings = meanings or SQLMeaningRepository(db)
+        self.targets = targets or SQLTargetRepository(db)
 
     def run(self, owner: UUID, version: UUID) -> Execution:
         self.datasets.get(owner, version)
@@ -845,7 +936,8 @@ class ComprehensionAccess:
             comprehension=result,
             feedback=feedback,
             recalculating=any(
-                r.kind in {"exploration", "dashboard"} and r.state in {"queued", "running"}
+                r.kind in {"exploration", "dashboard", "comprehension"}
+                and r.state in {"queued", "running"}
                 for r in self.executions.for_version(owner, version)
             ),
         )
@@ -913,5 +1005,43 @@ class ComprehensionAccess:
         # Fase 24B: el informe describe las columnas con el significado vigente; se pide otra
         # versión (la anterior se conserva). Ningún cálculo cambia.
         request_report_update(self.executions, owner, version, "meaning")
+        self.db.commit()
+        return self.view(owner, version)
+
+    def choose_target(
+        self, owner: UUID, version: UUID, request: TargetRequest
+    ) -> ComprehensionView:
+        """Fase 29: el usuario confirma o cambia el objetivo del análisis (o vuelve al
+        propuesto, sin columna). Es un metadato de la fuente, lo heredan las versiones
+        siguientes; se rehacen la comprensión, la investigación, el dashboard y el informe."""
+        run = self.run(owner, version)
+        result = self.result(owner, run)
+        if result is None:
+            raise ApplicationError(
+                "COMPREHENSION_NOT_READY", "La comprensión todavía no está lista.", 409
+            )
+        if result.rules_version != RULES:
+            raise ApplicationError(
+                "TARGET_NOT_SUPPORTED",
+                "Esta versión se analizó antes de la Fase 29: vuelve a cargar el archivo para "
+                "elegir el objetivo.",
+                409,
+            )
+        if request.column and request.column not in result.target_candidates:
+            raise ApplicationError(
+                "TARGET_INVALID",
+                "Esa columna no puede ser el objetivo: elige una de dos valores o una medida.",
+                422,
+            )
+        ProjectPermissions(self.db).require(owner, run.project_id, writable=True)
+        assert run.plan
+        source = str(run.plan.content["input"]["source_key"])
+        self.targets.add(owner, run.project_id, version, source, request.column, request.value)
+        request_target_update(
+            self.executions,
+            owner,
+            version,
+            [request.column, request.value or ""] if request.column else [],
+        )
         self.db.commit()
         return self.view(owner, version)

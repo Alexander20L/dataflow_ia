@@ -320,6 +320,56 @@
         "title": "AnalysisResultV3",
         "type": "object"
       },
+      "AnalysisTarget": {
+        "additionalProperties": false,
+        "description": "Fase 29 (`business-comprehension-v5`, ADR-047): lo que el análisis intenta explicar. Una\ncolumna de dos valores (se analiza su tasa: `value` es la categoría contada; sin ella, la\nmenos frecuente) o una medida (se analiza su promedio). La proponen las reglas o la IA y el\nusuario la puede confirmar o cambiar; nunca bloquea.",
+        "properties": {
+          "column": {
+            "title": "Column",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "rate",
+              "measure"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "rules",
+              "ai",
+              "user"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "column",
+          "kind",
+          "origin",
+          "reason"
+        ],
+        "title": "AnalysisTarget",
+        "type": "object"
+      },
       "AnalyticalColumn": {
         "additionalProperties": false,
         "description": "Papel de una columna según automatic-interpretation-v2, con su evidencia.",
@@ -2527,6 +2577,13 @@
             "title": "Dated Attributes",
             "type": "array"
           },
+          "derived": {
+            "items": {
+              "$ref": "#/components/schemas/DerivedVariable"
+            },
+            "title": "Derived",
+            "type": "array"
+          },
           "dimensions": {
             "items": {
               "$ref": "#/components/schemas/DimensionInfo"
@@ -2636,12 +2693,13 @@
             "type": "array"
           },
           "rules_version": {
-            "default": "business-comprehension-v4",
+            "default": "business-comprehension-v5",
             "enum": [
               "business-comprehension-v1",
               "business-comprehension-v2",
               "business-comprehension-v3",
-              "business-comprehension-v4"
+              "business-comprehension-v4",
+              "business-comprehension-v5"
             ],
             "title": "Rules Version",
             "type": "string"
@@ -2655,6 +2713,23 @@
           },
           "scope": {
             "$ref": "#/components/schemas/ComprehensionScope"
+          },
+          "target": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/AnalysisTarget"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "target_candidates": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Target Candidates",
+            "type": "array"
           }
         },
         "required": [
@@ -2783,6 +2858,46 @@
         "title": "Consumption",
         "type": "object"
       },
+      "ControlCheck": {
+        "additionalProperties": false,
+        "description": "Fase 29: ¿la diferencia entre los grupos de un factor se mantiene al tener en cuenta otra\nvariable? Se compara lo observado en cada grupo con lo esperado sólo por su composición en la\nvariable de control (estandarización indirecta).",
+        "properties": {
+          "control": {
+            "title": "Control",
+            "type": "string"
+          },
+          "raw_gap": {
+            "title": "Raw Gap",
+            "type": "string"
+          },
+          "residual_gap": {
+            "title": "Residual Gap",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text",
+            "type": "string"
+          },
+          "verdict": {
+            "enum": [
+              "holds",
+              "attenuated",
+              "explained"
+            ],
+            "title": "Verdict",
+            "type": "string"
+          }
+        },
+        "required": [
+          "control",
+          "raw_gap",
+          "residual_gap",
+          "verdict",
+          "text"
+        ],
+        "title": "ControlCheck",
+        "type": "object"
+      },
       "ConvertedColumn": {
         "description": "Columna leída con un formato regional (Fase 18, `regional-values-v1`).",
         "properties": {
@@ -2883,7 +2998,9 @@
               "quality",
               "consistency",
               "evidence",
-              "limitations"
+              "limitations",
+              "significance",
+              "control"
             ],
             "title": "Name",
             "type": "string"
@@ -3708,6 +3825,49 @@
           "reason"
         ],
         "title": "DatedAttribute",
+        "type": "object"
+      },
+      "DerivedVariable": {
+        "additionalProperties": false,
+        "description": "Fase 29: variable que el motor deriva de otra para agrupar: antigüedad en tramos a partir\nde una fecha que describe al registro, o cuartiles de una medida. `name` es el nombre con el\nque se consulta («antigüedad de X», «cuartil de X»).",
+        "properties": {
+          "base": {
+            "title": "Base",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "tenure",
+              "quartile"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "origin": {
+            "enum": [
+              "rules",
+              "ai"
+            ],
+            "title": "Origin",
+            "type": "string"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "kind",
+          "base",
+          "origin",
+          "reason"
+        ],
+        "title": "DerivedVariable",
         "type": "object"
       },
       "DesignDecision": {
@@ -4941,7 +5101,8 @@
             "enum": [
               "exploration.explore@1",
               "exploration.explore@2",
-              "exploration.explore@3"
+              "exploration.explore@3",
+              "exploration.explore@4"
             ],
             "title": "Operation",
             "type": "string"
@@ -4977,7 +5138,8 @@
             "enum": [
               "explore-v1",
               "investigation-v2",
-              "investigation-v3"
+              "investigation-v3",
+              "investigation-v4"
             ],
             "title": "Rules Version",
             "type": "string"
@@ -5359,7 +5521,9 @@
               "distribution",
               "scatter",
               "rate",
-              "cohort"
+              "cohort",
+              "factor",
+              "stratified"
             ],
             "title": "Kind",
             "type": "string"
@@ -5438,6 +5602,16 @@
             "title": "Columns",
             "type": "array"
           },
+          "control": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/ControlCheck"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "covered_rows": {
             "title": "Covered Rows",
             "type": "integer"
@@ -5496,6 +5670,16 @@
             },
             "title": "Rows",
             "type": "array"
+          },
+          "test": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/StatisticalTest"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "title": {
             "title": "Title",
@@ -12097,6 +12281,75 @@
         "title": "Stage",
         "type": "object"
       },
+      "StatisticalTest": {
+        "additionalProperties": false,
+        "description": "Fase 29: prueba de que los grupos difieren (chi-cuadrado para tasas, Kruskal-Wallis para\nmedias) sobre los grupos con al menos 10 registros. `q_value`: el valor p corregido por\nBenjamini-Hochberg con todas las pruebas de la investigación.",
+        "properties": {
+          "df": {
+            "title": "Df",
+            "type": "integer"
+          },
+          "effect": {
+            "title": "Effect",
+            "type": "string"
+          },
+          "effect_name": {
+            "enum": [
+              "cramers_v",
+              "epsilon_squared"
+            ],
+            "title": "Effect Name",
+            "type": "string"
+          },
+          "groups": {
+            "title": "Groups",
+            "type": "integer"
+          },
+          "method": {
+            "title": "Method",
+            "type": "string"
+          },
+          "name": {
+            "enum": [
+              "chi_square",
+              "kruskal_wallis"
+            ],
+            "title": "Name",
+            "type": "string"
+          },
+          "p_value": {
+            "title": "P Value",
+            "type": "string"
+          },
+          "q_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q Value"
+          },
+          "statistic": {
+            "title": "Statistic",
+            "type": "string"
+          }
+        },
+        "required": [
+          "name",
+          "statistic",
+          "df",
+          "p_value",
+          "effect_name",
+          "effect",
+          "groups",
+          "method"
+        ],
+        "title": "StatisticalTest",
+        "type": "object"
+      },
       "StructureComparison": {
         "description": "Cambios de columnas respecto de la versión anterior del mismo archivo (Fase 18).\nSólo se informa: no se renombra ni se mapea nada.",
         "properties": {
@@ -12225,6 +12478,38 @@
           "groups"
         ],
         "title": "Summary",
+        "type": "object"
+      },
+      "TargetRequest": {
+        "additionalProperties": false,
+        "description": "Fase 29: el usuario confirma o cambia el objetivo del análisis. `column` vacío vuelve al\npropuesto; `value` es la categoría contada de una columna de dos valores.",
+        "properties": {
+          "column": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Column"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "title": "TargetRequest",
         "type": "object"
       },
       "TemporalStats": {
@@ -13188,7 +13473,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.36.0"
+    "version": "0.37.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -18444,6 +18729,181 @@
           }
         ],
         "summary": "Describe",
+        "tags": [
+          "Comprensión del negocio"
+        ]
+      }
+    },
+    "/api/v1/versions/{version_id}/comprehension/target": {
+      "post": {
+        "description": "Fase 29: confirma o cambia el objetivo del análisis (una columna de dos valores, con la\ncategoría contada si se quiere, o una medida). Sin columna vuelve al propuesto. Opcional:\nnunca bloquea. Lo heredan las versiones siguientes del mismo archivo y se rehacen la\ncomprensión, la investigación, el dashboard y el informe.",
+        "operationId": "chooseTarget",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "version_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Version Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/TargetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ComprehensionView"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Choose Target",
         "tags": [
           "Comprensión del negocio"
         ]

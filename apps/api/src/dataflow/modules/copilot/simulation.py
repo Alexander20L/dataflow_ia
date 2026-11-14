@@ -36,6 +36,11 @@ def comprehension(context: dict[str, Any]) -> dict[str, Any]:
     columns = [(plain(item["nombre"]), item["rol"]) for item in context["columnas"]]
     measures = [name for name, role in columns if role == "measure"]
     dimensions = [name for name, role in columns if role == "dimension"]
+    binary = [
+        plain(item["nombre"])
+        for item in context["columnas"]
+        if item["rol"] == "dimension" and item.get("distintos") == 2
+    ]
     relations = []
     if measures and dimensions:
         relations.append(
@@ -68,6 +73,16 @@ def comprehension(context: dict[str, Any]) -> dict[str, Any]:
         "ordenes": [],
         "relaciones": relations,
         "preguntas": [f"¿Qué grupo concentra más {measures[0]}?"] if measures else [],
+        # Fase 29: objetivo = la primera dimensión de dos valores (si la hay) y cuartiles de la
+        # primera medida, más una derivada inválida para mostrar el rechazo.
+        "objetivo": {
+            "columna": binary[0],
+            "motivo": f"{binary[0]} es el resultado que interesa explicar.",
+        }
+        if binary
+        else None,
+        "derivadas": ([{"tipo": "cuartiles", "columna": measures[0]}] if measures else [])
+        + [{"tipo": "inventada", "columna": "Columna inventada"}],
     }
 
 

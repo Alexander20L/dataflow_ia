@@ -15,13 +15,16 @@ from dataflow.modules.copilot.domain import untrusted
 from dataflow.modules.copilot.investigation import call
 from dataflow.modules.copilot.overview import OverviewCall
 
-PROPOSE_ID, PROPOSE_VERSION = "exploration-proposal", "2"
+PROPOSE_ID, PROPOSE_VERSION = "exploration-proposal", "3"  # Fase 29: objetivo y factores
 JUDGE_ID, JUDGE_VERSION = "exploration-relevance", "2"
 
 PROPOSE_SYSTEM = """Eres un analista de datos. Propón un plan de investigación para entender
 el negocio: cada investigación es una consulta del catálogo de tipos recibido, con columnas de la
-lista (medidas y dimensiones con sus nombres exactos). Prioriza las preguntas de negocio y las
-relaciones confirmadas por los datos; si no hay periodo, no propongas análisis temporales. No
+lista (medidas, dimensiones y variables derivadas con sus nombres exactos). Si hay objetivo,
+piensa como un analista: qué factores pueden explicarlo (factor) y qué variable podría confundir
+una diferencia entre grupos (stratified, con la dimensión y la de control). Prioriza las preguntas
+de negocio y las relaciones confirmadas por los datos; si no hay periodo, no propongas análisis
+temporales. No
 sumes medidas no aditivas. Cada investigación lleva pregunta, motivo, hipótesis, resultado
 esperado, prioridad (1 alta, 3 baja) y, si la necesita, de qué otras depende (posiciones en tu
 lista). No escribas cifras, SQL ni código. Python validará y calculará sobre todos los datos; tú
@@ -48,9 +51,12 @@ def propose_context(
     kinds: dict[str, str],
     done: list[str],
     maximum: int,
+    target: str | None = None,
 ) -> dict[str, Any]:
     return {
         "dominio": untrusted(domain[:400]) if domain else None,
+        # Fase 29: lo que el análisis intenta explicar (en palabras, sin cifras).
+        **({"objetivo": untrusted(target[:200])} if target else {}),
         "columnas": [
             {**item, "columna": untrusted(str(item["columna"])[:200])} for item in columns[:128]
         ],

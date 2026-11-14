@@ -167,6 +167,39 @@ class DatedAttribute(ComprehensionModel):
     reason: str
 
 
+class AnalysisTarget(ComprehensionModel):
+    """Fase 29 (`business-comprehension-v5`, ADR-047): lo que el análisis intenta explicar. Una
+    columna de dos valores (se analiza su tasa: `value` es la categoría contada; sin ella, la
+    menos frecuente) o una medida (se analiza su promedio). La proponen las reglas o la IA y el
+    usuario la puede confirmar o cambiar; nunca bloquea."""
+
+    column: str
+    kind: Literal["rate", "measure"]
+    value: str | None = None
+    origin: Literal["rules", "ai", "user"]
+    reason: str
+
+
+class DerivedVariable(ComprehensionModel):
+    """Fase 29: variable que el motor deriva de otra para agrupar: antigüedad en tramos a partir
+    de una fecha que describe al registro, o cuartiles de una medida. `name` es el nombre con el
+    que se consulta («antigüedad de X», «cuartil de X»)."""
+
+    name: str
+    kind: Literal["tenure", "quartile"]
+    base: str
+    origin: Literal["rules", "ai"]
+    reason: str
+
+
+class TargetChoice(ComprehensionModel):
+    """Fase 29: el objetivo elegido por el usuario (metadato de la fuente, heredado). Sin
+    columna, vuelve al propuesto por las reglas o la IA."""
+
+    column: str | None
+    value: str | None = None
+
+
 class Period(ComprehensionModel):
     kind: Literal["date", "year_month"]
     columns: list[str]
@@ -192,7 +225,8 @@ class Comprehension(ComprehensionModel):
         "business-comprehension-v2",
         "business-comprehension-v3",
         "business-comprehension-v4",
-    ] = "business-comprehension-v4"
+        "business-comprehension-v5",
+    ] = "business-comprehension-v5"
     scope: ComprehensionScope
     ai_state: Literal["ready", "unavailable", "failed"]
     ai_reason: str | None = None
@@ -219,6 +253,11 @@ class Comprehension(ComprehensionModel):
     period: Period | None = None
     # Fase 28 (`business-comprehension-v4`): fechas que describen al registro, no eventos.
     dated_attributes: list[DatedAttribute] = Field(default_factory=list)
+    # Fase 29 (`business-comprehension-v5`): objetivo del análisis, candidatos y variables
+    # derivadas que el motor calcula.
+    target: AnalysisTarget | None = None
+    target_candidates: list[str] = Field(default_factory=list)
+    derived: list[DerivedVariable] = Field(default_factory=list)
 
 
 # --- IA: contexto y respuesta ------------------------------------------------------------------
@@ -248,6 +287,10 @@ class AIComprehension(ComprehensionModel):
     orders: dict[str, list[str]]
     relationships: list[tuple[str, str, str, str]]  # (columna, columna, tipo, hipótesis)
     questions: list[str]
+    # Fase 29 (prompt v4): objetivo propuesto (columna y motivo) y variables derivadas
+    # propuestas (tipo y columna base); Python las valida.
+    target: tuple[str, str] | None = None
+    derived: list[tuple[str, str]] = Field(default_factory=list)
 
 
 class AIReply(ComprehensionModel):
@@ -274,6 +317,14 @@ class MeaningRequest(ComprehensionModel):
     meaning: str | None = Field(default=None, max_length=300)
     confirmed: bool = False
     unknown: bool = False
+
+
+class TargetRequest(ComprehensionModel):
+    """Fase 29: el usuario confirma o cambia el objetivo del análisis. `column` vacío vuelve al
+    propuesto; `value` es la categoría contada de una columna de dos valores."""
+
+    column: str | None = Field(default=None, max_length=200)
+    value: str | None = Field(default=None, max_length=200)
 
 
 class FeedbackItem(ComprehensionModel):

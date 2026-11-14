@@ -51,6 +51,8 @@ export const CRITERIA: Record<string, string> = {
   consistency: "Consistencia",
   evidence: "Evidencia y método",
   limitations: "Limitaciones",
+  significance: "Significancia estadística",
+  control: "Comprobación con otra variable",
 };
 
 export const PRIORITIES: Record<number, string> = {

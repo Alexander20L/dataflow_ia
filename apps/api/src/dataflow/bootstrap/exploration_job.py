@@ -77,14 +77,25 @@ from dataflow.modules.exploration.investigator import (
     Verdict,
     plan_nodes,
 )
-from dataflow.modules.exploration.plan import ai_draft, projected, proposals, rule_plan
+from dataflow.modules.exploration.plan import (
+    ai_draft,
+    projected,
+    proposals,
+    rule_plan,
+    target_words,
+)
 from dataflow.modules.projects.public import ProjectPermissions
 from dataflow.modules.understanding.contracts import DatasetProfile
 from dataflow.platform.canonical import digest
 from dataflow.platform.errors import ApplicationError
 
 STEP = "exploration.explore"
-VERSION = 3  # Fase 28: las cargas nuevas se investigan con `investigation-v3` (explore-v3)
+RULES_BY_VERSION = {
+    2: "investigation-v2",
+    3: "investigation-v3",
+    4: "investigation-v4",
+}
+VERSION = 4  # Fase 29: las cargas nuevas se investigan con `investigation-v4` (explore-v4)
 Trigger = Literal["load", "feedback", "restart", "resume"]
 
 
@@ -640,6 +651,7 @@ class InvestigationTreeStep:
                         catalog.kinds(),
                         [],
                         limits.max_ai_proposals,
+                        target_words(catalog) if catalog.target else None,
                     ),
                     tokens,
                 )
@@ -728,8 +740,8 @@ class InvestigationTreeStep:
             if item.status == "computed" and item.key in outcome.results
         ]
         exploration = Exploration(
-            rules_version="investigation-v3" if step.version >= 3 else "investigation-v2",
-            operation="exploration.explore@3" if step.version >= 3 else "exploration.explore@2",
+            rules_version=RULES_BY_VERSION[min(step.version, 4)],
+            operation=f"{STEP}@{min(step.version, 4)}",
             scope=ExplorationScope(
                 execution_id=lease.execution_id,
                 version_id=lease.version_id,
@@ -747,9 +759,13 @@ class InvestigationTreeStep:
                 "Las cifras se calculan sobre todas las filas con valor; la IA sólo vio hasta "
                 f"{limits.ai_rows} filas de cada resultado para interpretarlo y no aporta "
                 "cifras.",
-                "La clasificación es de reglas (relevance-v2: cada grupo o mes con al menos "
-                "10 registros); el juicio de la IA sólo puede "
-                "rebajarla.",
+                "La clasificación es de reglas (relevance-v3: cada grupo o mes con al menos "
+                "10 registros y, en los factores del objetivo, una prueba estadística "
+                "significativa tras corregir por comparaciones múltiples); el juicio de la IA "
+                "sólo puede rebajarla."
+                if step.version >= 4
+                else "La clasificación es de reglas (relevance-v2: cada grupo o mes con al "
+                "menos 10 registros); el juicio de la IA sólo puede rebajarla.",
                 *limitations,
                 *outcome.limitations,
             ],
@@ -800,6 +816,8 @@ def raw_query(item: ConsultaIA) -> RawQuery:
         filter_column=item.filtro_columna,
         filter_value=item.filtro_valor,
         limit=item.limite,
+        target=item.objetivo,
+        target_value=item.valor_objetivo,
         motive=item.motivo,
         question=item.pregunta,
         hypothesis=item.hipotesis,

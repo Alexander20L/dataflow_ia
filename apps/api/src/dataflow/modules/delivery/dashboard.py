@@ -153,6 +153,9 @@ def result_item(result: ExploreResult) -> DashboardItem:
         widgets = ["bar"]
     if query.kind == "cohort" and len(result.rows) >= 2:
         widgets = ["bar", "line"]
+    # Fase 29: el objetivo por grupo (con su intervalo en la tabla) y su comprobación.
+    if query.kind in {"factor", "stratified"} and len(result.rows) >= 2:
+        widgets = ["bar"]
     widgets.append("table")
     return DashboardItem(
         id=result_key(result),
@@ -385,6 +388,8 @@ OPERATIONS = {
     "scatter": "Dispersión",
     "rate": "Proporción de una categoría",
     "cohort": "Registros por año",
+    "factor": "Objetivo por grupo con prueba estadística",
+    "stratified": "Comprobación con una variable de control",
 }
 AGGREGATION_WORDS = {"sum": "suma", "mean": "promedio", "median": "mediana", "count": "conteo"}
 CLASS_ORDER = {"relevant": 0, "secondary": 1, "descriptive": 2, "inconclusive": 3, "discarded": 4}

@@ -11,22 +11,26 @@ import io
 import re
 from collections import defaultdict
 from collections.abc import Mapping, Sequence
+from datetime import date
 from decimal import ROUND_HALF_EVEN, Decimal, InvalidOperation, localcontext
 from statistics import median
 
 import polars as pl
 
+from dataflow.modules.exploration import statistics as stats
 from dataflow.modules.exploration.contracts import (
     MAX_BINS,
     MAX_GROUPS,
     MAX_POINTS,
     TEMPORAL_KINDS,
+    ControlCheck,
     ExploreFigure,
     ExploreQuery,
     ExploreResult,
     ExploreRow,
+    StatisticalTest,
 )
-from dataflow.modules.exploration.domain import AGGREGATIONS, title
+from dataflow.modules.exploration.domain import AGGREGATIONS, derived_base, title
 from dataflow.modules.understanding.public import month_number
 
 SIX = Decimal("0.000001")
@@ -56,8 +60,80 @@ def evidence(execution: str, key: str, groups: Sequence[str], label: str) -> str
 
 
 def columns(content: bytes, names: Sequence[str]) -> dict[str, list[object]]:
+    """Las columnas pedidas, por nombre exacto. Fase 29: una variable derivada («antigüedad de
+    X», «cuartil de X») que no sea una columna real se calcula a partir de su columna base."""
     table = pl.read_parquet(io.BytesIO(content))
-    return {name: table.get_column(name).to_list() for name in dict.fromkeys(names)}
+    found: dict[str, list[object]] = {}
+    for name in dict.fromkeys(names):
+        if name in table.columns:
+            found[name] = table.get_column(name).to_list()
+            continue
+        derived = derived_base(name)
+        if derived is None or derived[1] not in table.columns:
+            found[name] = table.get_column(name).to_list()  # error del motor: no existe
+            continue
+        kind, base = derived
+        values = table.get_column(base).to_list()
+        found[name] = tenure_bands(values) if kind == "tenure" else quartile_bands(values)
+    return found
+
+
+TENURE_BANDS = ("Menos de 1 año", "1 a 3 años", "3 a 5 años", "5 años o más")
+
+
+def as_date(value: object) -> date | None:
+    if value is None:
+        return None
+    if isinstance(value, date):
+        return value
+    try:
+        return date.fromisoformat(str(value)[:10])
+    except ValueError:
+        return None
+
+
+def tenure_bands(values: Sequence[object]) -> list[object]:
+    """Antigüedad en tramos de años hasta la fecha más reciente de la columna (la de referencia
+    del archivo, no el día de hoy: así el resultado no cambia con el tiempo)."""
+    dates = [as_date(v) for v in values]
+    known = [d for d in dates if d is not None]
+    if not known:
+        return [None] * len(values)
+    reference = max(known)
+    labels: list[object] = []
+    for day in dates:
+        if day is None:
+            labels.append(None)
+            continue
+        years = (reference - day).days / 365.25
+        band = 0 if years < 1 else 1 if years < 3 else 2 if years < 5 else 3
+        labels.append(TENURE_BANDS[band])
+    return labels
+
+
+def quartile_bands(values: Sequence[object]) -> list[object]:
+    """Cuartil de cada valor (Q1 a Q4) con sus límites (cuartiles de tipo 7 sobre todos los
+    valores numéricos de la columna)."""
+    numbers = [decimal(v) for v in values]
+    ordered = sorted(n for n in numbers if n is not None)
+    if len(ordered) < 4:
+        return [None] * len(values)
+    q1, q2, q3 = (quartile(ordered, Decimal(q)) for q in ("0.25", "0.5", "0.75"))
+    names = (
+        f"Q1 (hasta {text(q1)})",
+        f"Q2 ({text(q1)} a {text(q2)})",
+        f"Q3 ({text(q2)} a {text(q3)})",
+        f"Q4 (más de {text(q3)})",
+    )
+    labels: list[object] = []
+    for number in numbers:
+        if number is None:
+            labels.append(None)
+        else:
+            labels.append(
+                names[0 if number <= q1 else 1 if number <= q2 else 2 if number <= q3 else 3]
+            )
+    return labels
 
 
 def row_count(content: bytes) -> int:
@@ -117,6 +193,10 @@ def compute(
         return compute_rate(content, query, execution)
     if query.kind == "cohort":
         return compute_cohort(content, query, execution)
+    if query.kind == "factor":
+        return compute_factor(content, query, execution)
+    if query.kind == "stratified":
+        return compute_stratified(content, query, execution)
     names = [
         *query.dimensions,
         *[m for m in (query.measure, query.measure_b) if m],
@@ -702,4 +782,253 @@ def compute_cohort(content: bytes, query: ExploreQuery, execution: str) -> Explo
         "aparecen).",
         figures,
         ordered=False,
+    )
+
+
+# --- Fase 29 (explore-v4): el objetivo por cada factor y su comprobación ------------------------
+
+MIN_TESTED = 10  # registros de un grupo para entrar en la prueba (como `relevance-v2`)
+
+
+def number_text(value: float, places: str = "0.000001") -> str:
+    return text(Decimal(repr(value)).quantize(Decimal(places))) or "0"
+
+
+def outcome(
+    content: bytes, query: ExploreQuery, extra: Sequence[str]
+) -> tuple[dict[str, list[object]], str | None, str | None]:
+    """Datos del objetivo (tasa o medida) y de las dimensiones pedidas; la categoría contada de
+    una tasa (sin categoría pedida, la menos frecuente) o el motivo por el que no se puede."""
+    target = query.target or query.measure
+    assert target
+    data = columns(content, [target, *extra])
+    if query.target is None:
+        return data, None, None
+    present = [str(v) for v in data[target] if v is not None]
+    values = sorted(set(present))
+    if len(values) != 2:
+        return data, None, f"{target} no tiene exactamente dos valores."
+    category = query.target_value or min(values, key=lambda v: (present.count(v), v))
+    if category not in values:
+        return data, None, f"{target} no tiene el valor «{category}»."
+    return data, category, None
+
+
+def scores(
+    data: dict[str, list[object]], query: ExploreQuery, category: str | None, dims: Sequence[str]
+) -> dict[tuple[str, ...], list[float]]:
+    """Por cada combinación de grupos, el valor de cada registro: 1/0 para una tasa (¿es la
+    categoría contada?) o el número de la medida. Sin valor en alguna columna, no cuenta."""
+    target = query.target or query.measure
+    assert target
+    groups: dict[tuple[str, ...], list[float]] = defaultdict(list)
+    for i, value in enumerate(data[target]):
+        if value is None:
+            continue
+        labels = tuple(data[d][i] for d in dims)
+        if any(label is None for label in labels):
+            continue
+        if category is not None:
+            score = 1.0 if str(value) == category else 0.0
+        else:
+            found = decimal(value)
+            if found is None:
+                continue
+            score = float(found)
+        groups[tuple(str(label) for label in labels)].append(score)
+    return groups
+
+
+def compute_factor(content: bytes, query: ExploreQuery, execution: str) -> ExploreResult | str:
+    """El objetivo en cada grupo de una dimensión: tasa (con intervalo de Wilson) o promedio
+    (con intervalo t), y la prueba de que los grupos difieren (chi-cuadrado o Kruskal-Wallis)
+    sobre los grupos con al menos `MIN_TESTED` registros."""
+    data, category, problem = outcome(content, query, query.dimensions)
+    if problem:
+        return problem
+    groups = scores(data, query, category, query.dimensions)
+    if not groups:
+        return "Ninguna fila tiene valor en las columnas pedidas."
+    rate = category is not None
+    figures: Figures = []
+    for labels, values in groups.items():
+        n = len(values)
+        if rate:
+            cases = int(sum(values))
+            low, high = stats.wilson(cases, n)
+            share = Decimal(cases) * 100 / n
+            figures.append(
+                (
+                    labels,
+                    n,
+                    [
+                        (f"Tasa de «{category}» (%)", share.quantize(TWO)),
+                        ("IC 95 % inferior (%)", Decimal(repr(low * 100)).quantize(TWO)),
+                        ("IC 95 % superior (%)", Decimal(repr(high * 100)).quantize(TWO)),
+                        (f"Casos «{category}»", Decimal(cases)),
+                    ],
+                )
+            )
+        else:
+            interval = stats.mean_interval(values)
+            mean = Decimal(repr(sum(values) / n)).quantize(SIX)
+            figures.append(
+                (
+                    labels,
+                    n,
+                    [
+                        (f"Promedio de {query.measure}", mean),
+                        (
+                            "IC 95 % inferior",
+                            Decimal(repr(interval[1])).quantize(SIX) if interval else None,
+                        ),
+                        (
+                            "IC 95 % superior",
+                            Decimal(repr(interval[2])).quantize(SIX) if interval else None,
+                        ),
+                    ],
+                )
+            )
+    figures.sort(key=lambda item: (-(item[2][0][1] or Decimal(0)), item[0]))
+    tested = [values for values in groups.values() if len(values) >= MIN_TESTED]
+    test: StatisticalTest | None = None
+    if rate:
+        found = stats.chi_square([(int(sum(v)), len(v) - int(sum(v))) for v in tested])
+        if found:
+            statistic, df, p, effect = found
+            test = StatisticalTest(
+                name="chi_square",
+                statistic=number_text(statistic, "0.0001"),
+                df=df,
+                p_value=number_text(p),
+                effect_name="cramers_v",
+                effect=number_text(effect, "0.0001"),
+                groups=len(tested),
+                method="Prueba chi-cuadrado de independencia sobre los grupos con al menos "
+                f"{MIN_TESTED} registros; V de Cramér como tamaño del efecto.",
+            )
+    else:
+        found = stats.kruskal_wallis(tested)
+        if found:
+            statistic, df, p, effect = found
+            test = StatisticalTest(
+                name="kruskal_wallis",
+                statistic=number_text(statistic, "0.0001"),
+                df=df,
+                p_value=number_text(p),
+                effect_name="epsilon_squared",
+                effect=number_text(effect, "0.0001"),
+                groups=len(tested),
+                method="Prueba de Kruskal-Wallis (con corrección por empates) sobre los grupos "
+                f"con al menos {MIN_TESTED} registros; épsilon cuadrado como tamaño del efecto.",
+            )
+    what = (
+        f"Casos con {query.target} = «{category}» sobre las filas con valor; intervalo de Wilson "
+        "al 95 %"
+        if rate
+        else f"Promedio de {query.measure} sobre las filas con valor; intervalo t al 95 %"
+    )
+    result = build(
+        query,
+        execution,
+        f"{what}. Cifras redondeadas a {'2' if rate else '6'} decimales.",
+        figures,
+        ordered=False,
+    )
+    return result.model_copy(
+        update={
+            "test": test,
+            "title": title(query.model_copy(update={"target_value": category})),
+        }
+    )
+
+
+def compute_stratified(content: bytes, query: ExploreQuery, execution: str) -> ExploreResult | str:
+    """¿La diferencia del objetivo entre los grupos de la dimensión se mantiene al tener en
+    cuenta la de control? Para cada grupo se compara lo observado con lo esperado sólo por su
+    composición en la variable de control (estandarización indirecta: el valor de cada nivel de
+    control en todo el archivo, ponderado por cuántos registros del grupo tiene en ese nivel).
+    Funciona aunque haya combinaciones con pocos registros."""
+    factor, control = query.dimensions
+    data, category, problem = outcome(content, query, [factor, control])
+    if problem:
+        return problem
+    cells = scores(data, query, category, [factor, control])
+    if not cells:
+        return "Ninguna fila tiene valor en las columnas pedidas."
+    level_values: dict[str, list[float]] = defaultdict(list)
+    group_values: dict[str, list[float]] = defaultdict(list)
+    composition: dict[str, dict[str, int]] = defaultdict(dict)
+    for (group, level), values in cells.items():
+        level_values[level].extend(values)
+        group_values[group].extend(values)
+        composition[group][level] = len(values)
+    level_mean = {level: sum(v) / len(v) for level, v in level_values.items()}
+    scale = 100.0 if category is not None else 1.0
+    places = TWO if category is not None else SIX
+    rows: list[tuple[str, int, float, float]] = []
+    for group, values in group_values.items():
+        n = len(values)
+        observed = sum(values) / n
+        expected = sum(level_mean[level] * count for level, count in composition[group].items()) / n
+        rows.append((group, n, observed * scale, expected * scale))
+    rows.sort(key=lambda item: (-item[2], item[0]))
+    figures: Figures = [
+        (
+            (group,),
+            n,
+            [
+                ("Observado", Decimal(repr(observed)).quantize(places)),
+                (f"Esperado por {control}", Decimal(repr(expected)).quantize(places)),
+                ("Diferencia", Decimal(repr(observed - expected)).quantize(places)),
+            ],
+        )
+        for group, n, observed, expected in rows
+    ]
+    counted = [r for r in rows if r[1] >= MIN_TESTED]
+    if len(counted) < 2:
+        return (
+            f"Menos de dos grupos de {factor} tienen al menos {MIN_TESTED} registros: no se puede "
+            "comprobar la diferencia."
+        )
+    raw_gap = max(r[2] for r in counted) - min(r[2] for r in counted)
+    residuals = [r[2] - r[3] for r in counted]
+    residual_gap = max(residuals) - min(residuals)
+    share = residual_gap / raw_gap if raw_gap else 0.0
+    unit = " puntos" if category is not None else ""
+    raw_text = format(raw_gap, ".2f").replace(".", ",")
+    residual_text = format(residual_gap, ".2f").replace(".", ",")
+    if share >= 2 / 3:
+        verdict, said = "holds", f"La diferencia se mantiene al tener en cuenta {control}"
+    elif share >= 1 / 3:
+        verdict, said = "attenuated", f"La diferencia se atenúa al tener en cuenta {control}"
+    else:
+        verdict, said = "explained", f"La diferencia se explica en buena parte por {control}"
+    check = ControlCheck(
+        control=control,
+        raw_gap=number_text(raw_gap, "0.01"),
+        residual_gap=number_text(residual_gap, "0.01"),
+        verdict=verdict,
+        text=f"{said}: de {raw_text}{unit} entre grupos de {factor} a {residual_text}{unit} "
+        f"descontando lo que explica la composición por {control}.",
+    )
+    what = (
+        f"la tasa de «{category}» en {query.target}"
+        if category
+        else f"el promedio de {query.measure}"
+    )
+    result = build(
+        query,
+        execution,
+        f"Para cada {factor}, {what} observada y la esperada sólo por su composición en "
+        f"{control} (estandarización indirecta); sólo cuentan los grupos con al menos "
+        f"{MIN_TESTED} registros.",
+        figures,
+        ordered=False,
+    )
+    return result.model_copy(
+        update={
+            "control": check,
+            "title": title(query.model_copy(update={"target_value": category})),
+        }
     )

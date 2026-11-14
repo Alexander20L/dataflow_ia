@@ -27,11 +27,17 @@ QueryKind = Literal[
     "scatter",
     "rate",
     "cohort",
+    "factor",
+    "stratified",
 ]
 TEMPORAL_KINDS = frozenset({"evolution", "period_change"})
 # Fase 28 (`explore-v3`): tasa de una columna de dos valores y registros por año de una fecha que
 # describe al registro. Sólo los proponen las reglas (no se ofrecen a la IA).
 RULE_KINDS = frozenset({"rate", "cohort"})
+# Fase 29 (`explore-v4`, ADR-047): el objetivo del análisis por cada factor (tasa o promedio por
+# grupo, con intervalo y prueba estadística) y la comprobación de un factor dentro de los niveles
+# de otra variable. Desde la Fase 29 la IA puede proponer también `rate` y `cohort`.
+TARGET_KINDS = frozenset({"factor", "stratified"})
 # Fase 26 (`dashboard-design-v2`): sólo los calcula el dashboard (histograma y dispersión); la
 # investigación no los propone ni los acepta.
 DASHBOARD_KINDS = frozenset({"distribution", "scatter"})
@@ -47,6 +53,10 @@ OPERATION_V2 = "exploration.explore@2"
 # Fase 28 (ADR-046): `explore-v3` (tasas y cohortes) y `relevance-v2` (tamaño mínimo por grupo).
 RULES_V3 = "investigation-v3"
 OPERATION_V3 = "exploration.explore@3"
+# Fase 29 (ADR-047): `explore-v4` (objetivo, factores, variables derivadas y control) y
+# `relevance-v3` (significancia con corrección por comparaciones múltiples).
+RULES_V4 = "investigation-v4"
+OPERATION_V4 = "exploration.explore@4"
 MAX_GROUPS = 500  # filas de resultado que se guardan
 AI_ROWS = 100  # filas de cada resultado que ve la IA
 
@@ -100,6 +110,34 @@ class ExploreRow(ExplorationModel):
     figures: list[ExploreFigure]
 
 
+class StatisticalTest(ExplorationModel):
+    """Fase 29: prueba de que los grupos difieren (chi-cuadrado para tasas, Kruskal-Wallis para
+    medias) sobre los grupos con al menos 10 registros. `q_value`: el valor p corregido por
+    Benjamini-Hochberg con todas las pruebas de la investigación."""
+
+    name: Literal["chi_square", "kruskal_wallis"]
+    statistic: str
+    df: int
+    p_value: str
+    q_value: str | None = None
+    effect_name: Literal["cramers_v", "epsilon_squared"]
+    effect: str
+    groups: int  # grupos que entran en la prueba
+    method: str
+
+
+class ControlCheck(ExplorationModel):
+    """Fase 29: ¿la diferencia entre los grupos de un factor se mantiene al tener en cuenta otra
+    variable? Se compara lo observado en cada grupo con lo esperado sólo por su composición en la
+    variable de control (estandarización indirecta)."""
+
+    control: str
+    raw_gap: str  # diferencia entre el grupo más alto y el más bajo, observada
+    residual_gap: str  # la misma diferencia descontando lo que explica la variable de control
+    verdict: Literal["holds", "attenuated", "explained"]
+    text: str
+
+
 class ExploreResult(ExplorationModel):
     key: str
     query: ExploreQuery
@@ -113,6 +151,9 @@ class ExploreResult(ExplorationModel):
     relevant: bool | None = None  # juicio (IA o reglas)
     judged_by: Literal["ai", "rules"] | None = None
     reason: str | None = None
+    # Fase 29 (`explore-v4`).
+    test: StatisticalTest | None = None
+    control: ControlCheck | None = None
 
 
 class ExploreProposal(ExplorationModel):
@@ -154,7 +195,16 @@ Trigger = Literal["load", "feedback", "restart", "resume"]
 class Criterion(ExplorationModel):
     """Un criterio de la evaluación (`relevance-v1`); las cifras salen del motor."""
 
-    name: Literal["magnitude", "business", "quality", "consistency", "evidence", "limitations"]
+    name: Literal[
+        "magnitude",
+        "business",
+        "quality",
+        "consistency",
+        "evidence",
+        "limitations",
+        "significance",
+        "control",
+    ]
     assessment: str
 
 
@@ -199,9 +249,14 @@ class InvestigationConsumption(ExplorationModel):
 
 
 class Exploration(ExplorationModel):
-    rules_version: Literal["explore-v1", "investigation-v2", "investigation-v3"] = "explore-v1"
+    rules_version: Literal[
+        "explore-v1", "investigation-v2", "investigation-v3", "investigation-v4"
+    ] = "explore-v1"
     operation: Literal[
-        "exploration.explore@1", "exploration.explore@2", "exploration.explore@3"
+        "exploration.explore@1",
+        "exploration.explore@2",
+        "exploration.explore@3",
+        "exploration.explore@4",
     ] = "exploration.explore@1"
     scope: ExplorationScope
     limits: ExplorationLimits

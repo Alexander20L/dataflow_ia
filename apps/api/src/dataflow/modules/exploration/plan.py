@@ -23,8 +23,13 @@ from dataflow.modules.exploration.contracts import (
     RawQuery,
 )
 from dataflow.modules.exploration.domain import Catalog, clean_reason, rule_queries
+from dataflow.modules.exploration.statistics import ALPHA, benjamini_hochberg, p_text
 
-RELEVANCE = "relevance-v2"
+# Fase 29 (`relevance-v3`): además de la magnitud, un factor sólo es un hallazgo si la diferencia
+# entre sus grupos es estadísticamente significativa tras corregir por comparaciones múltiples.
+RELEVANCE = "relevance-v3"
+MAX_FACTORS = 6  # factores del objetivo en el plan
+MAX_CONTROLS = 2  # comprobaciones de cada factor interesante
 MIN_ROWS = 30  # por debajo, un resultado no es consistente
 # Fase 28 (`relevance-v2`): en una estimación (promedio, mediana o tasa), un grupo o un mes con
 # menos registros se muestra, pero no cuenta para clasificar: con 1 o 2 registros por grupo se
@@ -33,7 +38,10 @@ MIN_GROUP_ROWS = 10
 
 
 def minimum_for(query: ExploreQuery) -> int:
-    estimate = query.kind == "rate" or query.aggregation in {"mean", "median"}
+    estimate = query.kind in {"rate", "factor", "stratified"} or query.aggregation in {
+        "mean",
+        "median",
+    }
     return MIN_GROUP_ROWS if estimate else 0
 
 
@@ -57,6 +65,8 @@ METHODS = {
     "outliers": "Valores atípicos (regla de Tukey)",
     "rate": "Proporción de una categoría",
     "cohort": "Registros por año",
+    "factor": "El objetivo por grupo, con intervalo y prueba estadística",
+    "stratified": "Comprobación con una variable de control (estandarización indirecta)",
 }
 AGGREGATION_WORDS = {"sum": "suma", "mean": "promedio", "median": "mediana", "count": "conteo"}
 
@@ -91,7 +101,7 @@ def percent(value: Decimal) -> str:
 
 def method_name(query: ExploreQuery) -> str:
     base = METHODS[query.kind]
-    if query.aggregation and query.kind not in {"crosstab"}:
+    if query.aggregation and query.kind not in {"crosstab", "factor", "stratified"}:
         return f"{base} ({AGGREGATION_WORDS[query.aggregation]})"
     return base
 
@@ -159,6 +169,9 @@ def rule_plan(comprehension: Comprehension, catalog: Catalog) -> list[Draft]:
                     [0],
                 )
             )
+    # Fase 29: con objetivo, su valor y sus factores van justo después de la evolución (si hay
+    # periodo, la tendencia se mira primero).
+    drafts += target_drafts(catalog)
     for position, dimension in enumerate(dimensions[:2]):
         if measure:
             drafts.append(
@@ -219,7 +232,8 @@ def rule_plan(comprehension: Comprehension, catalog: Catalog) -> list[Draft]:
             )
         )
         others = [d for d in dimensions if d != target]
-        if others:
+        # Fase 29: con objetivo, su tasa por grupo la dan los factores (con su prueba).
+        if others and not (catalog.target and catalog.target.column == target):
             drafts.append(
                 Draft(
                     RawQuery(kind="rate", target=target, dimensions=[others[0]]),
@@ -256,6 +270,51 @@ def rule_plan(comprehension: Comprehension, catalog: Catalog) -> list[Draft]:
             )
         )
     return unique_drafts(drafts)
+
+
+def target_words(catalog: Catalog) -> str:
+    target = catalog.target
+    assert target
+    if target.kind == "rate":
+        category = f"«{target.value}»" if target.value else "la categoría menos frecuente"
+        return f"la tasa de {category} en {target.column}"
+    return f"el promedio de {target.column}"
+
+
+def target_drafts(catalog: Catalog) -> list[Draft]:
+    """Fase 29 (`explore-v4`): con un objetivo, lo primero es su valor y los factores que lo
+    explican (uno por dimensión o variable derivada, con su prueba estadística)."""
+    target = catalog.target
+    if target is None:
+        return []
+    what = target_words(catalog)
+    drafts: list[Draft] = []
+    if target.kind == "rate":
+        drafts.append(
+            Draft(
+                RawQuery(kind="rate", target=target.column, target_value=target.value),
+                "rule",
+                f"¿Cuál es {what}?",
+                f"{target.column} es el objetivo del análisis: primero, su valor total.",
+                f"Uno de los dos valores de {target.column} es minoritario.",
+                f"El porcentaje de {what.removeprefix('la tasa de ')}.",
+                1,
+            )
+        )
+    for position, dimension in enumerate(catalog.factors()[:MAX_FACTORS]):
+        drafts.append(
+            Draft(
+                RawQuery(kind="factor", dimensions=[dimension]),
+                "rule",
+                f"¿{what[0].upper() + what[1:]} cambia según {dimension}?",
+                f"{dimension} puede ayudar a explicar {what}.",
+                f"{what[0].upper() + what[1:]} no es igual en todos los grupos de {dimension}.",
+                f"{what[0].upper() + what[1:]} de cada {dimension}, con su intervalo de "
+                "confianza y una prueba de si los grupos difieren.",
+                1 if position < 3 else 2,
+            )
+        )
+    return drafts
 
 
 def signature(raw: RawQuery) -> tuple[object, ...]:
@@ -402,11 +461,100 @@ def few(result: ExploreResult) -> str:
     )
 
 
+def significance(result: ExploreResult) -> str | None:
+    """La prueba de un factor en palabras (Fase 29)."""
+    test = result.test
+    if test is None:
+        return None
+    name = "chi-cuadrado" if test.name == "chi_square" else "de Kruskal-Wallis"
+    effect = "V de Cramér" if test.effect_name == "cramers_v" else "épsilon cuadrado"
+    p = float(test.p_value)
+    said = (
+        "la diferencia entre los grupos es estadísticamente significativa"
+        if p < ALPHA
+        else "la diferencia entre los grupos no es estadísticamente significativa: podría "
+        "deberse al azar"
+    )
+    text = (
+        f"Prueba {name} con {test.groups} grupos: {said} ({p_text(p)}; "
+        f"{effect} {test.effect.replace('.', ',')})."
+    )
+    if test.q_value is not None:
+        q = float(test.q_value)
+        text += f" Tras corregir por las demás pruebas de la investigación, q = {q:.3f}".replace(
+            ".", ","
+        ) + (" (sigue siendo significativa)." if q < ALPHA else " (ya no es significativa).")
+    return text
+
+
+def factor_magnitude(query: ExploreQuery, result: ExploreResult) -> tuple[Classification, str]:
+    """Fase 29 (`relevance-v3`): la magnitud entre los grupos con al menos `MIN_GROUP_ROWS`
+    registros (puntos de diferencia en una tasa; diferencia relativa en un promedio) y, encima,
+    la significancia: sin prueba o con p ≥ 0,05 no es un hallazgo."""
+    values = main_values(result, 0, minimum=MIN_GROUP_ROWS)
+    if len(values) < 2:
+        return (
+            "inconclusive",
+            f"Menos de dos grupos tienen al menos {MIN_GROUP_ROWS} registros: no se puede "
+            "comparar." + few(result),
+        )
+    high = max(values, key=lambda item: item[1])
+    low = min(values, key=lambda item: item[1])
+    classification: Classification
+    if query.target:
+        points = high[1] - low[1]
+        text = (
+            f"Va del {low[1]} % ({low[0]}) al {high[1]} % ({high[0]}): {points} puntos de "
+            "diferencia." + few(result)
+        )
+        classification = "relevant" if points >= 10 else "secondary" if points >= 5 else "discarded"
+    else:
+        found = spread(values)
+        if found is None:
+            return "inconclusive", "Los grupos no tienen un promedio comparable." + few(result)
+        gap, top, bottom = found
+        text = (
+            f"Entre el grupo más alto ({top}) y el más bajo ({bottom}) hay una diferencia del "
+            f"{percent(gap)} % respecto al promedio de los grupos." + few(result)
+        )
+        classification = (
+            "relevant"
+            if gap >= Decimal("0.3")
+            else "secondary"
+            if gap >= Decimal("0.1")
+            else "discarded"
+        )
+    test = result.test
+    if classification in {"relevant", "secondary"}:
+        if test is None:
+            return "inconclusive", text + " No se pudo hacer la prueba estadística."
+        if float(test.p_value) >= ALPHA:
+            return (
+                "inconclusive",
+                text + f" La diferencia podría deberse al azar ({p_text(float(test.p_value))}).",
+            )
+    elif classification == "discarded":
+        text += " Los grupos tienen valores parecidos."
+    return classification, text
+
+
 def magnitude(query: ExploreQuery, result: ExploreResult) -> tuple[Classification, str]:
     """Clase por la magnitud del efecto y el texto que la justifica (cifras del motor). Desde la
     Fase 28 (`relevance-v2`) los grupos y meses con menos de `MIN_GROUP_ROWS` registros no
     cuentan: si no quedan suficientes, el resultado no es concluyente."""
     kind = query.kind
+    if kind == "factor":
+        return factor_magnitude(query, result)
+    if kind == "stratified":
+        check = result.control
+        if check is None:
+            return "inconclusive", "No se pudo comprobar con la variable de control."
+        verdicts: dict[str, Classification] = {
+            "holds": "relevant",
+            "attenuated": "secondary",
+            "explained": "secondary",
+        }
+        return verdicts[check.verdict], check.text
     if kind == "cohort":
         values = main_values(result)
         if not values:
@@ -598,10 +746,21 @@ def evaluate(
                 assessment=f"{result.total_groups} grupos o puntos con {considered} registros.",
             )
         )
+    found = significance(result)
+    if found:
+        criteria.append(Criterion(name="significance", assessment=found))
     criteria.append(Criterion(name="evidence", assessment=result.method))
     if result.truncated:
         limitations.append(f"Se guardan {len(result.rows)} de {result.total_groups} grupos.")
-    if query.kind in {"aggregate", "top", "ratio", "crosstab", "correlation_by_group"}:
+    if query.kind in {
+        "aggregate",
+        "top",
+        "ratio",
+        "crosstab",
+        "correlation_by_group",
+        "factor",
+        "stratified",
+    }:
         limitations.append("Una diferencia entre grupos o una correlación no es una causa.")
     return classification, criteria, limitations
 
@@ -624,6 +783,8 @@ def rule_children(
     dimensions = dimensions_for(catalog)
     drafts: list[Draft] = []
     measure, aggregation = query.measure, query.aggregation
+    if query.kind == "factor" and catalog.target is not None:
+        return control_drafts(query, catalog)
     if query.kind in {"aggregate", "top"} and len(query.dimensions) == 1 and leader:
         dimension = query.dimensions[0]
         if measure and aggregation in {"sum", "mean", "median"}:
@@ -771,6 +932,84 @@ def rule_children(
             )
             break
     return drafts
+
+
+def control_drafts(query: ExploreQuery, catalog: Catalog) -> list[Draft]:
+    """Fase 29: un factor interesante se comprueba con otras variables (primero las derivadas,
+    como la antigüedad, que suelen confundir; después las demás dimensiones)."""
+    factor = query.dimensions[0]
+    what = target_words(catalog)
+    candidates = [d for d in catalog.factors() if d != factor]
+    candidates.sort(key=lambda d: (d not in catalog.derived, catalog.factors().index(d)))
+    return [
+        Draft(
+            RawQuery(kind="stratified", dimensions=[factor, control]),
+            "rule",
+            f"¿La diferencia de {what} entre los grupos de {factor} se mantiene al tener en "
+            f"cuenta {control}?",
+            f"Los grupos de {factor} pueden diferir en {control}, y eso explicaría parte de la "
+            "diferencia (variable de confusión).",
+            f"La diferencia entre los grupos de {factor} se mantiene al tener en cuenta {control}.",
+            f"Para cada {factor}, lo observado frente a lo esperado sólo por su composición en "
+            f"{control}.",
+            2,
+        )
+        for control in candidates[:MAX_CONTROLS]
+    ]
+
+
+def adjust(
+    nodes: Sequence[InvestigationNode], results: dict[str, ExploreResult]
+) -> list[InvestigationNode]:
+    """Fase 29 (`relevance-v3`): corrige los valores p de todas las pruebas de la investigación
+    (Benjamini-Hochberg) y rebaja a «no concluyente» lo que deja de ser significativo. Escribe el
+    valor q en cada resultado. Se puede repetir (al reanudar) sin duplicar textos."""
+    tested = [
+        n
+        for n in nodes
+        if n.status == "computed" and n.key in results and results[n.key].test is not None
+    ]
+    if not tested:
+        return list(nodes)
+    values = []
+    for item in tested:
+        test = results[item.key or ""].test
+        assert test is not None
+        values.append(float(test.p_value))
+    qs = benjamini_hochberg(values)
+    updated = {n.id: n for n in nodes}
+    for item, q in zip(tested, qs, strict=True):
+        result = results[item.key or ""]
+        assert result.test is not None
+        result = result.model_copy(
+            update={"test": result.test.model_copy(update={"q_value": format(q, ".6f")})}
+        )
+        results[item.key or ""] = result
+        criteria = [c for c in item.criteria if c.name != "significance"]
+        found = significance(result)
+        if found:
+            criteria.append(Criterion(name="significance", assessment=found))
+        update: dict[str, object] = {"criteria": criteria}
+        if q >= ALPHA and item.classification in {"relevant", "secondary"}:
+            update["classification"] = "inconclusive"
+        updated[item.id] = item.model_copy(update=update)
+    # Una comprobación sólo cuenta como hallazgo mientras su factor lo sea.
+    for item in list(updated.values()):
+        parent = updated.get(item.parent or "")
+        if (
+            item.query.get("kind") == "stratified"
+            and parent is not None
+            and parent.classification not in {"relevant", "secondary"}
+            and item.classification in {"relevant", "secondary"}
+        ):
+            updated[item.id] = item.model_copy(
+                update={
+                    "classification": "descriptive",
+                    "decision_reason": "Comprobación de un factor que no resultó significativo: "
+                    "se muestra como descripción.",
+                }
+            )
+    return [updated[n.id] for n in nodes]
 
 
 def proposals(nodes: Sequence[InvestigationNode]) -> list[ExploreProposal]:
