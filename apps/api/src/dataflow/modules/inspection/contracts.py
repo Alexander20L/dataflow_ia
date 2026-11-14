@@ -16,8 +16,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from dataflow.modules.ingestion.contracts import ConvertedColumn, KeptColumn, SheetFacts
 
-INSPECTION_RULES = "dataset-inspection-v2"
-RulesVersion = Literal["dataset-inspection-v1", "dataset-inspection-v2"]
+INSPECTION_RULES = "dataset-inspection-v3"
+RulesVersion = Literal["dataset-inspection-v1", "dataset-inspection-v2", "dataset-inspection-v3"]
 
 # Tipo técnico: cómo están escritos los valores (lo que el motor puede leer sin perder nada).
 TechnicalType = Literal["string", "integer", "decimal", "boolean", "date", "datetime", "empty"]
@@ -100,7 +100,8 @@ class NumericStats(BaseModel):
 class ValueDomain(BaseModel):
     """Dominio evidente de una columna numérica (Fase 23) y cuántos valores lo incumplen."""
 
-    kind: Literal["percent", "non_negative"]
+    # Fase 28: «rating» = escala de valoración (1–5, 0–5, 1–10 o 0–10) por nombre y valores.
+    kind: Literal["percent", "non_negative", "rating"]
     lower: str
     upper: str | None
     outside: int = Field(ge=0)
@@ -173,6 +174,9 @@ class ColumnInspection(BaseModel):
     domain: ValueDomain | None = None
     ordinal_candidate: OrdinalHint | None = None
     personal: PersonalHint | None = None
+    # Fase 28 (`date-role-v1`): una fecha registra eventos o describe al registro.
+    date_role: Literal["events", "attribute"] | None = None
+    date_role_reason: str | None = None
 
 
 class Finding(BaseModel):
@@ -187,7 +191,12 @@ class Finding(BaseModel):
     sample_rows: list[int]
     description: str
     severity: Severity
-    source: Literal["dataset-inspection-v1", "dataset-inspection-v2", "automatic-quality-v1"]
+    source: Literal[
+        "dataset-inspection-v1",
+        "dataset-inspection-v2",
+        "dataset-inspection-v3",
+        "automatic-quality-v1",
+    ]
 
 
 class PeriodCandidate(BaseModel):
@@ -250,7 +259,7 @@ class InspectionScope(BaseModel):
     version_id: UUID
     table_sha256: str
     profile_sha256: str
-    rules: RulesVersion = "dataset-inspection-v2"
+    rules: RulesVersion = "dataset-inspection-v3"
     computed_at: datetime
 
 

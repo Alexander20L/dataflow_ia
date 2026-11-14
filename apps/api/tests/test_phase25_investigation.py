@@ -363,7 +363,7 @@ def test_upload_is_investigated_with_plan_tree_and_evidence(
     run_all(db, objects)
     view = client.get(f"/api/v1/versions/{version['id']}/exploration").json()
     result = view["exploration"]
-    assert result["rules_version"] == "investigation-v2" and result["stopped"] in {
+    assert result["rules_version"] == "investigation-v3" and result["stopped"] in {
         "completed",
         "max_nodes",
     }

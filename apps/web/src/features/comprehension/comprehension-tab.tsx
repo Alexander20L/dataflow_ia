@@ -239,6 +239,23 @@ function Summary({ result }: { result: Comprehension }) {
           </p>
         </section>
       )}
+      {(result.dated_attributes ?? []).length > 0 && (
+        <section aria-label="Fechas que describen al registro">
+          <h3>Fechas que describen al registro</h3>
+          <ul className="dataset-notes">
+            {(result.dated_attributes ?? []).map((dated) => (
+              <li key={dated.column}>
+                <strong>{dated.column}</strong> (de {dated.first} a {dated.last}
+                ): {dated.reason} Registros por año:{" "}
+                {dated.per_year
+                  .map(([year, count]) => `${year}: ${count}`)
+                  .join(", ")}
+                .
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       {(result.questions ?? []).length > 0 && (
         <section aria-label="Preguntas de negocio sugeridas">
           <h3>Preguntas de negocio sugeridas</h3>

@@ -183,7 +183,7 @@ def test_inspection_v2_finds_ranges_outliers_repeats_scales_and_personal_data(
     run_all(db, objects)
     view = get(client, f"/api/v1/versions/{version}/inspection")
     inspection = view["inspection"]
-    assert inspection["scope"]["rules"] == "dataset-inspection-v2"
+    assert inspection["scope"]["rules"] == "dataset-inspection-v3"
     found = {c["name"]: c for c in inspection["columns"]}
     findings = {(f["kind"], tuple(f["columns"])): f for f in inspection["findings"]}
     # Porcentaje fuera de 0–100 (fila 7) y horas negativas (fila 11): avisos de validez.
@@ -232,7 +232,7 @@ def test_corrections_recalculate_the_analysis_and_declared_nulls_create_a_derive
     view = get(client, f"/api/v1/versions/{version}/inspection")
     ids = {c["name"]: c["id"] for c in view["inspection"]["columns"]}
     first = get(client, f"/api/v1/versions/{version}/comprehension")["comprehension"]
-    assert first["rules_version"] == "business-comprehension-v3"
+    assert first["rules_version"] == "business-comprehension-v4"
     assert first["personal_columns"] == ["nombre"] and first["corrected_columns"] == []
     scale = {s["column"]: s for s in first["scales"]}
     assert scale["ciclo"]["scale"] == "ratio" and scale["nombre"]["scale"] == "text"

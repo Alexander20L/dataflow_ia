@@ -84,7 +84,7 @@ from dataflow.platform.canonical import digest
 from dataflow.platform.errors import ApplicationError
 
 STEP = "exploration.explore"
-VERSION = 2  # Fase 25: las cargas nuevas se investigan con `investigation-v2`
+VERSION = 3  # Fase 28: las cargas nuevas se investigan con `investigation-v3` (explore-v3)
 Trigger = Literal["load", "feedback", "restart", "resume"]
 
 
@@ -728,8 +728,8 @@ class InvestigationTreeStep:
             if item.status == "computed" and item.key in outcome.results
         ]
         exploration = Exploration(
-            rules_version="investigation-v2",
-            operation="exploration.explore@2",
+            rules_version="investigation-v3" if step.version >= 3 else "investigation-v2",
+            operation="exploration.explore@3" if step.version >= 3 else "exploration.explore@2",
             scope=ExplorationScope(
                 execution_id=lease.execution_id,
                 version_id=lease.version_id,
@@ -747,7 +747,8 @@ class InvestigationTreeStep:
                 "Las cifras se calculan sobre todas las filas con valor; la IA sólo vio hasta "
                 f"{limits.ai_rows} filas de cada resultado para interpretarlo y no aporta "
                 "cifras.",
-                "La clasificación es de reglas (relevance-v1); el juicio de la IA sólo puede "
+                "La clasificación es de reglas (relevance-v2: cada grupo o mes con al menos "
+                "10 registros); el juicio de la IA sólo puede "
                 "rebajarla.",
                 *limitations,
                 *outcome.limitations,

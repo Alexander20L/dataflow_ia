@@ -61,10 +61,16 @@ from dataflow.modules.inspection.domain import (
     percent,
     period_key,
     personal_hint,
+    rating_scale,
     technical_type,
 )
 from dataflow.modules.quality.contracts import QualityReport
-from dataflow.modules.understanding.contracts import AnalyticalColumn, DatasetProfile
+from dataflow.modules.understanding.contracts import (
+    AnalyticalColumn,
+    AnalyticalInterpretation,
+    DatasetProfile,
+)
+from dataflow.platform.timing import DateRole, date_role, explain
 
 TOP = 10
 EXAMPLES = 5
@@ -304,7 +310,7 @@ def finding(
     severity: Severity,
     examples: list[str] | None = None,
     sample: list[int] | None = None,
-    source: Literal["dataset-inspection-v2", "automatic-quality-v1"] = "dataset-inspection-v2",
+    source: Literal["dataset-inspection-v3", "automatic-quality-v1"] = "dataset-inspection-v3",
 ) -> Finding:
     return Finding(
         id=f"{kind}:{'|'.join(columns)}"[:300],
@@ -414,6 +420,24 @@ def inspect_column(
     value_domain = None
     outside = None
     rule = domain_kind(name) if numbers is not None else None
+    if rule is not None and rule[0] == "rating" and numbers is not None:
+        low = numbers.min()
+        high = numbers.max()
+        scale = (
+            rating_scale(float(cast(float, low)), float(cast(float, high)))
+            if low is not None and high is not None
+            else None
+        )
+        if scale is not None:
+            value_domain = ValueDomain(
+                kind="rating",
+                lower=str(scale[0]),
+                upper=str(scale[1]),
+                outside=0,
+                reason=f"{rule[1]}: escala de {scale[0]} a {scale[1]}, la más estrecha que "
+                "contiene todos los valores. Se promedia; no se suma.",
+            )
+        rule = None
     if rule is not None and numbers is not None:
         kind, why = rule
         outside = (numbers < 0) | (numbers > 100) if kind == "percent" else numbers < 0
@@ -703,6 +727,36 @@ def inspect_columns(
     ]
 
 
+def date_role_of(
+    frame: pl.DataFrame, analysis: AnalyticalInterpretation | None
+) -> tuple[DateRole | None, str | None]:
+    """Fase 28: el papel de la fecha del eje temporal (la misma regla que la comprensión)."""
+    if analysis is None or analysis.time is None:
+        return None, None
+    axis = analysis.time
+    if any(name not in frame.columns for name in axis.columns):
+        return None, None
+    if axis.kind == "date":
+        months = frame.get_column(axis.columns[0]).cast(pl.String).str.slice(0, 7)
+    else:
+        year = frame.get_column(axis.columns[0]).cast(pl.String)
+        month = frame.get_column(axis.columns[1]).cast(pl.String).cast(pl.Int64, strict=False)
+        months = (
+            pl.DataFrame({"y": year, "m": month})
+            .select(
+                pl.when(pl.col("m").is_between(1, 12))
+                .then(pl.col("y") + "-" + pl.col("m").cast(pl.String).str.zfill(2))
+                .alias("p")
+            )
+            .to_series()
+        )
+    counts = [int(n) for _, n in months.drop_nulls().value_counts().iter_rows()]
+    # La clave de una entidad no incluye el periodo (una fila por mes es una serie temporal).
+    unique = any(key.unique and not set(key.columns) & set(axis.columns) for key in analysis.keys)
+    role = date_role(unique, counts)
+    return role, explain(role, axis.columns[0], counts)
+
+
 def classify_table(
     content: bytes, ids: list[UUID], profile: DatasetProfile
 ) -> list[ColumnInspection]:
@@ -778,8 +832,21 @@ def inspect(
     # El atípico extremo de la calidad automática (AQ-007, 3·IQR) ya está en el aviso de
     # atípicos de la inspección de esa columna (1,5·IQR y 3·IQR): no se repite.
     covered = {c.name for c in columns if c.numeric is not None and c.numeric.outliers is not None}
+    # Fase 28 (`date-role-v1`): si la fecha describe a cada registro, los avisos de meses sin
+    # registros, incompletos o no reconocidos no tienen sentido (no es una línea de tiempo).
+    role, why = date_role_of(frame, analysis)
+    if role is not None and analysis is not None and analysis.time is not None:
+        columns = [
+            c.model_copy(update={"date_role": role, "date_role_reason": why})
+            if c.name in analysis.time.columns
+            else c
+            for c in columns
+        ]
+    temporal_checks = {"AQ-003", "AQ-004", "AQ-005"}
     for item in quality.analytical.findings if quality and quality.analytical else []:
         if item.check == "AQ-007" and set(item.columns) <= covered:
+            continue
+        if role == "attribute" and item.check in temporal_checks:
             continue
         findings.append(
             finding(
@@ -804,7 +871,7 @@ def inspect(
     findings.sort(key=lambda f: (order[f.severity], f.dimension, f.id))
 
     periods = []
-    if analysis and analysis.time and analysis.time.kind == "year_month":
+    if analysis and analysis.time and analysis.time.kind == "year_month" and role != "attribute":
         axis = analysis.time
         periods.append(
             PeriodCandidate(

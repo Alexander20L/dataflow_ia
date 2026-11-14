@@ -155,6 +155,18 @@ class DimensionInfo(ComprehensionModel):
     reason: str
 
 
+class DatedAttribute(ComprehensionModel):
+    """Fase 28 (`date-role-v1`): una fecha que describe a cada registro (p. ej. la fecha de
+    ingreso de un empleado). No es una línea de tiempo: no hay evolución mensual, sólo registros
+    por año."""
+
+    column: str
+    first: str | None
+    last: str | None
+    per_year: list[tuple[str, int]]
+    reason: str
+
+
 class Period(ComprehensionModel):
     kind: Literal["date", "year_month"]
     columns: list[str]
@@ -176,8 +188,11 @@ class Comprehension(ComprehensionModel):
     """Resultado del trabajo `comprehension` (operación `comprehension.understand@1`)."""
 
     rules_version: Literal[
-        "business-comprehension-v1", "business-comprehension-v2", "business-comprehension-v3"
-    ] = "business-comprehension-v3"
+        "business-comprehension-v1",
+        "business-comprehension-v2",
+        "business-comprehension-v3",
+        "business-comprehension-v4",
+    ] = "business-comprehension-v4"
     scope: ComprehensionScope
     ai_state: Literal["ready", "unavailable", "failed"]
     ai_reason: str | None = None
@@ -202,6 +217,8 @@ class Comprehension(ComprehensionModel):
     measures: list[MeasureInfo] = Field(default_factory=list)
     dimensions: list[DimensionInfo] = Field(default_factory=list)
     period: Period | None = None
+    # Fase 28 (`business-comprehension-v4`): fechas que describen al registro, no eventos.
+    dated_attributes: list[DatedAttribute] = Field(default_factory=list)
 
 
 # --- IA: contexto y respuesta ------------------------------------------------------------------

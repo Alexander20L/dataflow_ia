@@ -33,7 +33,7 @@ logger = logging.getLogger("dataflow.http")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 app = FastAPI(
     title="DataFlow AI API",
-    version="0.35.0",
+    version="0.36.0",
     description="DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     responses={
         status: {"model": ErrorResponse}

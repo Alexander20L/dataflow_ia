@@ -575,6 +575,10 @@ def make_runner(
                 "exploration.explore@2": InvestigationTreeStep(
                     objects, make_copilot(db, provider, ai_config), SQLInvestigationControls(db)
                 ),
+                # Fase 28: explore-v3 (tasas y cohortes) y relevance-v2.
+                "exploration.explore@3": InvestigationTreeStep(
+                    objects, make_copilot(db, provider, ai_config), SQLInvestigationControls(db)
+                ),
                 "inspection.inspect@1": InspectionStep(
                     objects, engine if isinstance(engine, IsolatedAnalyzer) else None
                 ),

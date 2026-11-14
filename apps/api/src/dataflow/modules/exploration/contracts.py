@@ -25,8 +25,13 @@ QueryKind = Literal[
     "outliers",
     "distribution",
     "scatter",
+    "rate",
+    "cohort",
 ]
 TEMPORAL_KINDS = frozenset({"evolution", "period_change"})
+# Fase 28 (`explore-v3`): tasa de una columna de dos valores y registros por año de una fecha que
+# describe al registro. Sólo los proponen las reglas (no se ofrecen a la IA).
+RULE_KINDS = frozenset({"rate", "cohort"})
 # Fase 26 (`dashboard-design-v2`): sólo los calcula el dashboard (histograma y dispersión); la
 # investigación no los propone ni los acepta.
 DASHBOARD_KINDS = frozenset({"distribution", "scatter"})
@@ -39,6 +44,9 @@ OPERATION = "exploration.explore@1"
 # Fase 25 (ADR-043): investigación con plan, árbol, evidencias, clasificación y control.
 RULES_V2 = "investigation-v2"
 OPERATION_V2 = "exploration.explore@2"
+# Fase 28 (ADR-046): `explore-v3` (tasas y cohortes) y `relevance-v2` (tamaño mínimo por grupo).
+RULES_V3 = "investigation-v3"
+OPERATION_V3 = "exploration.explore@3"
 MAX_GROUPS = 500  # filas de resultado que se guardan
 AI_ROWS = 100  # filas de cada resultado que ve la IA
 
@@ -59,6 +67,9 @@ class ExploreQuery(ExplorationModel):
     filter_value: str | None = None
     # top: primeros grupos (hasta 20); period_change: meses de cada ventana (hasta 12).
     limit: int | None = Field(default=None, ge=1, le=20)
+    # Fase 28: rate = columna de dos valores y la categoría contada; cohort = la fecha.
+    target: str | None = None
+    target_value: str | None = None
 
     @property
     def key(self) -> str:
@@ -71,6 +82,9 @@ class ExploreQuery(ExplorationModel):
             f"{self.filter_column}={self.filter_value}" if self.filter_column else "",
             str(self.limit or ""),
         ]
+        # Las claves anteriores no cambian: sólo las consultas con objetivo lo añaden.
+        if self.target:
+            parts.append(f"{self.target}={self.target_value or ''}")
         return "|".join(parts)
 
 
@@ -185,8 +199,10 @@ class InvestigationConsumption(ExplorationModel):
 
 
 class Exploration(ExplorationModel):
-    rules_version: Literal["explore-v1", "investigation-v2"] = "explore-v1"
-    operation: Literal["exploration.explore@1", "exploration.explore@2"] = "exploration.explore@1"
+    rules_version: Literal["explore-v1", "investigation-v2", "investigation-v3"] = "explore-v1"
+    operation: Literal[
+        "exploration.explore@1", "exploration.explore@2", "exploration.explore@3"
+    ] = "exploration.explore@1"
     scope: ExplorationScope
     limits: ExplorationLimits
     ai_state: Literal["ready", "unavailable", "failed"]
@@ -268,6 +284,8 @@ class RawQuery(ExplorationModel):
     filter_column: str | None = None
     filter_value: str | None = None
     limit: int | None = None
+    target: str | None = None
+    target_value: str | None = None
     motive: str = ""
     # Fase 25: la propuesta como investigación del plan.
     question: str = ""

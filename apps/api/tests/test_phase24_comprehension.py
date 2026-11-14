@@ -221,7 +221,7 @@ def test_grain_formulas_entities_and_measures_on_known_data(
     version = upload(client, headers, pid, students(), name="notas.csv").json()["id"]
     run_all(db, objects)
     found = get(client, f"/api/v1/versions/{version}/comprehension")["comprehension"]
-    assert found["rules_version"] == "business-comprehension-v3"
+    assert found["rules_version"] == "business-comprehension-v4"
     assert found["grain"]["entity"] == "estudiante"
     assert found["grain"]["key"] == ["estudiante_id"]
     formulas = {f["column"]: f for f in found["formulas"]}

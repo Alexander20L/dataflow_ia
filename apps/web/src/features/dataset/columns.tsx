@@ -274,6 +274,14 @@ function ColumnDetail({
             ]}
           />
           <p className="muted">{column.temporal.method}</p>
+          {column.date_role_reason && (
+            <p className="muted" data-date-role={column.date_role ?? undefined}>
+              {column.date_role === "attribute"
+                ? "Fecha que describe al registro: "
+                : "Fecha de eventos: "}
+              {column.date_role_reason}
+            </p>
+          )}
         </section>
       )}
       {column.categorical && (

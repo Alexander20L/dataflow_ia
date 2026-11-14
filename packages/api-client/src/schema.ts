@@ -1842,6 +1842,10 @@ export interface components {
             categorical?: components["schemas"]["CategoricalStats"] | null;
             /** Count */
             count: number;
+            /** Date Role */
+            date_role?: ("events" | "attribute") | null;
+            /** Date Role Reason */
+            date_role_reason?: string | null;
             /**
              * Dichotomous
              * @default false
@@ -2039,6 +2043,8 @@ export interface components {
             }[];
             /** Corrected Columns */
             corrected_columns?: string[];
+            /** Dated Attributes */
+            dated_attributes?: components["schemas"]["DatedAttribute"][];
             /** Dimensions */
             dimensions?: components["schemas"]["DimensionInfo"][];
             /** Discarded */
@@ -2067,10 +2073,10 @@ export interface components {
             relationships: components["schemas"]["Relationship"][];
             /**
              * Rules Version
-             * @default business-comprehension-v3
+             * @default business-comprehension-v4
              * @enum {string}
              */
-            rules_version: "business-comprehension-v1" | "business-comprehension-v2" | "business-comprehension-v3";
+            rules_version: "business-comprehension-v1" | "business-comprehension-v2" | "business-comprehension-v3" | "business-comprehension-v4";
             /** Scales */
             scales: components["schemas"]["ColumnScale"][];
             scope: components["schemas"]["ComprehensionScope"];
@@ -2438,6 +2444,27 @@ export interface components {
             separator: string;
             /** Source Sha256 */
             source_sha256: string;
+        };
+        /**
+         * DatedAttribute
+         * @description Fase 28 (`date-role-v1`): una fecha que describe a cada registro (p. ej. la fecha de
+         *     ingreso de un empleado). No es una línea de tiempo: no hay evolución mensual, sólo registros
+         *     por año.
+         */
+        DatedAttribute: {
+            /** Column */
+            column: string;
+            /** First */
+            first: string | null;
+            /** Last */
+            last: string | null;
+            /** Per Year */
+            per_year: [
+                string,
+                number
+            ][];
+            /** Reason */
+            reason: string;
         };
         /**
          * DesignDecision
@@ -2845,7 +2872,7 @@ export interface components {
              * @default exploration.explore@1
              * @enum {string}
              */
-            operation: "exploration.explore@1" | "exploration.explore@2";
+            operation: "exploration.explore@1" | "exploration.explore@2" | "exploration.explore@3";
             /** Proposals */
             proposals: components["schemas"]["ExploreProposal"][];
             /** Results */
@@ -2857,7 +2884,7 @@ export interface components {
              * @default explore-v1
              * @enum {string}
              */
-            rules_version: "explore-v1" | "investigation-v2";
+            rules_version: "explore-v1" | "investigation-v2" | "investigation-v3";
             scope: components["schemas"]["ExplorationScope"];
             /** Stopped */
             stopped?: ("completed" | "max_nodes" | "max_seconds" | "paused" | "cancelled") | null;
@@ -2998,13 +3025,17 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "aggregate" | "crosstab" | "ratio" | "top" | "correlation_by_group" | "evolution" | "period_change" | "outliers" | "distribution" | "scatter";
+            kind: "aggregate" | "crosstab" | "ratio" | "top" | "correlation_by_group" | "evolution" | "period_change" | "outliers" | "distribution" | "scatter" | "rate" | "cohort";
             /** Limit */
             limit?: number | null;
             /** Measure */
             measure?: string | null;
             /** Measure B */
             measure_b?: string | null;
+            /** Target */
+            target?: string | null;
+            /** Target Value */
+            target_value?: string | null;
         };
         /** ExploreResult */
         ExploreResult: {
@@ -3193,7 +3224,7 @@ export interface components {
              * Source
              * @enum {string}
              */
-            source: "dataset-inspection-v1" | "dataset-inspection-v2" | "automatic-quality-v1";
+            source: "dataset-inspection-v1" | "dataset-inspection-v2" | "dataset-inspection-v3" | "automatic-quality-v1";
             /** Title */
             title: string;
         };
@@ -3455,10 +3486,10 @@ export interface components {
             profile_sha256: string;
             /**
              * Rules
-             * @default dataset-inspection-v2
+             * @default dataset-inspection-v3
              * @enum {string}
              */
-            rules: "dataset-inspection-v1" | "dataset-inspection-v2";
+            rules: "dataset-inspection-v1" | "dataset-inspection-v2" | "dataset-inspection-v3";
             /** Table Sha256 */
             table_sha256: string;
             /**
@@ -5614,7 +5645,7 @@ export interface components {
              * Kind
              * @enum {string}
              */
-            kind: "percent" | "non_negative";
+            kind: "percent" | "non_negative" | "rating";
             /** Lower */
             lower: string;
             /** Outside */

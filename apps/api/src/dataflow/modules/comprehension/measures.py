@@ -382,3 +382,35 @@ def distinct_counts(content: bytes, names: Sequence[str]) -> dict[str, int]:
         return {}
     data, alias = frame(content, names)
     return {name: int(data.get_column(alias[name]).drop_nulls().n_unique()) for name in names}
+
+
+def month_counts(content: bytes, kind: str, names: Sequence[str]) -> dict[str, int]:
+    """Fase 28: registros de cada mes «AAAA-MM» con al menos uno, de una fecha (`date`) o de un
+    año y un mes (`year_month`, sólo meses numéricos o con nombre ya reconocidos como 1 a 12)."""
+    if not names:
+        return {}
+    data, alias = frame(content, names)
+    if kind == "date":
+        months = data.get_column(alias[names[0]]).cast(pl.String).str.slice(0, 7)
+    else:
+        year = data.get_column(alias[names[0]]).cast(pl.String)
+        month = data.get_column(alias[names[1]]).cast(pl.String).cast(pl.Int64, strict=False)
+        months = (
+            pl.DataFrame({"y": year, "m": month})
+            .select(
+                pl.when(pl.col("m").is_between(1, 12))
+                .then(pl.col("y") + "-" + pl.col("m").cast(pl.String).str.zfill(2))
+                .alias("p")
+            )
+            .to_series()
+        )
+    counts = months.drop_nulls().value_counts(sort=False, name="n")
+    return {str(month): int(n) for month, n in counts.iter_rows()}
+
+
+def per_year(months: dict[str, int]) -> list[tuple[str, int]]:
+    """Registros por año a partir de los registros por mes, en orden."""
+    years: dict[str, int] = {}
+    for month, count in months.items():
+        years[month[:4]] = years.get(month[:4], 0) + count
+    return sorted(years.items())
