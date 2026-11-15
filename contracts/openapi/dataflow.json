@@ -5205,7 +5205,7 @@
             "type": "integer"
           },
           "max_ai_calls": {
-            "default": 2,
+            "default": 3,
             "maximum": 4.0,
             "minimum": 0.0,
             "title": "Max Ai Calls",
@@ -5226,7 +5226,7 @@
             "type": "integer"
           },
           "max_cost_usd": {
-            "default": "0.05",
+            "default": "0.20",
             "title": "Max Cost Usd",
             "type": "string"
           },
@@ -5252,7 +5252,7 @@
             "type": "integer"
           },
           "max_seconds": {
-            "default": 60,
+            "default": 95,
             "maximum": 600.0,
             "minimum": 5.0,
             "title": "Max Seconds",
@@ -13473,7 +13473,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.37.0"
+    "version": "0.37.1"
   },
   "openapi": "3.1.0",
   "paths": {

@@ -13,6 +13,7 @@ from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.ai import ai_job_config
 from dataflow.bootstrap.loads import same_load
 from dataflow.integrations.ai import AIProvider
 from dataflow.modules.analytics.contracts import (
@@ -131,7 +132,7 @@ def enqueue_investigation(
             }
         ],
         # Una llamada facturable no se reintenta: un solo intento.
-        "config": config.model_copy(update={"max_attempts": 1}).model_dump(),
+        "config": ai_job_config(config).model_copy(update={"max_attempts": 1}).model_dump(),
     }
     plan = PlanRevision(
         uuid4(), uuid4(), 1, content, digest("plan", content), lease.owner_id, datetime.now(UTC)

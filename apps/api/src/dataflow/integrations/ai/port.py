@@ -39,6 +39,9 @@ class AIRequest[OutputT: BaseModel]:
     output_schema: type[OutputT]
     max_output_tokens: int
     context: dict[str, Any] = field(default_factory=dict)
+    # Fase 29.1: lo que le queda al trabajo que llama. El proveedor espera como mucho el menor
+    # entre esto y su propio límite; None = su límite.
+    timeout_seconds: float | None = None
 
 
 @dataclass(frozen=True)

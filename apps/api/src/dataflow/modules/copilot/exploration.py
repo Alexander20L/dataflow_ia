@@ -111,7 +111,10 @@ def judge_context(
 
 
 def propose_queries(
-    provider: AIProvider, context: dict[str, Any], max_output_tokens: int
+    provider: AIProvider,
+    context: dict[str, Any],
+    max_output_tokens: int,
+    timeout_seconds: float | None = None,
 ) -> tuple[ConsultasIA | None, OverviewCall | None, str | None]:
     output, metadata, error = call(
         provider,
@@ -122,6 +125,7 @@ def propose_queries(
         "Propón un plan de investigación con consultas del catálogo.",
         ConsultasIA,
         max_output_tokens,
+        timeout_seconds,
     )
     if metadata is None:
         return None, None, error
@@ -131,7 +135,10 @@ def propose_queries(
 
 
 def judge_results(
-    provider: AIProvider, context: dict[str, Any], max_output_tokens: int
+    provider: AIProvider,
+    context: dict[str, Any],
+    max_output_tokens: int,
+    timeout_seconds: float | None = None,
 ) -> tuple[JuiciosIA | None, OverviewCall | None, str | None]:
     output, metadata, error = call(
         provider,
@@ -142,6 +149,7 @@ def judge_results(
         "Interpreta estos resultados y di si conviene profundizar.",
         JuiciosIA,
         max_output_tokens,
+        timeout_seconds,
     )
     if metadata is None:
         return None, None, error

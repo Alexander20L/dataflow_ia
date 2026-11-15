@@ -10,6 +10,7 @@ cancelar, reanudar y volver a investigar). El artefacto conserva el formato de `
 """
 
 import time
+from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime
 from decimal import Decimal
 from typing import Any, Literal
@@ -17,10 +18,11 @@ from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.ai import ai_job_config
 from dataflow.modules.comprehension.contracts import Comprehension
 from dataflow.modules.comprehension.domain import classify
 from dataflow.modules.copilot.application import CopilotService
-from dataflow.modules.copilot.contracts import CallRecord, ConsultaIA
+from dataflow.modules.copilot.contracts import CallRecord, ConsultaIA, JuiciosIA
 from dataflow.modules.copilot.exploration import (
     JUDGE_ID,
     JUDGE_VERSION,
@@ -96,6 +98,11 @@ RULES_BY_VERSION = {
     4: "investigation-v4",
 }
 VERSION = 4  # Fase 29: las cargas nuevas se investigan con `investigation-v4` (explore-v4)
+# Fase 29.1: margen entre la respuesta de la IA y el plazo, y el mínimo que vale la pena esperar.
+AI_MARGIN_SECONDS = 3
+MIN_AI_SECONDS = 10
+# Fase 29.1: resultados por cada parte del juicio de la IA (las partes van en paralelo).
+JUDGE_BATCH = 10
 Trigger = Literal["load", "feedback", "restart", "resume"]
 
 
@@ -161,7 +168,7 @@ def enqueue_exploration(
             }
         ],
         # Llamadas facturables: un solo intento.
-        "config": config.model_copy(update={"max_attempts": 1}).model_dump(),
+        "config": ai_job_config(config).model_copy(update={"max_attempts": 1}).model_dump(),
     }
     plan = PlanRevision(
         uuid4(), uuid4(), 1, content, digest("plan", content), lease.owner_id, datetime.now(UTC)
@@ -587,6 +594,12 @@ class InvestigationTreeStep:
         limits = limits.model_copy(
             update={"max_seconds": max(1, min(limits.max_seconds, int(timeout) - 5))}
         )
+        ends = started + limits.max_seconds
+
+        def ai_time() -> float:
+            """Lo que puede esperar una llamada a la IA sin pasarse del plazo (Fase 29.1)."""
+            return ends - time.monotonic() - AI_MARGIN_SECONDS
+
         comprehension = with_verdicts(
             Comprehension.model_validate_json(self.objects.read(source.content)),
             {str(k): v for k, v in given.get("verdicts", [])},
@@ -654,6 +667,7 @@ class InvestigationTreeStep:
                         target_words(catalog) if catalog.target else None,
                     ),
                     tokens,
+                    ai_time(),
                 )
                 if call is not None:
                     spend(call, "proposal")
@@ -677,7 +691,9 @@ class InvestigationTreeStep:
         judge = None
         if ai_state == "ready" and provider is not None:
 
-            def judge(items: list[tuple[InvestigationNode, ExploreResult]]) -> JudgeReply:
+            def judge_part(
+                items: list[tuple[InvestigationNode, ExploreResult]], seconds: float
+            ) -> tuple[JuiciosIA | None, Any]:
                 verdicts, call, _ = judge_results(
                     provider,
                     judge_context(
@@ -696,30 +712,48 @@ class InvestigationTreeStep:
                         catalog.describe(),
                     ),
                     tokens,
+                    seconds,
                 )
+                return verdicts, call
+
+            def judge(items: list[tuple[InvestigationNode, ExploreResult]]) -> JudgeReply:
+                seconds = ai_time()
+                if seconds < MIN_AI_SECONDS:
+                    # Sin tiempo para esperar a la IA: el nivel se clasifica sólo por reglas.
+                    return JudgeReply({}, Decimal(0), 0)
+                # Fase 29.1: el juicio va en partes de JUDGE_BATCH resultados, en paralelo, para
+                # que cada respuesta sea corta; las partes que no caben en las llamadas que
+                # quedan se clasifican sólo por reglas.
+                parts = [items[i : i + JUDGE_BATCH] for i in range(0, len(items), JUDGE_BATCH)]
+                parts = parts[: max(1, limits.max_ai_calls - len(calls))]
+                with ThreadPoolExecutor(max_workers=len(parts)) as pool:
+                    replies = list(pool.map(lambda part: judge_part(part, seconds), parts))
                 spent = Decimal(0)
-                if call is not None:
-                    spend(call, "relevance")
-                    spent = Decimal(str(call.cost_usd)) if call.cost_usd else Decimal(0)
+                billed = 0
                 found: dict[str, Verdict] = {}
-                by_node = {item.id: result for item, result in items}
-                for judgment in verdicts.juicios if verdicts else []:
-                    if judgment.clave not in by_node:
-                        continue
-                    result = by_node[judgment.clave]
-                    allowed = [*result.columns, *[g for row in result.rows for g in row.groups]]
-                    reason = clean_reason(judgment.motivo, allowed) or (
-                        "Motivo retirado: contenía cifras que no salen del resultado."
-                    )
-                    found[judgment.clave] = Verdict(
-                        judgment.relevante,
-                        reason,
-                        [
-                            raw_query(child).model_copy(update={"depends_on": []})
-                            for child in judgment.profundizar[: limits.max_children]
-                        ],
-                    )
-                return JudgeReply(found, spent, call is not None)
+                by_node = {item.id: result for part in parts for item, result in part}
+                for verdicts, call in replies:
+                    if call is not None:
+                        spend(call, "relevance")
+                        spent += Decimal(str(call.cost_usd)) if call.cost_usd else Decimal(0)
+                        billed += 1
+                    for judgment in verdicts.juicios if verdicts else []:
+                        if judgment.clave not in by_node:
+                            continue
+                        result = by_node[judgment.clave]
+                        allowed = [*result.columns, *[g for row in result.rows for g in row.groups]]
+                        reason = clean_reason(judgment.motivo, allowed) or (
+                            "Motivo retirado: contenía cifras que no salen del resultado."
+                        )
+                        found[judgment.clave] = Verdict(
+                            judgment.relevante,
+                            reason,
+                            [
+                                raw_query(child).model_copy(update={"depends_on": []})
+                                for child in judgment.profundizar[: limits.max_children]
+                            ],
+                        )
+                return JudgeReply(found, spent, billed)
 
         investigator = Investigator(
             catalog,

@@ -17,6 +17,7 @@ from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.ai import ai_job_config
 from dataflow.bootstrap.dashboard_job import request_report_update
 from dataflow.modules.analytics.contracts import AutomaticAnalysis
 from dataflow.modules.comprehension.contracts import Comprehension
@@ -165,7 +166,7 @@ def enqueue_report(
                 "parameters": {},
             }
         ],
-        "config": config.model_dump(),
+        "config": ai_job_config(config).model_dump(),
     }
     plan = PlanRevision(
         uuid4(), uuid4(), 1, content, digest("plan", content), lease.owner_id, datetime.now(UTC)
@@ -482,7 +483,7 @@ def enqueue_report_v2(
             }
         ],
         # Llamada facturable (narrativa): un solo intento.
-        "config": config.model_copy(update={"max_attempts": 1}).model_dump(),
+        "config": ai_job_config(config).model_copy(update={"max_attempts": 1}).model_dump(),
     }
     plan = PlanRevision(
         uuid4(), uuid4(), 1, content, digest("plan", content), lease.owner_id, datetime.now(UTC)

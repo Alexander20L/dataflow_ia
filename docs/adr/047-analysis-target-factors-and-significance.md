@@ -75,6 +75,16 @@ analista:
   reglas.
 - `DATAFLOW_AI_REQUIRED` es opcional y está desactivado por defecto.
 
+## Nota de la Fase 29.1 (API 0.37.1)
+
+Con Claude Opus una propuesta de investigación puede tardar más de 30 s y cuesta unos 0,05 USD.
+Se decide, sin consulta: un plazo propio de 100 s para los trabajos con IA (dentro de la lease de
+120 s, sin renovarla), 60 s como máximo por llamada y nunca más que lo que le queda a la
+investigación, un presupuesto de 0,20 USD por investigación y el juicio de los resultados en
+partes de 10, pedidas en paralelo (hasta 3 llamadas: la propuesta y dos partes). Se mantiene Claude Opus. Los textos
+de la IA aplican `display-decimals-v1` (ADR-042) a cada cifra y no escriben las unidades internas.
+Detalle en [Fase 29](../architecture/phase-29.md#fase-291-tiempo-y-presupuesto-de-la-ia-y-cifras-de-sus-textos).
+
 ## Consecuencias
 
 - Con pocos registros por grupo muchas diferencias pasan a «no concluyente»: es lo correcto, y el

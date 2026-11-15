@@ -11,12 +11,23 @@ from typing import Any
 from dataflow.integrations.ai import AIProvider, AIRequest, FakeProvider
 from dataflow.modules.copilot import simulation
 from dataflow.modules.copilot.application import CopilotConfig
+from dataflow.modules.executions.public import ProcessingConfig
 from dataflow.platform.config import Settings, get_settings
 
 
 def simulated(request: AIRequest[Any]) -> dict[str, Any]:
     return simulation.respond(
         request.task, request.context["contexto"], str(request.context["peticion"])
+    )
+
+
+def ai_job_config(config: ProcessingConfig) -> ProcessingConfig:
+    """Plazo de un trabajo con IA (Fase 29.1): el de la configuración de IA, nunca menos que el
+    de procesamiento. Queda guardado en el plan como cualquier otro límite."""
+    return config.model_copy(
+        update={
+            "timeout_seconds": max(config.timeout_seconds, get_settings().ai_job_timeout_seconds)
+        }
     )
 
 

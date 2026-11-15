@@ -24,6 +24,7 @@ from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
+from dataflow.bootstrap.ai import ai_job_config
 from dataflow.bootstrap.dashboard_job import request_report_update
 from dataflow.bootstrap.exploration_job import request_exploration_update
 from dataflow.bootstrap.loads import same_load
@@ -253,7 +254,7 @@ def enqueue_comprehension(
             }
         ],
         # Una llamada facturable no se reintenta.
-        "config": config.model_copy(update={"max_attempts": 1}).model_dump(),
+        "config": ai_job_config(config).model_copy(update={"max_attempts": 1}).model_dump(),
     }
     plan = PlanRevision(
         uuid4(), uuid4(), 1, content, digest("plan", content), lease.owner_id, datetime.now(UTC)

@@ -78,6 +78,7 @@ def call[T: BaseModel](
     instruction: str,
     schema: type[T],
     max_output_tokens: int,
+    timeout_seconds: float | None = None,
 ) -> tuple[T | None, dict[str, Any] | None, str | None]:
     """Una llamada con su metadato de consumo; (salida, metadatos, código de error)."""
     serialized = serialize(context)
@@ -98,6 +99,7 @@ def call[T: BaseModel](
         output_schema=schema,
         max_output_tokens=max_output_tokens,
         context={"contexto": context, "peticion": task},
+        timeout_seconds=timeout_seconds,
     )
     try:
         result = provider.complete(request)

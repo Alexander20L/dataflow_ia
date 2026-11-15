@@ -510,8 +510,10 @@ def make_runner(
     provider, ai_config = configured(
         settings.model_copy(
             update={
+                # Fase 29.1: los trabajos con IA tienen su propio plazo (`ai_job_config`).
                 "ai_timeout_seconds": min(
-                    settings.ai_timeout_seconds, max(1, config.timeout_seconds - 5)
+                    settings.ai_timeout_seconds,
+                    max(1, max(config.timeout_seconds, settings.ai_job_timeout_seconds) - 5),
                 )
             }
         ),

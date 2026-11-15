@@ -69,8 +69,15 @@ class AnthropicProvider:
             if self._model in FALLBACK_MODELS
             else {}
         )
+        client = (
+            self.client
+            if request.timeout_seconds is None
+            else self.client.with_options(
+                timeout=max(1.0, min(float(self.timeout), request.timeout_seconds))
+            )
+        )
         try:
-            response = self.client.beta.messages.parse(
+            response = client.beta.messages.parse(
                 model=self._model,
                 max_tokens=request.max_output_tokens,
                 system=[
