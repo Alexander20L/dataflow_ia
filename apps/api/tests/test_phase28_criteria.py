@@ -164,7 +164,7 @@ def test_a_roster_is_not_a_time_series_and_its_rates_are_analysed(
     base = f"/api/v1/versions/{version}"
     # Comprensión: sin periodo; la fecha de ingreso describe al empleado.
     understood = get(client, f"{base}/comprehension")["comprehension"]
-    assert understood["rules_version"] == "business-comprehension-v5"
+    assert understood["rules_version"] == "business-comprehension-v6"
     assert understood["period"] is None
     [dated] = understood["dated_attributes"]
     assert dated["column"] == "fecha_ingreso" and sum(n for _, n in dated["per_year"]) == 100

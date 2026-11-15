@@ -59,6 +59,10 @@ class ColumnaIA(OutputModel):
     """Significado de una columna según la IA (Fase 19): hipótesis, sin cifras."""
 
     columna: str = Field(max_length=200, description="Nombre exacto de una columna recibida.")
+    # Fase 30 (prompt v5): nombre corto para mostrar (p. ej. «Salario», «Ausencias»).
+    nombre_corto: str = Field(
+        default="", max_length=40, description="1 a 3 palabras, sin cifras; vacío si no se sabe."
+    )
     significado: str = Field(
         max_length=200, description="Hipótesis del significado; vacío si no se puede saber."
     )
@@ -97,6 +101,10 @@ class RelacionIA(OutputModel):
 class ObjetivoIA(OutputModel):
     columna: str = Field(max_length=200, description="Nombre exacto de la columna objetivo.")
     motivo: str = Field(max_length=300, description="Por qué es lo que importa, sin cifras.")
+    # Fase 30 (prompt v5): cómo lo llamaría el negocio, en pocas palabras.
+    nombre: str = Field(
+        default="", max_length=60, description="Nombre de negocio, 2 a 4 palabras, sin cifras."
+    )
 
 
 class DerivadaIA(OutputModel):
@@ -108,6 +116,8 @@ class ComprensionIA(OutputModel):
     """Comprensión del negocio a partir de nombres y perfil agregado (Fase 19, ADR-036)."""
 
     dominio: str = Field(max_length=400, description="De qué trata el dataset, sin cifras.")
+    # Fase 30 (prompt v5): el tema en pocas palabras (p. ej. «Recursos humanos»).
+    tema: str = Field(default="", max_length=40, description="1 a 3 palabras, sin cifras.")
     entidades: list[EntidadIA] = Field(max_length=10)
     columnas: list[ColumnaIA] = Field(max_length=128)
     ordenes: list[OrdenIA] = Field(default_factory=list, max_length=20)

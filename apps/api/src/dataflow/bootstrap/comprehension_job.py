@@ -77,6 +77,7 @@ from dataflow.modules.comprehension.measures import (
     dependencies,
     distinct_counts,
     distinct_values,
+    least_frequent,
     month_counts,
     per_year,
     same_entities,
@@ -112,11 +113,13 @@ from dataflow.platform.errors import ApplicationError
 from dataflow.platform.timing import date_role, explain
 
 STEP = "comprehension.understand"
-RULES = "business-comprehension-v5"
+RULES = "business-comprehension-v6"
+V5 = "business-comprehension-v5"
 V4 = "business-comprehension-v4"
 V3 = "business-comprehension-v3"
-GROUNDED = {V3, V4, RULES}  # versiones con grano, fórmulas y significados (Fase 24)
-DATED = {V4, RULES}  # versiones con papel de las fechas (Fase 28)
+GROUNDED = {V3, V4, V5, RULES}  # versiones con grano, fórmulas y significados (Fase 24)
+DATED = {V4, V5, RULES}  # versiones con papel de las fechas (Fase 28)
+TARGETED = {V5, RULES}  # versiones con objetivo y variables derivadas (Fase 29)
 
 
 def source_key(file_name: str, plan: dict[str, Any]) -> str:
@@ -710,11 +713,19 @@ class ComprehensionStep:
                     ],
                     questions=output.preguntas,
                     target=(output.objetivo.columna, output.objetivo.motivo)
-                    if output.objetivo and rules_asked == RULES
+                    if output.objetivo and rules_asked in TARGETED
                     else None,
                     derived=[(d.tipo, d.columna) for d in output.derivadas]
-                    if rules_asked == RULES
+                    if rules_asked in TARGETED
                     else [],
+                    # Fase 30 (`business-comprehension-v6`): nombres cortos de negocio.
+                    theme=output.tema if rules_asked == RULES else "",
+                    target_label=output.objetivo.nombre
+                    if output.objetivo and rules_asked == RULES
+                    else "",
+                    labels={c.columna: c.nombre_corto for c in output.columnas}
+                    if rules_asked == RULES
+                    else {},
                 )
                 accepted, discarded = accept_ai(raw, names)
                 ai_state, ai_reason = "ready", None
@@ -745,7 +756,7 @@ class ComprehensionStep:
         target = None
         derived = []
         candidates: list[str] = []
-        if rules_asked == RULES:
+        if rules_asked in TARGETED:
             pair = given.get("target") or []
             chosen = TargetChoice(column=pair[0], value=pair[1] or None) if pair else None
             target = analysis_target(
@@ -762,6 +773,23 @@ class ComprehensionStep:
                 understood.formulas,
             )
             candidates = target_candidates(understood.dimensions, understood.measures)
+            if target is not None and rules_asked == RULES:
+                # Fase 30: el nombre de negocio (el de la IA si es su objetivo; si no, el nombre
+                # corto de la columna) y la categoría que cuenta una tasa.
+                proposed = accepted.target[0] if accepted and accepted.target else None
+                label = (
+                    accepted.target_label
+                    if accepted and target.column == proposed and accepted.target_label
+                    else (accepted.labels.get(target.column) if accepted else None)
+                )
+                target = target.model_copy(
+                    update={
+                        "label": label or None,
+                        "counted": (target.value or least_frequent(table, target.column))
+                        if target.kind == "rate"
+                        else None,
+                    }
+                )
             if chosen is not None and (target is None or target.origin != "user"):
                 limitations.append(
                     f"El objetivo que elegiste («{chosen.column}») ya no es válido en esta "
@@ -810,6 +838,8 @@ class ComprehensionStep:
             target=target,
             target_candidates=candidates,
             derived=derived,
+            theme=(accepted.theme or None) if accepted else None,
+            labels=accepted.labels if accepted else {},
         )
         prefix = f"artifacts/{lease.owner_id}/{lease.version_id}/{lease.token}/{step.id}"
         stored = self.objects.put(f"{prefix}/comprehension.json", result.model_dump_json().encode())
@@ -1021,7 +1051,7 @@ class ComprehensionAccess:
             raise ApplicationError(
                 "COMPREHENSION_NOT_READY", "La comprensión todavía no está lista.", 409
             )
-        if result.rules_version != RULES:
+        if result.rules_version not in TARGETED:
             raise ApplicationError(
                 "TARGET_NOT_SUPPORTED",
                 "Esta versión se analizó antes de la Fase 29: vuelve a cargar el archivo para "

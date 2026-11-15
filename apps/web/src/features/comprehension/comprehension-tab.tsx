@@ -11,7 +11,6 @@ import { capDecimals, capDecimalsInText } from "@/lib/numbers";
 import { useInspection } from "@/features/dataset/api";
 import { NATURES, TYPES } from "@/features/dataset/labels";
 import {
-  useChooseTarget,
   useComprehensionView,
   useDescribe,
   useJudge,
@@ -23,7 +22,6 @@ import {
 import {
   ADDITIVITY,
   AGGREGATIONS,
-  AI_REASONS,
   CONFIDENCES,
   FAMILIES,
   KINDS,
@@ -33,6 +31,7 @@ import {
   STATES,
   STATUS,
 } from "./labels";
+import { Summary } from "./summary";
 
 const SUBVIEWS = [
   { id: "summary", label: "Resumen" },
@@ -155,214 +154,6 @@ export function ComprehensionTab({
         )}
       </div>
     </section>
-  );
-}
-
-const TARGET_ORIGIN: Record<string, string> = {
-  rules: "Propuesto por reglas",
-  ai: "Propuesto por la IA",
-  user: "Elegido por ti",
-};
-
-/** Fase 29: lo que el análisis intenta explicar. Opcional: el usuario lo confirma o lo cambia
- * (se rehacen la investigación, el dashboard y el informe) o vuelve al propuesto. */
-function TargetSection({
-  result,
-  versionId,
-}: {
-  result: Comprehension;
-  versionId: string;
-}) {
-  const target = result.target;
-  const choose = useChooseTarget(versionId);
-  const [column, setColumn] = useState(target?.column ?? "");
-  const candidates = result.target_candidates ?? [];
-  if (!target && candidates.length === 0) return null;
-  const derived = result.derived ?? [];
-  return (
-    <section aria-label="Objetivo del análisis">
-      <h3>Qué intenta explicar el análisis</h3>
-      {target ? (
-        <>
-          <p className="comprehension-grain">
-            {target.kind === "rate"
-              ? `La tasa de ${target.value ? `«${target.value}»` : "la categoría menos frecuente"} en «${target.column}»`
-              : `El promedio de «${target.column}»`}{" "}
-            <span className="badge neutral">
-              {TARGET_ORIGIN[target.origin] ?? target.origin}
-            </span>
-          </p>
-          <p className="muted">{target.reason}</p>
-        </>
-      ) : (
-        <p className="muted">No hay un objetivo claro: elige uno si quieres.</p>
-      )}
-      {derived.length > 0 && (
-        <p className="muted">
-          Variables derivadas para explicarlo:{" "}
-          {derived.map((d) => d.name).join(", ")}.
-        </p>
-      )}
-      {candidates.length > 0 && (
-        <form
-          className="target-form"
-          aria-label="Elegir el objetivo"
-          onSubmit={(event) => {
-            event.preventDefault();
-            choose.mutate(column || null);
-          }}
-        >
-          <label htmlFor="analysis-target">Objetivo</label>
-          <select
-            id="analysis-target"
-            value={column}
-            onChange={(event) => setColumn(event.target.value)}
-          >
-            <option value="">El propuesto</option>
-            {candidates.map((name) => (
-              <option key={name} value={name}>
-                {name}
-              </option>
-            ))}
-          </select>
-          <Button type="submit" disabled={choose.isPending}>
-            Usar este objetivo
-          </Button>
-          {choose.isError && (
-            <span role="alert">{errorMessage(choose.error)}</span>
-          )}
-        </form>
-      )}
-    </section>
-  );
-}
-
-function Summary({
-  result,
-  versionId,
-}: {
-  result: Comprehension;
-  versionId: string;
-}) {
-  const formulas = result.formulas ?? [];
-  return (
-    <div className="dataset-summary">
-      <TargetSection result={result} versionId={versionId} />
-      <section aria-label="Grano del dataset">
-        <h3>Qué representa cada fila</h3>
-        {result.grain ? (
-          <>
-            <p className="comprehension-grain">{result.grain.sentence}</p>
-            <p className="muted">{result.grain.reason}</p>
-          </>
-        ) : (
-          <p className="muted">
-            Esta versión se calculó antes de la Fase 24: súbela de nuevo para
-            ver el grano y las fórmulas.
-          </p>
-        )}
-      </section>
-      <section aria-label="Dominio del negocio">
-        <h3>De qué trata</h3>
-        {result.domain ? (
-          <>
-            <span className="badge neutral">Hipótesis de la IA</span>
-            <p>{result.domain}</p>
-            {(result.entities ?? []).length > 0 && (
-              <p className="muted">
-                {(result.entities ?? [])
-                  .map((e) => `${e.name}: ${e.columns.join(", ")}`)
-                  .join(" · ")}
-              </p>
-            )}
-          </>
-        ) : (
-          <p className="muted">
-            Sin hipótesis de la IA (
-            {AI_REASONS[result.ai_reason ?? ""] ??
-              result.ai_reason ??
-              result.ai_state}
-            ): el grano, las fórmulas, las relaciones y el periodo se calculan
-            igual con los datos.
-          </p>
-        )}
-      </section>
-      <section aria-label="Columnas calculadas">
-        <h3>Columnas calculadas a partir de otras</h3>
-        {formulas.length === 0 ? (
-          <p className="muted">
-            Ninguna columna es una suma ponderada, un producto o un umbral de
-            otras.
-          </p>
-        ) : (
-          <ul className="dataset-notes">
-            {formulas.map((f) => (
-              <li key={f.column}>
-                <strong>{capDecimalsInText(f.expression)}</strong>
-                <br />
-                <small className="muted">
-                  Se cumple en {f.matching_rows} de {f.rows} filas. {f.method}
-                </small>
-              </li>
-            ))}
-          </ul>
-        )}
-        {formulas.length > 0 && (
-          <p className="muted">
-            Son fórmulas, no hallazgos: sus asociaciones con sus propias fuentes
-            no se proponen en la exploración ni en el dashboard.
-          </p>
-        )}
-      </section>
-      {result.period && (
-        <section aria-label="Periodo">
-          <h3>Periodo</h3>
-          <p>
-            {result.period.note} {result.period.periods} periodos
-            {result.period.first
-              ? `, de ${result.period.first} a ${result.period.last}`
-              : ""}
-            .
-          </p>
-        </section>
-      )}
-      {(result.dated_attributes ?? []).length > 0 && (
-        <section aria-label="Fechas que describen al registro">
-          <h3>Fechas que describen al registro</h3>
-          <ul className="dataset-notes">
-            {(result.dated_attributes ?? []).map((dated) => (
-              <li key={dated.column}>
-                <strong>{dated.column}</strong> (de {dated.first} a {dated.last}
-                ): {dated.reason} Registros por año:{" "}
-                {dated.per_year
-                  .map(([year, count]) => `${year}: ${count}`)
-                  .join(", ")}
-                .
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-      {(result.questions ?? []).length > 0 && (
-        <section aria-label="Preguntas de negocio sugeridas">
-          <h3>Preguntas de negocio sugeridas</h3>
-          <ul className="dataset-notes">
-            {(result.questions ?? []).map((q) => (
-              <li key={q}>{q}</li>
-            ))}
-          </ul>
-        </section>
-      )}
-      <details>
-        <summary>Cómo se calculó</summary>
-        <ul className="dataset-notes">
-          {result.limitations.map((item) => (
-            <li key={item}>{item}</li>
-          ))}
-          <li>Reglas: {result.rules_version}.</li>
-        </ul>
-      </details>
-    </div>
   );
 }
 

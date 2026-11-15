@@ -13,6 +13,7 @@ import { Button } from "@/components/ui/button";
 import { Chart, seriesOption } from "@/components/ui/chart";
 import { errorMessage } from "@/lib/api";
 import { capDecimals, capDecimalsInText } from "@/lib/numbers";
+import { useComprehensionView } from "@/features/comprehension/api";
 import {
   useInvestigationControl,
   useInvestigationHistory,
@@ -30,6 +31,7 @@ import {
   STOPPED,
   TRIGGERS,
 } from "./labels";
+import { humanizer, SayContext, useSay } from "./humanize";
 
 const SUBVIEWS = [
   { id: "plan", label: "Plan" },
@@ -73,70 +75,64 @@ function Origin({ node }: { node: InvestigationNode }) {
   );
 }
 
-/** El plan: las investigaciones iniciales con su pregunta, motivo, columnas, método, resultado
- * esperado, prioridad y dependencias. */
+/** El plan (Fase 30, ADR-048): una tarjeta por investigación con su pregunta, su estado y su
+ * prioridad; el motivo, la hipótesis, las columnas, el método y lo esperado, plegados. */
 function PlanView({ result }: { result: Investigation }) {
+  const say = useSay();
   const roots = (result.nodes ?? []).filter((node) => !node.parent);
   return (
     <div className="investigation-plan">
-      <p className="muted">
-        {roots.length} investigaciones en el plan, en orden de prioridad. Las
-        propone
-        {result.ai_state === "ready"
-          ? "n las reglas y la IA"
-          : "n las reglas"}{" "}
-        a partir de la comprensión; Python valida cada una antes de calcularla.
+      <p className="cmp-label">
+        {roots.length} preguntas, de la más a la menos importante
       </p>
-      <div className="table-scroll">
-        <table
-          className="comprehension-table"
-          aria-label="Plan de investigación"
-        >
-          <thead>
-            <tr>
-              <th>#</th>
-              <th>Investigación</th>
-              <th>Motivo</th>
-              <th>Columnas</th>
-              <th>Método</th>
-              <th>Resultado esperado</th>
-              <th>Prioridad</th>
-              <th>Depende de</th>
-              <th>Estado</th>
-            </tr>
-          </thead>
-          <tbody>
-            {[...roots]
-              .sort((a, b) => a.priority - b.priority)
-              .map((node) => (
-                <tr key={node.id} aria-label={`Investigación ${node.id}`}>
-                  <td>{node.id}</td>
-                  <td>
-                    <strong>{node.question}</strong>
-                    <br />
-                    <small className="muted">
-                      Hipótesis: {node.hypothesis}
-                    </small>
-                    <br />
-                    <Origin node={node} />
-                  </td>
-                  <td>{node.motive}</td>
-                  <td>{node.columns.join(", ")}</td>
-                  <td>{node.method}</td>
-                  <td>{node.expected}</td>
-                  <td>{PRIORITIES[node.priority]}</td>
-                  <td>{(node.depends_on ?? []).join(", ") || "—"}</td>
-                  <td>
-                    <ClassBadge node={node} />
+      <ol className="plan-cards" aria-label="Plan de investigación">
+        {[...roots]
+          .sort((a, b) => a.priority - b.priority)
+          .map((node) => (
+            <li
+              key={node.id}
+              aria-label={`Investigación ${node.id}`}
+              className="plan-card"
+            >
+              <span className="plan-number" aria-hidden>
+                {node.id}
+              </span>
+              <div className="plan-body">
+                <strong>{say(node.question)}</strong>
+                <div className="plan-tags">
+                  <ClassBadge node={node} />
+                  <Origin node={node} />
+                  <span className="badge neutral">
+                    Prioridad {PRIORITIES[node.priority]}
+                  </span>
+                </div>
+                <details className="plan-more">
+                  <summary>Ver detalle</summary>
+                  <dl className="investigation-facts">
+                    <dt>Hipótesis</dt>
+                    <dd>{say(node.hypothesis)}</dd>
+                    <dt>Motivo</dt>
+                    <dd>{say(node.motive)}</dd>
+                    <dt>Columnas</dt>
+                    <dd>{node.columns.join(", ")}</dd>
+                    <dt>Método</dt>
+                    <dd>{node.method}</dd>
+                    <dt>Resultado esperado</dt>
+                    <dd>{say(node.expected)}</dd>
+                    <dt>Depende de</dt>
+                    <dd>{(node.depends_on ?? []).join(", ") || "—"}</dd>
                     {node.reason && node.status !== "computed" && (
-                      <small className="muted"> {node.reason}</small>
+                      <>
+                        <dt>Estado</dt>
+                        <dd>{node.reason}</dd>
+                      </>
                     )}
-                  </td>
-                </tr>
-              ))}
-          </tbody>
-        </table>
-      </div>
+                  </dl>
+                </details>
+              </div>
+            </li>
+          ))}
+      </ol>
     </div>
   );
 }
@@ -149,6 +145,7 @@ function TreeView({
   result: Investigation;
   onEvidence: (id: string) => void;
 }) {
+  const say = useSay();
   const children = (parent: string | null) =>
     (result.nodes ?? []).filter((node) => (node.parent ?? null) === parent);
   const branch = (parent: string | null) => {
@@ -160,7 +157,7 @@ function TreeView({
           <li key={node.id} aria-label={`Investigación ${node.id}`}>
             <div className="investigation-node">
               <span className="investigation-id">{node.id}</span>
-              <strong>{node.question}</strong>
+              <strong>{say(node.question)}</strong>
               <ClassBadge node={node} />
               <Origin node={node} />
               {node.status === "computed" && node.key && (
@@ -261,6 +258,7 @@ function EvidenceCard({
   node: InvestigationNode;
   result?: InvestigationResult;
 }) {
+  const say = useSay();
   return (
     <article
       className="exploration-result investigation-evidence"
@@ -269,13 +267,13 @@ function EvidenceCard({
     >
       <header>
         <h3>
-          {node.id}. {node.question}
+          {node.id}. {say(node.question)}
         </h3>
         <ClassBadge node={node} />
       </header>
       <dl className="investigation-facts">
         <dt>Hipótesis</dt>
-        <dd>{node.hypothesis}</dd>
+        <dd>{say(node.hypothesis)}</dd>
         <dt>Columnas</dt>
         <dd>{node.columns.join(", ")}</dd>
         <dt>Filtros</dt>
@@ -482,6 +480,11 @@ export function InvestigationTab({ versionId }: { versionId: string }) {
   const [executionId, setExecutionId] = useState<string>();
   const query = useInvestigationView(versionId, executionId);
   const control = useInvestigationControl(versionId);
+  const understood = useComprehensionView(versionId).data?.comprehension;
+  const say = humanizer(
+    understood?.target?.column,
+    understood?.target?.counted,
+  );
   if (query.isPending)
     return (
       <p className="empty-copy" role="status">
@@ -528,186 +531,188 @@ export function InvestigationTab({ versionId }: { versionId: string }) {
   const failed =
     (result?.nodes ?? []).filter((n) => n.status === "failed") ?? [];
   return (
-    <section className="dataset-tab" aria-label="Investigación">
-      {!latest && (
-        <p className="info-banner" role="status">
-          Estás viendo una investigación anterior.{" "}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setExecutionId(undefined)}
-          >
-            Volver a la actual
-          </Button>
-        </p>
-      )}
-      <div
-        className="investigation-status"
-        aria-label="Estado de la investigación"
-      >
-        <div role="status">
-          {running ? (
-            <>
-              <LoaderCircle className="spin" size={16} aria-hidden />{" "}
-              {view.state === "queued"
-                ? "Investigación en cola."
-                : "Investigando: se calcula cada pregunta sobre todas las filas."}
-              {view.control === "pause" &&
-                " Se pausará al terminar la investigación en curso."}
-              {view.control === "cancel" &&
-                " Se cancelará al terminar la investigación en curso."}
-            </>
-          ) : view.state === "failed" ? (
-            <span role="alert">
-              <CircleAlert size={16} aria-hidden /> La investigación falló (
-              {view.reason ?? "sin detalle"}).
-            </span>
-          ) : result?.stopped ? (
-            STOPPED[result.stopped]
-          ) : (
-            "Investigación terminada."
-          )}
-          {result?.consumption && (
-            <small className="muted">
-              {" "}
-              · {result.consumption.nodes} calculadas en esta ejecución ·{" "}
-              {result.consumption.ai_calls} llamadas a la IA ·{" "}
-              {number(String(result.consumption.elapsed_ms / 1000))} s
-            </small>
-          )}
-        </div>
-        {latest && (
-          <div className="investigation-actions">
+    <SayContext.Provider value={say}>
+      <section className="dataset-tab" aria-label="Investigación">
+        {!latest && (
+          <p className="info-banner" role="status">
+            Estás viendo una investigación anterior.{" "}
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setExecutionId(undefined)}
+            >
+              Volver a la actual
+            </Button>
+          </p>
+        )}
+        <div
+          className="investigation-status"
+          aria-label="Estado de la investigación"
+        >
+          <div role="status">
             {running ? (
               <>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={control.isPending || !!view.control}
-                  onClick={() => act("pause")}
-                >
-                  <Pause size={14} aria-hidden /> Pausar
-                </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={control.isPending || !!view.control}
-                  onClick={() => act("cancel")}
-                >
-                  <Square size={14} aria-hidden /> Cancelar
-                </Button>
+                <LoaderCircle className="spin" size={16} aria-hidden />{" "}
+                {view.state === "queued"
+                  ? "Investigación en cola."
+                  : "Investigando: se calcula cada pregunta sobre todas las filas."}
+                {view.control === "pause" &&
+                  " Se pausará al terminar la investigación en curso."}
+                {view.control === "cancel" &&
+                  " Se cancelará al terminar la investigación en curso."}
               </>
+            ) : view.state === "failed" ? (
+              <span role="alert">
+                <CircleAlert size={16} aria-hidden /> La investigación falló (
+                {view.reason ?? "sin detalle"}).
+              </span>
+            ) : result?.stopped ? (
+              STOPPED[result.stopped]
             ) : (
-              <>
-                {view.resumable && (
-                  <Button
-                    size="sm"
-                    disabled={control.isPending}
-                    onClick={() => act("resume")}
-                  >
-                    <Play size={14} aria-hidden /> Reanudar
-                  </Button>
-                )}
-                <Button
-                  variant="outline"
-                  size="sm"
-                  disabled={control.isPending}
-                  onClick={() => act("restart")}
-                >
-                  <RotateCcw size={14} aria-hidden /> Volver a investigar
-                </Button>
-              </>
+              "Investigación terminada."
+            )}
+            {result?.consumption && (
+              <small className="muted">
+                {" "}
+                · {result.consumption.nodes} calculadas en esta ejecución ·{" "}
+                {result.consumption.ai_calls} llamadas a la IA ·{" "}
+                {number(String(result.consumption.elapsed_ms / 1000))} s
+              </small>
             )}
           </div>
-        )}
-      </div>
-      {control.isError && (
-        <p className="auth-error" role="alert">
-          {errorMessage(control.error)}
-        </p>
-      )}
-      {failed.length > 0 && (
-        <p className="info-banner" role="alert">
-          {failed.length} investigaciones fallaron al ejecutarse; el resto
-          siguió. Mira su detalle en Evidencias.
-        </p>
-      )}
-      <div
-        className="dataset-subnav"
-        role="tablist"
-        aria-label="Secciones de la investigación"
-      >
-        {SUBVIEWS.map((item, index) => (
-          <button
-            key={item.id}
-            id={`investigation-tab-${item.id}`}
-            type="button"
-            role="tab"
-            aria-selected={subview === item.id}
-            aria-controls={`investigation-panel-${item.id}`}
-            tabIndex={subview === item.id ? 0 : -1}
-            onClick={() => setSubview(item.id)}
-            onKeyDown={(event) => onKey(event, index)}
-          >
-            {item.label}
-            {item.id === "evidence" && result && !legacy
-              ? ` (${computed.length})`
-              : ""}
-          </button>
-        ))}
-      </div>
-      <div
-        id={`investigation-panel-${subview}`}
-        role="tabpanel"
-        aria-labelledby={`investigation-tab-${subview}`}
-      >
-        {subview === "history" ? (
-          <HistoryView
-            versionId={versionId}
-            current={executionId ?? view.execution_id}
-            onOpen={(id) => {
-              setExecutionId(id);
-              setSubview("plan");
-            }}
-          />
-        ) : !result ? (
-          <p className="muted">
-            {running
-              ? "El plan aparecerá cuando termine esta ejecución."
-              : "No hay resultados en esta ejecución."}
+          {latest && (
+            <div className="investigation-actions">
+              {running ? (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={control.isPending || !!view.control}
+                    onClick={() => act("pause")}
+                  >
+                    <Pause size={14} aria-hidden /> Pausar
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={control.isPending || !!view.control}
+                    onClick={() => act("cancel")}
+                  >
+                    <Square size={14} aria-hidden /> Cancelar
+                  </Button>
+                </>
+              ) : (
+                <>
+                  {view.resumable && (
+                    <Button
+                      size="sm"
+                      disabled={control.isPending}
+                      onClick={() => act("resume")}
+                    >
+                      <Play size={14} aria-hidden /> Reanudar
+                    </Button>
+                  )}
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={control.isPending}
+                    onClick={() => act("restart")}
+                  >
+                    <RotateCcw size={14} aria-hidden /> Volver a investigar
+                  </Button>
+                </>
+              )}
+            </div>
+          )}
+        </div>
+        {control.isError && (
+          <p className="auth-error" role="alert">
+            {errorMessage(control.error)}
           </p>
-        ) : legacy ? (
-          <LegacyEvidence result={result} />
-        ) : subview === "plan" ? (
-          <PlanView result={result} />
-        ) : subview === "tree" ? (
-          <TreeView
-            result={result}
-            onEvidence={(id) => {
-              setSubview("evidence");
-              requestAnimationFrame(() =>
-                document
-                  .getElementById(`evidence-${id}`)
-                  ?.scrollIntoView({ block: "start" }),
-              );
-            }}
-          />
-        ) : (
-          <EvidenceView result={result} />
         )}
-      </div>
-      {result && result.limitations.length > 0 && subview !== "history" && (
-        <details className="investigation-notes">
-          <summary>
-            Limitaciones y criterios ({result.limitations.length})
-          </summary>
-          <ul>
-            {result.limitations.map((text) => (
-              <li key={text}>{text}</li>
-            ))}
-          </ul>
-        </details>
-      )}
-    </section>
+        {failed.length > 0 && (
+          <p className="info-banner" role="alert">
+            {failed.length} investigaciones fallaron al ejecutarse; el resto
+            siguió. Mira su detalle en Evidencias.
+          </p>
+        )}
+        <div
+          className="dataset-subnav"
+          role="tablist"
+          aria-label="Secciones de la investigación"
+        >
+          {SUBVIEWS.map((item, index) => (
+            <button
+              key={item.id}
+              id={`investigation-tab-${item.id}`}
+              type="button"
+              role="tab"
+              aria-selected={subview === item.id}
+              aria-controls={`investigation-panel-${item.id}`}
+              tabIndex={subview === item.id ? 0 : -1}
+              onClick={() => setSubview(item.id)}
+              onKeyDown={(event) => onKey(event, index)}
+            >
+              {item.label}
+              {item.id === "evidence" && result && !legacy
+                ? ` (${computed.length})`
+                : ""}
+            </button>
+          ))}
+        </div>
+        <div
+          id={`investigation-panel-${subview}`}
+          role="tabpanel"
+          aria-labelledby={`investigation-tab-${subview}`}
+        >
+          {subview === "history" ? (
+            <HistoryView
+              versionId={versionId}
+              current={executionId ?? view.execution_id}
+              onOpen={(id) => {
+                setExecutionId(id);
+                setSubview("plan");
+              }}
+            />
+          ) : !result ? (
+            <p className="muted">
+              {running
+                ? "El plan aparecerá cuando termine esta ejecución."
+                : "No hay resultados en esta ejecución."}
+            </p>
+          ) : legacy ? (
+            <LegacyEvidence result={result} />
+          ) : subview === "plan" ? (
+            <PlanView result={result} />
+          ) : subview === "tree" ? (
+            <TreeView
+              result={result}
+              onEvidence={(id) => {
+                setSubview("evidence");
+                requestAnimationFrame(() =>
+                  document
+                    .getElementById(`evidence-${id}`)
+                    ?.scrollIntoView({ block: "start" }),
+                );
+              }}
+            />
+          ) : (
+            <EvidenceView result={result} />
+          )}
+        </div>
+        {result && result.limitations.length > 0 && subview !== "history" && (
+          <details className="investigation-notes">
+            <summary>
+              Limitaciones y criterios ({result.limitations.length})
+            </summary>
+            <ul>
+              {result.limitations.map((text) => (
+                <li key={text}>{text}</li>
+              ))}
+            </ul>
+          </details>
+        )}
+      </section>
+    </SayContext.Provider>
   );
 }

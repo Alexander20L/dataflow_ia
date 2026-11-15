@@ -5923,14 +5923,276 @@ tbody tr:hover {
   align-items: flex-start;
   margin-bottom: 12px;
 }
-.target-form {
+
+/* Fase 30 (ADR-048): resumen de Comprensión que se entiende sin leer. */
+.cmp-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+}
+.cmp-block {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cmp-label {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+.cmp-hero {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.cmp-hero-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.cmp-hero-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cmp-hero-text strong {
+  font-size: 20px;
+  font-weight: 600;
+}
+.cmp-hero-text span {
+  font-size: 13px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.cmp-hero .badge {
+  font-size: 11px;
+}
+.cmp-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 6px;
   align-items: center;
+}
+.cmp-chips-lead {
+  font-size: 13px;
+  color: var(--muted);
+  margin-right: 2px;
+}
+.cmp-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  font-size: 13px;
+  border-radius: 999px;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+}
+.cmp-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 10px;
+}
+.cmp-tile {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  text-align: left;
+  color: inherit;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  cursor: pointer;
+}
+.cmp-tile:hover:not(:disabled) {
+  border-color: var(--primary);
+}
+.cmp-tile.selected {
+  border: 2px solid var(--primary);
+  padding: 11px 13px;
+  background: var(--primary-soft);
+}
+.cmp-tile:disabled {
+  cursor: progress;
+  opacity: 0.7;
+}
+.cmp-tile span {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.cmp-tile strong {
+  font-size: 14px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cmp-tile small {
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+.cmp-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  min-height: 20px;
+}
+.cmp-link {
+  padding: 0;
+  font-size: 13px;
+  color: var(--primary);
+  background: none;
+  border: 0;
+  cursor: pointer;
+}
+.cmp-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.cmp-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 12px;
+}
+.cmp-fact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background: var(--surface-secondary);
+  border-radius: var(--radius);
+}
+.cmp-fact-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.cmp-fact strong {
+  font-size: 20px;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+.cmp-fact .badge {
+  align-self: flex-start;
+}
+.cmp-questions {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cmp-questions li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: var(--radius);
+  background: var(--surface-secondary);
+}
+.cmp-questions svg {
+  flex: none;
+  margin-top: 3px;
+  color: var(--primary);
+}
+.cmp-details > summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  list-style: none;
+}
+.cmp-details > summary::-webkit-details-marker {
+  display: none;
+}
+.cmp-details[open] > summary svg {
+  transform: rotate(180deg);
+}
+.cmp-details > section {
+  margin-top: 14px;
+}
+/* Fase 30: la evidencia de cada cifra del informe, discreta. */
+.evidence-mark {
+  margin-left: 1px;
+  font-size: 7px;
+  color: var(--primary);
+  cursor: help;
+}
+
+/* Fase 30: el plan de la investigación en tarjetas. */
+.plan-cards {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.plan-card {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  padding: 12px 16px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+.plan-number {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  font-size: 13px;
+  font-weight: 600;
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+.plan-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.plan-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.plan-tags .badge {
+  font-size: 11px;
+}
+.plan-more > summary {
+  font-size: 12px;
+  color: var(--muted);
+  cursor: pointer;
+}
+.plan-more .investigation-facts {
   margin-top: 8px;
 }
-.target-form select {
-  min-width: 0;
-  max-width: 100%;
+.cmp-details h3 {
+  font-size: 14px;
+  margin: 0 0 4px;
 }
