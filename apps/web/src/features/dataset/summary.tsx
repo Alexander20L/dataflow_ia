@@ -116,10 +116,11 @@ export function SummaryView({ view }: { view: InspectionView }) {
               </li>
             ))}
           </ul>
-          <p className="muted">
-            Clasificación vigente: la automática con tus correcciones del
-            Diccionario. Es la que usan la comprensión, la exploración y el
-            dashboard.
+          <p
+            className="muted"
+            title="Es la que usan la comprensión, la investigación y el dashboard."
+          >
+            Con tus correcciones del Diccionario.
           </p>
         </section>
       </div>

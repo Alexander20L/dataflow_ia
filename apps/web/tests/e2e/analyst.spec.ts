@@ -51,9 +51,12 @@ test("Analista: objetivo, factores con significancia y cambio de objetivo", asyn
     .getByRole("tab", { name: "Comprensión", exact: true })
     .click({ timeout: 30000 });
   const tab = page.getByRole("region", { name: "Comprensión" });
+  // Fase 30: el objetivo en una tarjeta con su nombre de negocio y la categoría contada.
   const target = tab.getByLabel("Objetivo del análisis");
-  await expect(target).toContainText("«activo»", { timeout: 60000 });
-  await expect(target).toContainText("antigüedad de fecha_ingreso");
+  await expect(target).toContainText("Resultado de activo", { timeout: 60000 });
+  await expect(target).toContainText("activo = No");
+  await expect(target.getByLabel("Se explica con")).toContainText("Antigüedad");
+  await expect(tab.getByLabel("Lo básico")).toContainText("Actividad");
 
   // Investigación: los factores llevan su prueba y su comprobación con otra variable.
   await page.getByRole("tab", { name: "Investigación", exact: true }).click();
@@ -73,10 +76,12 @@ test("Analista: objetivo, factores con significancia y cambio de objetivo", asyn
 
   // El usuario cambia el objetivo: se rehace el análisis con el salario.
   await page.getByRole("tab", { name: "Comprensión", exact: true }).click();
-  await tab.getByLabel("Objetivo", { exact: true }).selectOption("salario");
-  await tab.getByRole("button", { name: "Usar este objetivo" }).click();
+  await tab
+    .getByRole("radiogroup", { name: "Cambiar el objetivo" })
+    .getByRole("radio", { name: "Salario (promedio)" })
+    .click();
   await expect(tab.getByLabel("Objetivo del análisis")).toContainText(
-    "El promedio de «salario»",
+    "Promedio de salario",
     { timeout: 90000 },
   );
   await expect(tab.getByLabel("Objetivo del análisis")).toContainText(

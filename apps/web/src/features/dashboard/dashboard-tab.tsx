@@ -823,12 +823,16 @@ function Board({
           <h2>
             <LayoutDashboard size={18} aria-hidden /> {dashboard.title}
           </h2>
-          <p>
-            {dashboard.designed_by === "ai"
-              ? "La IA eligió las secciones, el orden y el tipo de gráfico sin ver cifras; Python validó cada elección."
-              : "Diseñado por reglas a partir de la forma de cada resultado."}{" "}
-            Cada cifra sale del motor y tiene su origen.
-          </p>
+          {/* Fase 30: la explicación, plegada; el diseño ya lo dice la etiqueta. */}
+          <details className="cmp-details">
+            <summary>Cómo se diseñó</summary>
+            <p className="muted">
+              {dashboard.designed_by === "ai"
+                ? "La IA eligió las secciones, el orden y el tipo de gráfico sin ver cifras; Python validó cada elección."
+                : "Diseñado por reglas a partir de la forma de cada resultado."}{" "}
+              Cada cifra sale del motor y tiene su origen.
+            </p>
+          </details>
         </div>
         <span className="badge neutral">
           {dashboard.designed_by === "ai"

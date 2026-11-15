@@ -15,13 +15,16 @@ from dataflow.modules.copilot.investigation import call
 from dataflow.modules.copilot.overview import OverviewCall
 
 PROMPT_ID = "business-comprehension"
-PROMPT_VERSION = "4"  # Fase 29: objetivo y variables derivadas
+PROMPT_VERSION = "5"  # Fase 30: tema y nombres cortos de negocio
 
 SYSTEM = """Eres un analista de negocio. Recibes SÓLO la estructura de un dataset: el nombre de
 cada columna y un perfil agregado calculado por Python. Devuelve el esquema estructurado, en
 español, con hipótesis:
 - dominio: de qué trata el dataset y qué representa cada fila, sin cifras;
+- tema: el área de negocio en 1 a 3 palabras (p. ej. «Recursos humanos», «Ventas», «Inventario»);
 - entidades (cliente, producto, estudiante…) con las columnas que las describen;
+- para cada columna, un nombre_corto de 1 a 3 palabras como lo diría alguien del negocio
+  (p. ej. «Salario», «Ausencias», «Fecha de ingreso»); vacío si no se puede saber;
 - el significado de cada columna con tu confianza (alta, media o baja); si el nombre es un código
   (p. ej. CDG_20), dedúcelo del perfil con confianza baja, y si no se puede saber deja el
   significado vacío: no lo inventes; justifica cada significado en una frase corta (en qué te
@@ -32,8 +35,9 @@ español, con hipótesis:
   de negocio; Python las medirá sobre todos los datos;
 - preguntas de negocio que valdría la pena responder;
 - objetivo: la columna que el negocio querría explicar o mejorar (una columna de dos valores como
-  un estado, una baja o un aprobado, o una medida principal como las ventas), con el motivo; si
-  no hay ninguna clara, déjalo vacío;
+  un estado, una baja o un aprobado, o una medida principal como las ventas), con el motivo y un
+  nombre de negocio de 2 a 4 palabras (p. ej. «Bajas de empleados», «Ventas»); si no hay ninguna
+  clara, déjalo vacío;
 - derivadas: variables que ayudarían a explicarlo, sólo de dos tipos: antiguedad (de una fecha
   que describe a cada registro, como una fecha de alta) o cuartiles (de una medida). Python las
   calcula.

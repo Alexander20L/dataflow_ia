@@ -60,15 +60,21 @@ def comprehension(context: dict[str, Any]) -> dict[str, Any]:
         )
     return {
         "dominio": "Registros de actividad con medidas y dimensiones para agrupar.",
+        # Fase 30: tema y nombres cortos; el de la última columna es demasiado largo y se
+        # retira, para mostrar la validación.
+        "tema": "Actividad",
         "entidades": [{"nombre": "Registro", "columnas": [name for name, _ in columns][:5]}],
         "columnas": [
             {
                 "columna": name,
+                "nombre_corto": "Nombre demasiado largo para una tarjeta"
+                if index == len(columns) - 1
+                else name.replace("_", " ").capitalize(),
                 "significado": f"Columna con rol {role}.",
                 "entidad": "Registro",
                 "justificacion": f"El perfil la clasifica con el rol {role}.",
             }
-            for name, role in columns
+            for index, (name, role) in enumerate(columns)
         ],
         "ordenes": [],
         "relaciones": relations,
@@ -78,6 +84,7 @@ def comprehension(context: dict[str, Any]) -> dict[str, Any]:
         "objetivo": {
             "columna": binary[0],
             "motivo": f"{binary[0]} es el resultado que interesa explicar.",
+            "nombre": f"Resultado de {binary[0].replace('_', ' ')}",
         }
         if binary
         else None,

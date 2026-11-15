@@ -32,14 +32,18 @@ test("Investigación: plan, árbol, evidencias e historial", async ({ page }) =>
   const tab = page.getByRole("region", { name: "Investigación", exact: true });
 
   // Plan: la evolución mensual va primero y la comparación de periodos depende de ella.
-  const plan = tab.getByRole("table", { name: "Plan de investigación" });
+  // Fase 30: el plan es una lista de tarjetas (el detalle va plegado).
+  const plan = tab.getByRole("list", { name: "Plan de investigación" });
   await expect(plan).toBeVisible({ timeout: 60000 });
-  const first = plan.getByRole("row", { name: "Investigación 1", exact: true });
+  const first = plan.getByRole("listitem", {
+    name: "Investigación 1",
+    exact: true,
+  });
   await expect(first).toContainText("¿Cómo evoluciona Revenue mes a mes?");
   await expect(first).toContainText("Serie temporal mensual");
   await expect(first).toContainText("Alta");
   await expect(
-    plan.getByRole("row", { name: "Investigación 2", exact: true }),
+    plan.getByRole("listitem", { name: "Investigación 2", exact: true }),
   ).toContainText("Comparación de periodos");
 
   // Árbol: hay investigaciones secundarias (ids con punto).

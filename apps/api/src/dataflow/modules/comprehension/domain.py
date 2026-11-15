@@ -308,6 +308,10 @@ def clean_text(text: str, columns: Iterable[str], limit: int = 300) -> str | Non
     return None if DIGIT.search(remainder) else stripped
 
 
+# Fase 30 (ADR-048): palabras como mucho de cada nombre corto de negocio.
+SHORT_WORDS = {"theme": 3, "target": 4, "column": 3}
+
+
 def accept_ai(reply: AIComprehension, columns: Sequence[str]) -> tuple[AIComprehension, list[str]]:
     """Filtra la respuesta: columnas inexistentes y textos con cifras se retiran (con motivo)."""
     known = set(columns)
@@ -320,6 +324,27 @@ def accept_ai(reply: AIComprehension, columns: Sequence[str]) -> tuple[AICompreh
         return cleaned
 
     domain = text(reply.domain, "Descripción del dataset", 400) or ""
+
+    def short(value: str, what: str, words: int) -> str:
+        """Fase 30: un nombre corto de negocio, sin cifras y con pocas palabras; si no
+        cumple, se retira (con motivo) y la interfaz usa el nombre de la columna."""
+        if not value.strip():
+            return ""
+        cleaned = text(value.strip().rstrip("."), what, 60)
+        if cleaned is None:
+            return ""
+        if len(cleaned.split()) > words:
+            discarded.append(f"{what}: tiene más de {words} palabras.")
+            return ""
+        return cleaned
+
+    theme = short(reply.theme, "Tema", SHORT_WORDS["theme"])
+    labels = {
+        column: found
+        for column, label in reply.labels.items()
+        if column in known
+        and (found := short(label, f"Nombre corto de «{column}»", SHORT_WORDS["column"]))
+    }
     entities = []
     for entity in reply.entities[:10]:
         members = [c for c in entity.columns if c in known]
@@ -368,10 +393,12 @@ def accept_ai(reply: AIComprehension, columns: Sequence[str]) -> tuple[AICompreh
     # Fase 29: el objetivo y las variables derivadas propuestos (se validan contra el tipo de cada
     # columna al decidir el objetivo).
     target = None
+    target_label = ""
     if reply.target is not None:
         column, motive = reply.target
         if column in known:
             target = (column, text(motive, "Motivo del objetivo") or "")
+            target_label = short(reply.target_label, "Nombre del objetivo", SHORT_WORDS["target"])
         else:
             discarded.append(f"Objetivo «{column[:60]}»: la columna no existe.")
     derived = []
@@ -390,6 +417,9 @@ def accept_ai(reply: AIComprehension, columns: Sequence[str]) -> tuple[AICompreh
             questions=questions,
             target=target,
             derived=derived,
+            theme=theme,
+            target_label=target_label,
+            labels=labels,
         ),
         discarded,
     )

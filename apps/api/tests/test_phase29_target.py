@@ -249,7 +249,7 @@ def test_the_analysis_explains_the_target(
     run_all(db, objects)
     base = f"/api/v1/versions/{version}"
     understood = get(client, f"{base}/comprehension")["comprehension"]
-    assert understood["rules_version"] == "business-comprehension-v5"
+    assert understood["rules_version"] == "business-comprehension-v6"
     assert understood["target"]["column"] == "activo" and understood["target"]["origin"] == "rules"
     assert "activo" in understood["target_candidates"]
     names = [d["name"] for d in understood["derived"]]
@@ -286,6 +286,8 @@ def test_the_analysis_explains_the_target(
         "value": None,
         "origin": "user",
         "reason": "Elegido por ti.",
+        "label": None,
+        "counted": None,
     }
     explored = get(client, f"{base}/exploration")["exploration"]
     factor = node_for(explored, "factor", ["area"])

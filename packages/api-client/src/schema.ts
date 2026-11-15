@@ -1272,11 +1272,15 @@ export interface components {
         AnalysisTarget: {
             /** Column */
             column: string;
+            /** Counted */
+            counted?: string | null;
             /**
              * Kind
              * @enum {string}
              */
             kind: "rate" | "measure";
+            /** Label */
+            label?: string | null;
             /**
              * Origin
              * @enum {string}
@@ -2106,6 +2110,10 @@ export interface components {
             /** Formulas */
             formulas?: components["schemas"]["Formula"][];
             grain?: components["schemas"]["Grain"] | null;
+            /** Labels */
+            labels?: {
+                [key: string]: string;
+            };
             /** Limitations */
             limitations: string[];
             /** Matrix Columns */
@@ -2123,16 +2131,18 @@ export interface components {
             relationships: components["schemas"]["Relationship"][];
             /**
              * Rules Version
-             * @default business-comprehension-v5
+             * @default business-comprehension-v6
              * @enum {string}
              */
-            rules_version: "business-comprehension-v1" | "business-comprehension-v2" | "business-comprehension-v3" | "business-comprehension-v4" | "business-comprehension-v5";
+            rules_version: "business-comprehension-v1" | "business-comprehension-v2" | "business-comprehension-v3" | "business-comprehension-v4" | "business-comprehension-v5" | "business-comprehension-v6";
             /** Scales */
             scales: components["schemas"]["ColumnScale"][];
             scope: components["schemas"]["ComprehensionScope"];
             target?: components["schemas"]["AnalysisTarget"] | null;
             /** Target Candidates */
             target_candidates?: string[];
+            /** Theme */
+            theme?: string | null;
         };
         /** ComprehensionScope */
         ComprehensionScope: {

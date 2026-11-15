@@ -146,7 +146,7 @@ test("análisis con criterio: periodo mensual, medidas y clientes limitados", as
     name: "Investigación",
     exact: true,
   });
-  const plan = investigationTab.getByRole("table", {
+  const plan = investigationTab.getByRole("list", {
     name: "Plan de investigación",
   });
   await expect(plan).toBeVisible({ timeout: 60000 });

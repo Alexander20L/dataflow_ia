@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
+import { useState, type KeyboardEvent, type ReactNode } from "react";
 import {
   Check,
   CircleAlert,
@@ -67,6 +67,32 @@ function when(value?: string | null) {
   return value ? new Date(value).toLocaleString("es-ES") : "—";
 }
 
+/** Fase 30 (ADR-048): en la narrativa cada cifra lleva su evidencia entre corchetes
+ * («347,745 [d988a123cadf]»); en pantalla se lee la cifra y la evidencia queda en una marca
+ * pequeña con su código al pasar el ratón (el PDF la conserva escrita). */
+const EVIDENCE = /\s?\[([0-9a-f]{12})\]/g;
+
+function Narrative({ text }: { text: string }) {
+  const parts: ReactNode[] = [];
+  let position = 0;
+  for (const match of text.matchAll(EVIDENCE)) {
+    parts.push(text.slice(position, match.index));
+    parts.push(
+      <sup
+        key={match.index}
+        className="evidence-mark"
+        title={`Evidencia ${match[1]}`}
+        aria-label={`evidencia ${match[1]}`}
+      >
+        ●
+      </sup>,
+    );
+    position = (match.index ?? 0) + match[0].length;
+  }
+  parts.push(text.slice(position));
+  return <p>{parts}</p>;
+}
+
 function Block({ block }: { block: ReportBlock }) {
   const chart = block.chart;
   return (
@@ -78,7 +104,7 @@ function Block({ block }: { block: ReportBlock }) {
         </header>
       )}
       {(block.paragraphs ?? []).map((text, index) => (
-        <p key={index}>{capDecimalsInText(text)}</p>
+        <Narrative key={index} text={capDecimalsInText(text)} />
       ))}
       {chart && chart.labels.length > 1 && (
         <Chart
@@ -127,15 +153,17 @@ function Preview({ document }: { document: ReportDocument }) {
       <header className="report-cover">
         <h3>{document.title}</h3>
         <p className="muted">
-          {document.source.file_name} · versión del dataset{" "}
-          {document.source.version_number} · generado{" "}
-          {when(document.generated_at)} · reglas {document.rules_version}
+          {document.source.file_name} · versión {document.source.version_number}{" "}
+          · {when(document.generated_at)}
         </p>
-        {document.source.execution_id && (
-          <small className="muted">
-            Ejecución {document.source.execution_id}
-          </small>
-        )}
+        <details className="cmp-details">
+          <summary>Ver detalle técnico</summary>
+          <p className="muted">
+            Reglas {document.rules_version}
+            {document.source.execution_id &&
+              ` · ejecución ${document.source.execution_id}`}
+          </p>
+        </details>
       </header>
       <nav aria-label="Índice del informe" className="report-index">
         <ol>

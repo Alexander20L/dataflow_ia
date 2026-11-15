@@ -178,6 +178,11 @@ class AnalysisTarget(ComprehensionModel):
     value: str | None = None
     origin: Literal["rules", "ai", "user"]
     reason: str
+    # Fase 30 (`business-comprehension-v6`, ADR-048): nombre de negocio corto (de la IA; sin
+    # ella, ninguno) y la categoría que cuenta una tasa, resuelta por el motor (la pedida o la
+    # menos frecuente; en empate, la primera en orden alfabético, como la investigación).
+    label: str | None = None
+    counted: str | None = None
 
 
 class DerivedVariable(ComprehensionModel):
@@ -226,7 +231,8 @@ class Comprehension(ComprehensionModel):
         "business-comprehension-v3",
         "business-comprehension-v4",
         "business-comprehension-v5",
-    ] = "business-comprehension-v5"
+        "business-comprehension-v6",
+    ] = "business-comprehension-v6"
     scope: ComprehensionScope
     ai_state: Literal["ready", "unavailable", "failed"]
     ai_reason: str | None = None
@@ -258,6 +264,11 @@ class Comprehension(ComprehensionModel):
     target: AnalysisTarget | None = None
     target_candidates: list[str] = Field(default_factory=list)
     derived: list[DerivedVariable] = Field(default_factory=list)
+    # Fase 30 (`business-comprehension-v6`, ADR-048): tema del archivo en pocas palabras y
+    # nombre corto de cada columna, en lenguaje de negocio (de la IA, validados); la interfaz
+    # usa el nombre de la columna cuando no hay.
+    theme: str | None = None
+    labels: dict[str, str] = Field(default_factory=dict)
 
 
 # --- IA: contexto y respuesta ------------------------------------------------------------------
@@ -291,6 +302,10 @@ class AIComprehension(ComprehensionModel):
     # propuestas (tipo y columna base); Python las valida.
     target: tuple[str, str] | None = None
     derived: list[tuple[str, str]] = Field(default_factory=list)
+    # Fase 30 (prompt v5): tema, nombre del objetivo y nombres cortos de las columnas.
+    theme: str = ""
+    target_label: str = ""
+    labels: dict[str, str] = Field(default_factory=dict)
 
 
 class AIReply(ComprehensionModel):

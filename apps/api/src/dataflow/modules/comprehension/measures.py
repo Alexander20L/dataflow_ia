@@ -201,6 +201,17 @@ def distinct_values(content: bytes, dimensions: Sequence[str]) -> dict[str, list
     return result
 
 
+def least_frequent(content: bytes, column: str) -> str | None:
+    """Fase 30: la categoría que cuenta una tasa sin categoría pedida, con la misma regla que
+    la investigación: la menos frecuente y, en empate, la primera en orden alfabético."""
+    data, alias = frame(content, [column])
+    series = data.get_column(alias[column]).drop_nulls().cast(pl.String)
+    counts = pl.DataFrame({"v": series}).group_by("v").len().sort(["len", "v"])
+    if counts.height != 2:
+        return None
+    return str(counts.get_column("v")[0])
+
+
 # --- Fase 24: columnas calculadas y misma entidad ----------------------------------------------
 
 MAX_SOURCES = 6  # fuentes por fórmula (ADR-041)
