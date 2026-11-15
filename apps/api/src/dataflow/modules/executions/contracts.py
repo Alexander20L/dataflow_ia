@@ -87,7 +87,9 @@ class ProcessingConfig(BaseModel):
     max_columns: int = Field(ge=1, le=128)
     max_field_chars: Literal[10000] = 10000
     max_attempts: int = Field(default=3, ge=1, le=3)
-    timeout_seconds: int = Field(ge=5, le=60)
+    # Hasta 60 s para leer y calcular; hasta 100 s para los trabajos con IA (Fase 29.1). La lease
+    # de 120 s cubre el plazo más el margen de publicación.
+    timeout_seconds: int = Field(ge=5, le=100)
     lease_seconds: Literal[120] = 120
     decimal_precision: Literal[50] = 50
     rounding: Literal["HALF_EVEN"] = "HALF_EVEN"

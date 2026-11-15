@@ -168,14 +168,17 @@ class ExploreProposal(ExplorationModel):
 class ExplorationLimits(ExplorationModel):
     max_queries: int = Field(default=20, ge=1, le=40)
     max_ai_proposals: int = Field(default=12, ge=0, le=20)
-    max_ai_calls: int = Field(default=2, ge=0, le=4)
+    # Fase 29.1: la propuesta y el juicio del primer nivel en dos partes.
+    max_ai_calls: int = Field(default=3, ge=0, le=4)
     ai_rows: int = Field(default=AI_ROWS, ge=1, le=AI_ROWS)
     # Fase 25: límites del árbol de investigación (`investigation-v2`).
     max_depth: int = Field(default=2, ge=0, le=3)
     max_nodes: int = Field(default=20, ge=1, le=40)
     max_children: int = Field(default=3, ge=0, le=5)
-    max_seconds: int = Field(default=60, ge=5, le=600)
-    max_cost_usd: str = "0.05"
+    # Fase 29.1: el plazo real es el del trabajo menos 5 s (100 s con IA); el presupuesto deja
+    # sitio a la propuesta y al juicio de Claude Opus (cada llamada cuesta unos 0,05 USD).
+    max_seconds: int = Field(default=95, ge=5, le=600)
+    max_cost_usd: str = "0.20"
 
 
 class ExplorationScope(ExplorationModel):

@@ -6,7 +6,7 @@ Sin frameworks, sin proveedor y sin base de datos. Ninguna cifra sale del modelo
 
 import json
 import re
-from decimal import Context, Decimal, InvalidOperation, localcontext
+from decimal import ROUND_HALF_UP, Context, Decimal, InvalidOperation, localcontext
 from typing import Any
 from uuid import UUID
 
@@ -181,6 +181,34 @@ def format_number(value: str) -> str:
     return sign + ".".join(groups) + ("," + fraction if fraction else "")
 
 
+# Fase 29.1 (ADR-042, `display-decimals-v1`): en los textos de la IA cada cifra se lee con tres
+# decimales como mucho; la evidencia conserva el valor exacto. Las unidades internas del análisis
+# (`number`, `count`, `index`) no se escriben y `percent` se lee «%».
+DISPLAY_DECIMALS = 3
+INTERNAL_UNITS = {"number", "count", "index"}
+
+
+def display_number(value: str) -> str:
+    """`format_number` con como mucho tres decimales: se redondea mitad hacia arriba y se quitan
+    los ceros que deja el redondeo (347.7448 → 347,745; 2.0004 → 2). Con tres o menos decimales
+    la cifra no cambia (12.50 sigue siendo 12,50)."""
+    try:
+        with localcontext(Context(prec=MAX_DIGITS)):
+            exact = Decimal(value)
+            plain = format(exact, "f")
+            fraction = plain.partition(".")[2]
+            if len(fraction) <= DISPLAY_DECIMALS:
+                return format_number(value)
+            rounded = format(
+                exact.quantize(Decimal(1).scaleb(-DISPLAY_DECIMALS), rounding=ROUND_HALF_UP), "f"
+            )
+    except InvalidOperation:
+        return format_number(value)
+    if "." in rounded:
+        rounded = rounded.rstrip("0").rstrip(".")
+    return format_number(rounded)
+
+
 def format_label(cell: ResultCell) -> str:
     parts = [value if value is not None else "(sin valor)" for value in cell.group.values()]
     if cell.period:
@@ -193,10 +221,10 @@ def format_cell(cell: ResultCell) -> str:
         return "sin dato"
     if cell.cell == "rank":
         return f"puesto {cell.value}"
-    text = format_number(cell.value)
-    if cell.cell in {"change_pct", "share_of_total"}:
+    text = display_number(cell.value)
+    if cell.cell in {"change_pct", "share_of_total"} or cell.unit == "percent":
         return f"{text} %"
     if cell.aggregation in {"count", "count_distinct"}:
         return text
-    suffix = cell.currency or cell.unit
+    suffix = cell.currency or (None if cell.unit in INTERNAL_UNITS else cell.unit)
     return f"{text} {suffix}" if suffix else text

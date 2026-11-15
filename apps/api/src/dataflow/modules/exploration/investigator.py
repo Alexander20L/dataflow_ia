@@ -48,7 +48,9 @@ class Verdict:
 class JudgeReply:
     verdicts: dict[str, Verdict]  # por id de nodo
     cost: Decimal
-    called: bool  # hubo llamada facturable (aunque fallara)
+    # Llamadas facturables (aunque fallaran); desde la Fase 29.1 el juicio de un nivel puede ir
+    # en varias partes. `True`/`False` cuentan como 1/0.
+    called: int
 
 
 Judge = Callable[[list[tuple[InvestigationNode, ExploreResult]]], JudgeReply]
@@ -246,7 +248,7 @@ class Investigator:
         if waiting and self.ai_left() and self.judge is not None:
             reply = self.judge([(n, results[n.key or ""]) for n in waiting])
             if reply.called:
-                self.ai_calls += 1
+                self.ai_calls += int(reply.called)
                 self.cost += reply.cost
             verdicts = reply.verdicts
         elif waiting and self.judge is not None:

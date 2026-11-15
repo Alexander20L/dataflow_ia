@@ -2998,7 +2998,7 @@ export interface components {
             ai_rows: number;
             /**
              * Max Ai Calls
-             * @default 2
+             * @default 3
              */
             max_ai_calls: number;
             /**
@@ -3013,7 +3013,7 @@ export interface components {
             max_children: number;
             /**
              * Max Cost Usd
-             * @default 0.05
+             * @default 0.20
              */
             max_cost_usd: string;
             /**
@@ -3033,7 +3033,7 @@ export interface components {
             max_queries: number;
             /**
              * Max Seconds
-             * @default 60
+             * @default 95
              */
             max_seconds: number;
         };

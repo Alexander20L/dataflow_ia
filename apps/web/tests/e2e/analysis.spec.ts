@@ -8,6 +8,9 @@ import { openAnalysis } from "./helpers";
 test("análisis con criterio: periodo mensual, medidas y clientes limitados", async ({
   page,
 }) => {
+  // Recorrido completo (carga, comprensión, investigación con juicio de la IA, dashboard e
+  // informe): como las demás pruebas del recorrido, no cabe en los 30 s por defecto.
+  test.setTimeout(120_000);
   const registration = await page.request.post("/api/v1/auth/register", {
     headers: { Origin: "http://127.0.0.1:3100" },
     data: {

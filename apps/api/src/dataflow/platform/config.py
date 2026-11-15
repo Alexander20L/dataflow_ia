@@ -42,7 +42,13 @@ class Settings(BaseSettings):
     ai_effort: Literal["low", "medium", "high"] = "low"
     ai_api_key: SecretStr | None = None
     ai_api_key_file: Path | None = None
-    ai_timeout_seconds: int = Field(default=30, ge=5, le=120)
+    # Fase 29.1: una llamada de Claude Opus que propone un plan puede pasar de 30 s. Cada llamada
+    # espera como mucho `ai_timeout_seconds` (y nunca más que lo que le queda a su trabajo); los
+    # trabajos con IA tienen su propio plazo, `ai_job_timeout_seconds`, que cabe en la lease de
+    # 120 s con margen para publicar. La lectura de archivos sigue con
+    # `processing_timeout_seconds`.
+    ai_timeout_seconds: int = Field(default=60, ge=5, le=120)
+    ai_job_timeout_seconds: int = Field(default=100, ge=30, le=100)
     ai_max_output_tokens: int = Field(default=4000, ge=500, le=16000)
     ai_user_daily_tokens: int = Field(default=200_000, ge=1)
     ai_project_monthly_cost_usd: Decimal = Field(default=Decimal("5"), ge=0)

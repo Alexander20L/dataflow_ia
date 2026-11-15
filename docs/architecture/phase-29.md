@@ -78,6 +78,29 @@ elegir objetivo (POST …/comprehension/target) ─▶ comprensión ─▶ inves
 - `apps/web/tests/e2e/analyst.spec.ts`; la prueba E2E de la Fase 28 ya no espera la tasa por área
   (no es significativa).
 
+## Fase 29.1: tiempo y presupuesto de la IA y cifras de sus textos
+
+API 0.37.1, sin migración. Con la IA real (Claude Opus), la propuesta de la investigación tardaba
+más de 30 s y se cortaba (`AI_TIMEOUT`), y el presupuesto de 0,05 USD no alcanzaba para el juicio;
+además, los textos de la IA escribían «347,744800 number».
+
+- **Plazo de los trabajos con IA**: `ai_job_timeout_seconds` (100 s; `ai_job_config` en
+  `bootstrap/ai.py`) para comprensión, investigación, dashboard e informe; la lectura de archivos
+  sigue con `processing_timeout_seconds` (45 s). `ProcessingConfig.timeout_seconds` admite hasta
+  100 s; la lease de 120 s no cambia ni se renueva.
+- **Cada llamada**: `ai_timeout_seconds` pasa a 60 s y `AIRequest.timeout_seconds` lleva lo que le
+  queda a la investigación (menos 3 s); el proveedor espera el menor de los dos. Sin al menos 10 s,
+  el juicio no se pide y el nivel se clasifica por reglas.
+- **Investigación**: `ExplorationLimits` con `max_seconds` 95, `max_cost_usd` 0,20 y
+  `max_ai_calls` 3.
+- **Juicio por partes**: el juicio de un nivel va en partes de 10 resultados (`JUDGE_BATCH`) que
+  se piden en paralelo, para que cada respuesta sea corta (con una sola llamada, Claude Opus
+  tardaba más de 60 s con 20 resultados). Las partes que no caben en las llamadas que quedan se
+  clasifican por reglas. `JudgeReply.called` cuenta las llamadas facturadas.
+- **Cifras**: `format_cell` (`copilot/domain.py`) aplica `display-decimals-v1` (ADR-042) y no
+  escribe `number`, `count` ni `index`; `percent` se lee «%». La evidencia no cambia.
+- Pruebas: `apps/api/tests/test_phase29_1_ai_limits.py`.
+
 ## Limitaciones
 
 - Con muestras pequeñas casi todo es «no concluyente»: el sistema lo dice en vez de inventar.
