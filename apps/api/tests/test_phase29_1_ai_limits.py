@@ -134,8 +134,10 @@ def test_the_investigation_gives_each_ai_call_the_time_left(
     version = upload(client, headers, pid, reference_csv(), name="ventas_mensuales.csv").json()
     run_all(db, objects)
     result = client.get(f"/api/v1/versions/{version['id']}/exploration").json()["exploration"]
-    # Con el plazo de los trabajos con IA (100 s), la investigación dispone de 95 s.
-    assert result["limits"]["max_seconds"] == 95 and result["limits"]["max_cost_usd"] == "0.20"
+    # Con el plazo de los trabajos con IA (100 s), la investigación dispone de unos 95 s (lo que
+    # queda del plazo al empezar, menos 5; con el de procesamiento serían 40).
+    assert 85 <= result["limits"]["max_seconds"] <= 95
+    assert result["limits"]["max_cost_usd"] == "0.20"
     purposes = [call["purpose"] for call in result["calls"]]
     assert purposes.count("proposal") == 1
     # El juicio del primer nivel va en partes de 10 resultados como mucho (en paralelo).
