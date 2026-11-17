@@ -1,0 +1,348 @@
+{
+  "cleaning": {
+    "drop_null_any": {
+      "counts": {
+        "created_nulls": 0,
+        "excluded_rows": 2,
+        "input_rows": 4,
+        "modified_cells": 0,
+        "modified_rows": 0,
+        "output_rows": 2
+      },
+      "logical_content_sha256": "9a78c67d246d4b111642d7c2391afd8eb8c0fc190d2188f64c877702bb11f506",
+      "row_lineage_sha256": "272b114cbd1568d7a537192a0acda345067fe9a1c447cf0c279ec34d41f84356",
+      "samples": [
+        {
+          "after": null,
+          "before": {
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213": null,
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc": "1"
+          },
+          "change": "excluded",
+          "column_ids": [
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc",
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213"
+          ],
+          "source_row": 1
+        },
+        {
+          "after": null,
+          "before": {
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213": null,
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc": "1"
+          },
+          "change": "excluded",
+          "column_ids": [
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc",
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213"
+          ],
+          "source_row": 4
+        }
+      ]
+    },
+    "drop_whitespace_all": {
+      "counts": {
+        "created_nulls": 0,
+        "excluded_rows": 0,
+        "input_rows": 4,
+        "modified_cells": 0,
+        "modified_rows": 0,
+        "output_rows": 4
+      },
+      "logical_content_sha256": "1fc828861379f92160e37871ea30ab5fd7d5460d8cbcbe75a6f9f6983fd05dc3",
+      "row_lineage_sha256": "53493a4b28ab6f76f6d12aa77c52910e240f5fe4dd8a4ab53e4ed7f5a7e99822",
+      "samples": []
+    },
+    "trim_all": {
+      "counts": {
+        "created_nulls": 1,
+        "excluded_rows": 0,
+        "input_rows": 4,
+        "modified_cells": 1,
+        "modified_rows": 1,
+        "output_rows": 4
+      },
+      "logical_content_sha256": "c669e62ee079492b9740afdc557e007ba1172268270c48aac2760adb9bce3dde",
+      "row_lineage_sha256": "53493a4b28ab6f76f6d12aa77c52910e240f5fe4dd8a4ab53e4ed7f5a7e99822",
+      "samples": [
+        {
+          "after": {
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213": null
+          },
+          "before": {
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213": " \t "
+          },
+          "change": "modified",
+          "column_ids": [
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213"
+          ],
+          "source_row": 2
+        }
+      ]
+    },
+    "trim_then_drop_null": {
+      "counts": {
+        "created_nulls": 0,
+        "excluded_rows": 3,
+        "input_rows": 4,
+        "modified_cells": 0,
+        "modified_rows": 0,
+        "output_rows": 1
+      },
+      "logical_content_sha256": "fc15f09fd6dc2d1af8925f32d1355dd16187e727808272b883373f4e2c0b4749",
+      "row_lineage_sha256": "cef5e1e5c11e6ffb4ec2bcdb136cb4bd3eef67a6885d24fddb9804b5c5c5ce10",
+      "samples": [
+        {
+          "after": null,
+          "before": {
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213": null,
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc": "1"
+          },
+          "change": "excluded",
+          "column_ids": [
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc",
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213"
+          ],
+          "source_row": 1
+        },
+        {
+          "after": null,
+          "before": {
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213": " \t ",
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc": "2"
+          },
+          "change": "excluded",
+          "column_ids": [
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc",
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213"
+          ],
+          "source_row": 2
+        },
+        {
+          "after": null,
+          "before": {
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213": null,
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc": "1"
+          },
+          "change": "excluded",
+          "column_ids": [
+            "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc",
+            "74bc39cc-3d07-56fb-9ba5-5b6682cdd213"
+          ],
+          "source_row": 4
+        }
+      ]
+    }
+  },
+  "columns": [
+    {
+      "id": "de79c64b-d05b-51e2-b4dd-daa9a6b35cfc",
+      "name": "id",
+      "nullable": true,
+      "ordinal": 0,
+      "technical_type": "string",
+      "type_parameters": {}
+    },
+    {
+      "id": "74bc39cc-3d07-56fb-9ba5-5b6682cdd213",
+      "name": "valor",
+      "nullable": true,
+      "ordinal": 1,
+      "technical_type": "string",
+      "type_parameters": {}
+    }
+  ],
+  "logical_content_sha256": "1fc828861379f92160e37871ea30ab5fd7d5460d8cbcbe75a6f9f6983fd05dc3",
+  "preview": {
+    "Q-001-1": {
+      "columns": [
+        "id",
+        "valor"
+      ],
+      "limit": 10,
+      "offset": 0,
+      "rows": [
+        {
+          "row_number": 1,
+          "values": {
+            "id": "1",
+            "valor": null
+          }
+        },
+        {
+          "row_number": 4,
+          "values": {
+            "id": "1",
+            "valor": null
+          }
+        }
+      ],
+      "total": 2
+    },
+    "Q-002": {
+      "columns": [
+        "id",
+        "valor"
+      ],
+      "limit": 10,
+      "offset": 0,
+      "rows": [
+        {
+          "row_number": 4,
+          "values": {
+            "id": "1",
+            "valor": null
+          }
+        }
+      ],
+      "total": 1
+    },
+    "Q-003-1": {
+      "columns": [
+        "id",
+        "valor"
+      ],
+      "limit": 10,
+      "offset": 0,
+      "rows": [
+        {
+          "row_number": 2,
+          "values": {
+            "id": "2",
+            "valor": " \t "
+          }
+        }
+      ],
+      "total": 1
+    },
+    "all": {
+      "columns": [
+        "id",
+        "valor"
+      ],
+      "limit": 10,
+      "offset": 0,
+      "rows": [
+        {
+          "row_number": 1,
+          "values": {
+            "id": "1",
+            "valor": null
+          }
+        },
+        {
+          "row_number": 2,
+          "values": {
+            "id": "2",
+            "valor": " \t "
+          }
+        },
+        {
+          "row_number": 3,
+          "values": {
+            "id": "3",
+            "valor": "0003"
+          }
+        },
+        {
+          "row_number": 4,
+          "values": {
+            "id": "1",
+            "valor": null
+          }
+        }
+      ],
+      "total": 4
+    }
+  },
+  "profile": {
+    "column_count": 2,
+    "columns": [
+      {
+        "examples": [
+          "1",
+          "2",
+          "3"
+        ],
+        "name": "id",
+        "null_count": 0,
+        "numeric": {
+          "count": 4,
+          "maximum": "3",
+          "mean": "1.75",
+          "minimum": "1",
+          "total": "7"
+        },
+        "suggested_type": "integer",
+        "technical_type": "string",
+        "unique_count": 3
+      },
+      {
+        "examples": [
+          " \t ",
+          "0003"
+        ],
+        "name": "valor",
+        "null_count": 2,
+        "numeric": null,
+        "suggested_type": "string",
+        "technical_type": "string",
+        "unique_count": 2
+      }
+    ],
+    "encoding": "utf-8-sig",
+    "engine_version": "csv-ingestion-1",
+    "row_count": 4,
+    "schema_version": 1,
+    "separator": "auto",
+    "source_sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+  },
+  "quality": {
+    "cell_count": 8,
+    "completeness_percent": 75.0,
+    "duplicate_rows": 1,
+    "issues": [
+      {
+        "affected_rows": 2,
+        "column": "valor",
+        "description": "Campo vacío (nulo).",
+        "id": "Q-001-1",
+        "proposed_action": "Revisar la fuente antes de imputar o excluir.",
+        "rule": "Q-001",
+        "sample_row_numbers": [
+          1,
+          4
+        ],
+        "severity": "medium"
+      },
+      {
+        "affected_rows": 1,
+        "column": "valor",
+        "description": "Valor compuesto sólo de espacios.",
+        "id": "Q-003-1",
+        "proposed_action": "Revisar si el espacio es significativo antes de normalizar.",
+        "rule": "Q-003",
+        "sample_row_numbers": [
+          2
+        ],
+        "severity": "low"
+      },
+      {
+        "affected_rows": 1,
+        "column": null,
+        "description": "Fila idéntica a una anterior, considerando todas las columnas.",
+        "id": "Q-002",
+        "proposed_action": "Confirmar si es una repetición válida antes de eliminarla.",
+        "rule": "Q-002",
+        "sample_row_numbers": [
+          4
+        ],
+        "severity": "medium"
+      }
+    ],
+    "missing_cells": 2,
+    "row_count": 4,
+    "rule_version": "csv-quality-v1",
+    "whitespace_cells": 1
+  }
+}

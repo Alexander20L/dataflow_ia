@@ -1,0 +1,349 @@
+{
+  "schema_version": 1,
+  "operation": "analytics.query@1",
+  "scope": {
+    "execution_id": "00000000-0000-4000-8000-000000000003",
+    "step_id": "query",
+    "slot": "analysis_result",
+    "input": {
+      "version_id": "00000000-0000-4000-8000-000000000001",
+      "artifact_id": "00000000-0000-4000-8000-000000000002",
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "semantic_ref": {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "revision": 2,
+      "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "query_filters": [],
+    "time_grain": "month",
+    "time_range": null
+  },
+  "avg_scale": 4,
+  "dimensions": [
+    {
+      "key": "d0",
+      "column_id": "00000000-0000-4000-8000-000000000101",
+      "name": "region",
+      "technical_type": "string",
+      "time_grain": null
+    },
+    {
+      "key": "period",
+      "column_id": "00000000-0000-4000-8000-000000000102",
+      "name": "fecha",
+      "technical_type": "date",
+      "time_grain": "month"
+    }
+  ],
+  "metrics": [
+    {
+      "key": "m0",
+      "revision_id": "00000000-0000-4000-8000-000000000201",
+      "revision": 1,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "sum importe",
+      "aggregation": "sum",
+      "measure_column_id": "00000000-0000-4000-8000-000000000103",
+      "measure_column": "importe",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": "EUR",
+      "scale": 2,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    },
+    {
+      "key": "m1",
+      "revision_id": "00000000-0000-4000-8000-000000000203",
+      "revision": 3,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "count unidades",
+      "aggregation": "count",
+      "measure_column_id": "00000000-0000-4000-8000-000000000104",
+      "measure_column": "unidades",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": null,
+      "scale": null,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    }
+  ],
+  "rows": [
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Este"
+          }
+        ],
+        "period": {
+          "grain": "month",
+          "start": "2025-03-01"
+        }
+      },
+      "labels": {
+        "d0": "Este",
+        "period": "2025-03"
+      },
+      "values": {
+        "m0": "3.00",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "5f70f2a1747d489d5c476dcd165a61bc78090433e14983d3f311ff2e8f2acbc5",
+        "m1": "1f904f051629ff91afea9aa5990846eb3d1db646638158f0895242162135391b"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Este"
+          }
+        ],
+        "period": {
+          "grain": "month",
+          "start": "2026-03-01"
+        }
+      },
+      "labels": {
+        "d0": "Este",
+        "period": "2026-03"
+      },
+      "values": {
+        "m0": "-4.25",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "0007811d9f0e79a738778723ddec5aaff466f9d56128640b182c351b250e6cda",
+        "m1": "712b1cedadcd04126e85be1fe1fa7d2012dcc35d08ad9bb8c3ea3f13bf241ec9"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Norte"
+          }
+        ],
+        "period": {
+          "grain": "month",
+          "start": "2025-02-01"
+        }
+      },
+      "labels": {
+        "d0": "Norte",
+        "period": "2025-02"
+      },
+      "values": {
+        "m0": "7.77",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "23474e3e7df3eae7d0532e3915de66d14330ce5ed87c0728dc985401f239613a",
+        "m1": "43e4e0a18886069a1a91d056a38af6130e17dd4dc3a24f8252426d4450f4adeb"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Norte"
+          }
+        ],
+        "period": {
+          "grain": "month",
+          "start": "2025-12-01"
+        }
+      },
+      "labels": {
+        "d0": "Norte",
+        "period": "2025-12"
+      },
+      "values": {
+        "m0": "10.00",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "d852bdf102238b6dae0e13f458aabc1e3b88f60ae182b08303998644ee64bcb2",
+        "m1": "17711afac06902a615996a5dab87f29541ea97a3b524652e743b64a5ea559692"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Norte"
+          }
+        ],
+        "period": {
+          "grain": "month",
+          "start": "2026-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Norte",
+        "period": "2026-01"
+      },
+      "values": {
+        "m0": "0.30",
+        "m1": "2"
+      },
+      "evidence": {
+        "m0": "59baff5f458380e358649344408b5fa230fe36a5682ed797ed7ded16a0a9852a",
+        "m1": "3bbb15a6665e055a7272d238ce0740a4f97f289a6ac3c8c84410d816e76a2453"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Norte"
+          }
+        ],
+        "period": {
+          "grain": "month",
+          "start": "2026-02-01"
+        }
+      },
+      "labels": {
+        "d0": "Norte",
+        "period": "2026-02"
+      },
+      "values": {
+        "m0": null,
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "3d63852c3c62d924b8e77e3c82fe2acb4730b3c9903ff8115c2a678d691fd431",
+        "m1": "ab654052d218f4829d39b45c25fce9502d47c551ad78247b95f2420e875540b5"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Sur"
+          }
+        ],
+        "period": {
+          "grain": "month",
+          "start": "2026-01-01"
+        }
+      },
+      "labels": {
+        "d0": "Sur",
+        "period": "2026-01"
+      },
+      "values": {
+        "m0": "0.20",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "27da2b37f88603ac9d4d8df2c8a09c55527e86a90e7416ef1704e07f78d54a8f",
+        "m1": "3f00722195c14e5de681096594c8f8780623d926cacc7da5c5d617e581814301"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Sur"
+          }
+        ],
+        "period": {
+          "grain": "month",
+          "start": "2026-04-01"
+        }
+      },
+      "labels": {
+        "d0": "Sur",
+        "period": "2026-04"
+      },
+      "values": {
+        "m0": "0.25",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "8a53fc3c57b6d6accf86b6ea92d0f2c1935c548879f3ed62382d79a3465167e3",
+        "m1": "71d93f06b7d23af51a54d91fc2ecd9b6b7f3f07c358f4ba50815f5a58e181f33"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": "Sur"
+          }
+        ],
+        "period": {
+          "missing": true
+        }
+      },
+      "labels": {
+        "d0": "Sur",
+        "period": "(sin valor)"
+      },
+      "values": {
+        "m0": "2.50",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "76c53b2fee2911fb8b7ec7872465e6004742184e6d7c4d3b057daf9d64996a9e",
+        "m1": "6e2dc220f959da68bb5a4ffd16db4abbc897a916a9d1912bb42c5cda8023501e"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [
+          {
+            "column_id": "00000000-0000-4000-8000-000000000101",
+            "value": {
+              "missing": true
+            }
+          }
+        ],
+        "period": {
+          "grain": "month",
+          "start": "2026-02-01"
+        }
+      },
+      "labels": {
+        "d0": "(sin valor)",
+        "period": "2026-02"
+      },
+      "values": {
+        "m0": "1.00",
+        "m1": "1"
+      },
+      "evidence": {
+        "m0": "1fc23f3c11f302affbb0d26c4d54f4215ffb2a2397cf22451be1a22876800f74",
+        "m1": "44cede80fd8b2aa26f510e8b0b6c0099c00f9139cd4d01edbbee6bce1e3496d2"
+      }
+    }
+  ],
+  "row_count": 10
+}

@@ -24,11 +24,14 @@ async function proxy(
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
   }
+  // CSV (…/imports) y Excel (…/imports/xlsx y …/imports/xlsx/inspect, Fase 12A).
   const isCsvUpload =
     request.method === "POST" &&
-    path.length === 3 &&
     path[0] === "projects" &&
-    path[2] === "imports";
+    path[2] === "imports" &&
+    (path.length === 3 ||
+      (path[3] === "xlsx" &&
+        (path.length === 4 || (path.length === 5 && path[4] === "inspect"))));
   const isSemanticSave =
     request.method === "POST" &&
     path.length === 3 &&

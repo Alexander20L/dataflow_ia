@@ -2,6 +2,8 @@
 
 Estado: implementado en Fase 3 / API 0.5. Desarrolla SemanticContract de Fase 1.
 
+> **Vigencia (Fase 13, [ADR-026](026-fully-automatic-single-path.md))**: la supervisión humana que fija este ADR quedó sin efecto en el producto; la revisión semántica confirmada por una persona y sus rutas se retiraron. Siguen vigentes las revisiones inmutables y el servicio (sin rutas públicas). La interpretación actual es automática y por reglas (`understanding.profile@3`, [ADR-025](025-automatic-descriptive-interpretation.md)) y no se registra como «confirmada».
+
 ## Contexto
 
 Un perfil no determina qué representa cada fila ni si un número es código, medida o importe en cierta moneda. Se necesitan decisiones persistentes y trazables sin modificar datos o análisis anteriores.

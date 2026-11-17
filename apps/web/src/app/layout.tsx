@@ -5,7 +5,7 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "DataFlow AI — Tu próximo hallazgo empieza aquí",
   description:
-    "Workspace de análisis de datos supervisado. Prototipo de demostración.",
+    "Análisis automático de tus archivos: sube un CSV o Excel y obtén tu dashboard.",
 };
 export default function RootLayout({
   children,

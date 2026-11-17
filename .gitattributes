@@ -1,0 +1,20 @@
+# Saltos de línea LF en el repositorio y en todas las copias de trabajo, con independencia de
+# core.autocrlf: Prettier, el contrato OpenAPI y contracts:check comparan bytes exactos.
+* text=auto eol=lf
+
+# Binarios: nunca se convierten ni se comparan como texto. Se declaran los que genera la
+# aplicación (Parquet), los ejemplos versionados (.xlsx, Fase 12A) e imágenes o iconos.
+*.parquet binary
+*.xlsx binary
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.pdf binary
+*.zip binary
+*.xlsx binary
+
+# Fixtures de regresión: bytes exactos (CRLF/BOM/tabuladores forman parte del caso y de su hash).
+apps/api/tests/fixtures/** -text

@@ -32,6 +32,18 @@ class SemanticRepresentationAccess:
             projects,
         )
 
+    def origin_table(self, owner: UUID, artifact: UUID) -> tuple[UUID, int, UUID] | None:
+        table = self.executions.artifact(owner, artifact)
+        # Sólo una derivada tiene origen (y sólo entonces se consulta el linaje).
+        if self.datasets.get(owner, table.version_id).kind != "derived":
+            return None
+        lineage = self.datasets.lineage(owner, table.version_id)
+        if lineage is None:
+            return None
+        parent = self.datasets.get(owner, lineage.parent_version_id)
+        tables = self.executions.representations(owner, parent.id)
+        return (parent.id, parent.number, tables[0].id) if tables else None
+
     def resolve(self, owner: UUID, artifact: UUID, with_profile: bool = False) -> Representation:
         table = self.executions.artifact(owner, artifact)
         if table.kind != "table" or not table.columns:

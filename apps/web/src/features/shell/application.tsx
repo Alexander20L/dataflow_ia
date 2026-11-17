@@ -4,19 +4,15 @@ import { useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
-  Activity,
   ArrowUpRight,
   Bell,
   ChevronDown,
   ChevronRight,
   Command,
   Database,
-  FileText,
   FolderKanban,
   HelpCircle,
-  History,
   House,
-  LayoutDashboard,
   Menu,
   Moon,
   Plus,
@@ -31,18 +27,14 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { Home } from "@/features/projects/home";
 import { ImportProject } from "@/features/ingestion/import-project";
-import { Workspace } from "@/features/workspace/workspace";
-import { Overview } from "@/features/projects/overview";
+import { ProjectDetail } from "@/features/projects/project-detail";
+import { Overview, overviewPaths } from "@/features/projects/overview";
 import { useAuth } from "@/features/identity/auth-provider";
 
 const navigation = [
   { href: "/", label: "Inicio", icon: House },
   { href: "/projects", label: "Proyectos", icon: FolderKanban },
   { href: "/sources", label: "Fuentes de datos", icon: Database },
-  { href: "/analysis", label: "Análisis", icon: Activity },
-  { href: "/dashboards", label: "Dashboards", icon: LayoutDashboard },
-  { href: "/reports", label: "Informes", icon: FileText },
-  { href: "/history", label: "Historial de ejecuciones", icon: History },
 ];
 export function Application() {
   const path = usePathname();
@@ -106,7 +98,7 @@ export function Application() {
               key={item.href}
               href={item.href}
               onClick={() => setMobile(false)}
-              className={`nav-link ${path === item.href || (item.href === "/analysis" && path.startsWith("/workspace")) ? "active" : ""}`}
+              className={`nav-link ${path === item.href || (item.href === "/projects" && path.startsWith("/workspace")) ? "active" : ""}`}
             >
               <item.icon size={18} />
               <span>{item.label}</span>
@@ -120,9 +112,9 @@ export function Application() {
           <div className="copilot-card">
             <div className="copilot-title">
               <Sparkles size={17} />
-              Tu copiloto de datos
+              Análisis automático
             </div>
-            <p>De los datos a las decisiones, con evidencia en cada paso.</p>
+            <p>De los datos a las decisiones, sin pasos manuales.</p>
             <button onClick={() => setModal("help")}>
               Conoce DataFlow AI <ArrowUpRight size={14} />
             </button>
@@ -163,9 +155,6 @@ export function Application() {
             <strong>{title}</strong>
           </div>
           <div className="topbar-actions">
-            <span className="demo-chip">
-              <span /> Proyectos conectados
-            </span>
             <button
               className="search-trigger"
               onClick={() => setModal("search")}
@@ -205,16 +194,8 @@ export function Application() {
           ) : path === "/new" ? (
             <ImportProject />
           ) : path.startsWith("/workspace/") ? (
-            <Workspace projectId={path.split("/")[2]} />
-          ) : [
-              "/projects",
-              "/sources",
-              "/analysis",
-              "/dashboards",
-              "/reports",
-              "/history",
-              "/settings",
-            ].includes(path) ? (
+            <ProjectDetail key={path.split("/")[2]} id={path.split("/")[2]} />
+          ) : overviewPaths.includes(path) ? (
             <Overview path={path} />
           ) : (
             <div className="empty-state">
@@ -233,7 +214,7 @@ export function Application() {
             respaldado por datos.
           </span>
           <span>
-            <span className="status-dot" /> DataFlow v0.5 · contexto semántico
+            <span className="status-dot" /> DataFlow · análisis automático
           </span>
         </footer>
       </div>
@@ -289,35 +270,25 @@ export function Application() {
             <div className="notice-list">
               <Sparkles size={22} />
               <div>
-                <strong>Tu espacio de demostración está listo</strong>
+                <strong>Todo al día</strong>
                 <p>
-                  Explora el proyecto de ventas para revisar calidad, aprobar
-                  una limpieza y obtener un informe.
+                  Cuando subes un archivo, su análisis aparece solo en el
+                  proyecto. No hay tareas pendientes de revisión.
                 </p>
-                <Button
-                  size="sm"
-                  onClick={() => {
-                    setModal(null);
-                    router.push("/workspace/ventas-2026");
-                  }}
-                >
-                  Abrir ejemplo
-                </Button>
               </div>
             </div>
           ) : (
             <>
               <p className="dialog-copy">
-                DataFlow AI acompaña las nueve etapas del análisis. Conserva los
-                originales y separa los resultados calculados de las sugerencias
-                de IA.
+                Sube un archivo y DataFlow AI hace el resto: perfil, calidad,
+                interpretación y dashboard, sin pasos manuales. Los originales
+                se conservan y cada cifra tiene su evidencia.
               </p>
               <div className="info-banner">
                 <Sparkles size={18} />
                 <span>
-                  Tus CSV se conservan y procesan en el backend. El ejemplo de
-                  ventas y el copiloto son demostraciones; no se realizan
-                  llamadas a un proveedor de IA.
+                  La explicación con IA es opcional: sólo se genera si el
+                  servidor la tiene activada y nunca escribe cifras propias.
                 </span>
               </div>
               <Button

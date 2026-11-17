@@ -1,0 +1,239 @@
+{
+  "csv_import": {
+    "profile": {
+      "column_count": 2,
+      "columns": [
+        {
+          "examples": [
+            "1",
+            "2",
+            "3"
+          ],
+          "name": "id",
+          "null_count": 0,
+          "numeric": {
+            "count": 4,
+            "maximum": "3",
+            "mean": "1.75",
+            "minimum": "1",
+            "total": "7"
+          },
+          "suggested_type": "integer",
+          "technical_type": "string",
+          "unique_count": 3
+        },
+        {
+          "examples": [
+            " \t ",
+            "0003"
+          ],
+          "name": "valor",
+          "null_count": 2,
+          "numeric": null,
+          "suggested_type": "string",
+          "technical_type": "string",
+          "unique_count": 2
+        }
+      ],
+      "encoding": "utf-8-sig",
+      "engine_version": "csv-ingestion-1",
+      "polars_version": "1.44.2",
+      "row_count": 4,
+      "schema_version": 1,
+      "separator": "\t",
+      "source_sha256": "d1fddc227b2e2ce6e967ba9815ad06e0a8f01e05296d435979f530d0d2886ad5"
+    },
+    "quality": {
+      "cell_count": 8,
+      "completeness_percent": 75.0,
+      "duplicate_rows": 1,
+      "issues": [
+        {
+          "affected_rows": 2,
+          "column": "valor",
+          "description": "Campo vacío (nulo).",
+          "id": "Q-001-1",
+          "proposed_action": "Revisar la fuente antes de imputar o excluir.",
+          "rule": "Q-001",
+          "sample_row_numbers": [
+            1,
+            4
+          ],
+          "severity": "medium"
+        },
+        {
+          "affected_rows": 1,
+          "column": "valor",
+          "description": "Valor compuesto sólo de espacios.",
+          "id": "Q-003-1",
+          "proposed_action": "Revisar si el espacio es significativo antes de normalizar.",
+          "rule": "Q-003",
+          "sample_row_numbers": [
+            2
+          ],
+          "severity": "low"
+        },
+        {
+          "affected_rows": 1,
+          "column": null,
+          "description": "Fila idéntica a una anterior, considerando todas las columnas.",
+          "id": "Q-002",
+          "proposed_action": "Confirmar si es una repetición válida antes de eliminarla.",
+          "rule": "Q-002",
+          "sample_row_numbers": [
+            4
+          ],
+          "severity": "medium"
+        }
+      ],
+      "missing_cells": 2,
+      "row_count": 4,
+      "rule_version": "csv-quality-v1",
+      "whitespace_cells": 1
+    }
+  },
+  "requested_separator": "tab",
+  "table_profile_quality": {
+    "profile": {
+      "column_count": 2,
+      "columns": [
+        {
+          "examples": [
+            "1",
+            "2",
+            "3"
+          ],
+          "name": "id",
+          "null_count": 0,
+          "numeric": {
+            "count": 4,
+            "maximum": "3",
+            "mean": "1.75",
+            "minimum": "1",
+            "total": "7"
+          },
+          "suggested_type": "integer",
+          "technical_type": "string",
+          "unique_count": 3
+        },
+        {
+          "examples": [
+            " \t ",
+            "0003"
+          ],
+          "name": "valor",
+          "null_count": 2,
+          "numeric": null,
+          "suggested_type": "string",
+          "technical_type": "string",
+          "unique_count": 2
+        }
+      ],
+      "encoding": "utf-8-sig",
+      "engine_version": "csv-ingestion-1",
+      "polars_version": "1.44.2",
+      "row_count": 4,
+      "schema_version": 1,
+      "separator": ",",
+      "source_sha256": "d1fddc227b2e2ce6e967ba9815ad06e0a8f01e05296d435979f530d0d2886ad5"
+    },
+    "quality": {
+      "cell_count": 8,
+      "completeness_percent": 75.0,
+      "duplicate_rows": 1,
+      "issues": [
+        {
+          "affected_rows": 2,
+          "column": "valor",
+          "description": "Campo vacío (nulo).",
+          "id": "Q-001-1",
+          "proposed_action": "Revisar la fuente antes de imputar o excluir.",
+          "rule": "Q-001",
+          "sample_row_numbers": [
+            1,
+            4
+          ],
+          "severity": "medium"
+        },
+        {
+          "affected_rows": 1,
+          "column": "valor",
+          "description": "Valor compuesto sólo de espacios.",
+          "id": "Q-003-1",
+          "proposed_action": "Revisar si el espacio es significativo antes de normalizar.",
+          "rule": "Q-003",
+          "sample_row_numbers": [
+            2
+          ],
+          "severity": "low"
+        },
+        {
+          "affected_rows": 1,
+          "column": null,
+          "description": "Fila idéntica a una anterior, considerando todas las columnas.",
+          "id": "Q-002",
+          "proposed_action": "Confirmar si es una repetición válida antes de eliminarla.",
+          "rule": "Q-002",
+          "sample_row_numbers": [
+            4
+          ],
+          "severity": "medium"
+        }
+      ],
+      "missing_cells": 2,
+      "row_count": 4,
+      "rule_version": "csv-quality-v1",
+      "whitespace_cells": 1
+    }
+  },
+  "table_quality_only": {
+    "quality": {
+      "cell_count": 8,
+      "completeness_percent": 75.0,
+      "duplicate_rows": 1,
+      "issues": [
+        {
+          "affected_rows": 2,
+          "column": "valor",
+          "description": "Campo vacío (nulo).",
+          "id": "Q-001-1",
+          "proposed_action": "Revisar la fuente antes de imputar o excluir.",
+          "rule": "Q-001",
+          "sample_row_numbers": [
+            1,
+            4
+          ],
+          "severity": "medium"
+        },
+        {
+          "affected_rows": 1,
+          "column": "valor",
+          "description": "Valor compuesto sólo de espacios.",
+          "id": "Q-003-1",
+          "proposed_action": "Revisar si el espacio es significativo antes de normalizar.",
+          "rule": "Q-003",
+          "sample_row_numbers": [
+            2
+          ],
+          "severity": "low"
+        },
+        {
+          "affected_rows": 1,
+          "column": null,
+          "description": "Fila idéntica a una anterior, considerando todas las columnas.",
+          "id": "Q-002",
+          "proposed_action": "Confirmar si es una repetición válida antes de eliminarla.",
+          "rule": "Q-002",
+          "sample_row_numbers": [
+            4
+          ],
+          "severity": "medium"
+        }
+      ],
+      "missing_cells": 2,
+      "row_count": 4,
+      "rule_version": "csv-quality-v1",
+      "whitespace_cells": 1
+    }
+  }
+}

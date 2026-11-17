@@ -31,9 +31,7 @@ def main() -> None:
         "/tmp/verify_" + token + ".dump",
     )
     postgres = run(COMPOSE + ["ps", "-q", "postgres"])
-    image = run(
-        ["docker", "image", "inspect", "dataflow-api:latest", "--format", "{{.Id}}"]
-    )
+    image = run(["docker", "image", "inspect", "dataflow-api:latest", "--format", "{{.Id}}"])
     mounts = [
         "--mount",
         f"type=volume,source={volume},target=/restore",
@@ -76,7 +74,12 @@ def main() -> None:
         )
         run(["docker", "volume", "create", volume])
         vol_created = True
-        code = "import tarfile;t=tarfile.open('/backup/objects.tar.gz');t.extractall('/restore',filter='data');t.close()"
+        code = (
+            "import tarfile;"
+            "t=tarfile.open('/backup/objects.tar.gz');"
+            "t.extractall('/restore',filter='data');"
+            "t.close()"
+        )
         run(
             [
                 "docker",
@@ -92,9 +95,7 @@ def main() -> None:
                 code,
             ]
         )
-        password = run(
-            COMPOSE + ["exec", "-T", "postgres", "printenv", "POSTGRES_PASSWORD"]
-        )
+        password = run(COMPOSE + ["exec", "-T", "postgres", "printenv", "POSTGRES_PASSWORD"])
         url = f"postgresql+psycopg://dataflow:{quote(password, safe='')}@postgres:5432/{database}"
         output = run(
             [
@@ -129,7 +130,8 @@ def main() -> None:
             encoding="utf-8",
         )
         print(
-            "Restauración 0003 → 0004 verificada: mismos datos/artefactos y cero confirmaciones inventadas."
+            "Restauración 0003 → 0004 verificada: mismos datos/artefactos "
+            "y cero confirmaciones inventadas."
         )
     finally:
         if db_created:

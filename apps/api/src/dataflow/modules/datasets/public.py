@@ -4,6 +4,14 @@ from dataflow.modules.datasets.contracts import (
     ImportBinding,
     ObjectStore,
     StoredObject,
+    VersionLineage,
 )
 
-__all__ = ["Datasets", "DatasetVersion", "ImportBinding", "ObjectStore", "StoredObject"]
+__all__ = [
+    "Datasets",
+    "DatasetVersion",
+    "ImportBinding",
+    "ObjectStore",
+    "StoredObject",
+    "VersionLineage",
+]

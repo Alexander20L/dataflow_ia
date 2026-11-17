@@ -13,7 +13,6 @@ import {
   FileSpreadsheet,
   LockKeyhole,
   ShieldCheck,
-  Sparkles,
   UploadCloud,
   X,
 } from "lucide-react";
@@ -21,7 +20,9 @@ import { Button } from "@/components/ui/button";
 import { useApp } from "@/lib/providers";
 import { useCreateProject } from "@/features/projects/api";
 import { errorMessage } from "@/lib/api";
-import { useUploadCsv } from "./api";
+import { useUploadFile } from "./api";
+import { SqlServerImport } from "./sqlserver-import";
+import { FILE_ACCEPT, fileProblem } from "./csv-workspace";
 
 const schema = z.object({
   name: z
@@ -35,16 +36,17 @@ type FormData = z.infer<typeof schema>;
 export function ImportProject() {
   const { notify } = useApp();
   const createProject = useCreateProject();
-  const uploadCsv = useUploadCsv();
+  const uploadFile = useUploadFile();
   const router = useRouter();
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [example, setExample] = useState(false);
   const [error, setError] = useState("");
   const [dragging, setDragging] = useState(false);
   const {
     register,
     handleSubmit,
+    getValues,
+    setValue,
     formState: { errors, isSubmitting },
   } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -54,30 +56,25 @@ export function ImportProject() {
     if (!selected) return;
     setError("");
     setFile(null);
-    if (!/\.csv$/i.test(selected.name)) {
-      setError(
-        "Selecciona un archivo CSV. XLSX y Parquet se integrarán después.",
-      );
-      return;
-    }
-    if (selected.size > 5 * 1024 * 1024) {
-      setError("El CSV debe tener como máximo 5 MB.");
-      return;
-    }
-    if (selected.size === 0) {
-      setError("El archivo está vacío.");
+    const problem = fileProblem(selected);
+    if (problem) {
+      setError(problem);
       return;
     }
     setFile(selected);
-    setExample(false);
+    if (!getValues("name").trim()) {
+      const base = selected.name.replace(/\.(csv|xlsx|pdf)$/i, "").trim();
+      setValue(
+        "name",
+        (base.length >= 3 ? base : `Análisis de ${base}`).slice(0, 80),
+        {
+          shouldValidate: true,
+        },
+      );
+    }
   }
   async function submit(data: FormData) {
     setError("");
-    if (example) {
-      notify("Ejemplo de ventas listo. No se ha subido ningún archivo.");
-      router.push("/workspace/ventas-2026");
-      return;
-    }
     try {
       const project =
         createProject.data ??
@@ -86,11 +83,11 @@ export function ImportProject() {
           description: data.description,
           file_name: file?.name ?? null,
         }));
-      if (file) await uploadCsv.mutateAsync({ file, projectId: project.id });
+      if (file) await uploadFile.mutateAsync({ file, projectId: project.id });
       notify(
         file
-          ? "CSV original conservado. Procesamiento encolado."
-          : "Proyecto guardado. Puedes subir su primer CSV desde el workspace.",
+          ? "Original conservado. Procesamiento encolado."
+          : "Proyecto guardado. Puedes subir su primer archivo desde el espacio de trabajo.",
       );
       router.push(`/workspace/${project.id}`);
     } catch (error) {
@@ -107,17 +104,23 @@ export function ImportProject() {
         <div>
           <p className="eyebrow">UN NUEVO PUNTO DE PARTIDA</p>
           <h1>Crea tu próximo análisis</h1>
-          <p>Organiza tu proyecto y elige los datos que quieres explorar.</p>
+          <p>
+            Sube tu CSV o Excel y obtén indicadores y gráficos sin configurar el
+            análisis.
+          </p>
         </div>
-        <span className="badge calculated">Paso 1 de 9 · Ingesta</span>
+        <span className="badge calculated">Análisis automático</span>
       </div>
       <div className="import-layout">
         <form className="panel import-form" onSubmit={handleSubmit(submit)}>
           <div className="section-title">
             <span className="section-number">01</span>
             <div>
-              <h2>Dale un nombre a tu proyecto</h2>
-              <p>Un espacio para tus datos, hallazgos y decisiones.</p>
+              <h2>Identifica tu análisis</h2>
+              <p>
+                Al elegir un archivo, el nombre se completa automáticamente.
+                Puedes cambiarlo.
+              </p>
             </div>
           </div>
           <label htmlFor="project-name">
@@ -152,17 +155,14 @@ export function ImportProject() {
             <span className="section-number">02</span>
             <div>
               <h2>Añade tus datos</h2>
-              <p>
-                Opcional: selecciona un archivo, crea el proyecto vacío o abre
-                el ejemplo.
-              </p>
+              <p>Opcional: selecciona un archivo o crea el proyecto vacío.</p>
             </div>
           </div>
           <input
             ref={input}
             hidden
             type="file"
-            accept=".csv,text/csv"
+            accept={FILE_ACCEPT}
             onChange={(e) => selectFile(e.target.files?.[0])}
           />
           <div
@@ -190,7 +190,7 @@ export function ImportProject() {
             >
               Seleccionar archivo
             </Button>
-            <small>CSV UTF-8 · hasta 5 MB · XLSX y Parquet próximamente</small>
+            <small>CSV, Excel (.xlsx) o PDF con tablas · hasta 5 MB</small>
           </div>
           {file && (
             <div className="selected-file">
@@ -214,63 +214,6 @@ export function ImportProject() {
               </button>
             </div>
           )}
-          <button
-            type="button"
-            className={`example-picker ${example ? "selected" : ""}`}
-            onClick={() => {
-              setExample((v) => !v);
-              setFile(null);
-              setError("");
-            }}
-          >
-            <span className="example-icon">
-              <Sparkles size={20} />
-            </span>
-            <span>
-              <strong>Prefiero explorar un ejemplo</strong>
-              <small>Ventas 2026 · 240 registros · 6 columnas</small>
-            </span>
-            {example ? <CheckCircle2 size={20} /> : <ArrowRight size={19} />}
-          </button>
-          {example && (
-            <div className="preview-mini">
-              <strong>Vista previa · datos sintéticos</strong>
-              <div className="table-scroll">
-                <table>
-                  <thead>
-                    <tr>
-                      <th>ID</th>
-                      <th>Región</th>
-                      <th>Categoría</th>
-                      <th>Importe</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>V-0001</td>
-                      <td>Norte</td>
-                      <td>Tecnología</td>
-                      <td>
-                        <span className="null-value">nulo</span>
-                      </td>
-                    </tr>
-                    <tr>
-                      <td>V-0002</td>
-                      <td>Sur</td>
-                      <td>Hogar</td>
-                      <td>277 €</td>
-                    </tr>
-                    <tr>
-                      <td>V-0003</td>
-                      <td>Este</td>
-                      <td>Oficina</td>
-                      <td>414 €</td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
           {error && (
             <p className="field-error" role="alert">
               {error}
@@ -291,16 +234,16 @@ export function ImportProject() {
           {isSubmitting && (
             <p className="fine-print" role="status">
               {file
-                ? "Guardando el proyecto y enviando el CSV…"
+                ? "Guardando el proyecto y enviando el archivo…"
                 : "Guardando el proyecto…"}
             </p>
           )}
           <div className="info-banner">
             <ShieldCheck size={18} />
             <span>
-              El CSV original se conserva sin cambios. Un worker genera su copia
-              analítica, el perfil y las incidencias de calidad. El ejemplo de
-              ventas sigue siendo independiente de tus archivos.
+              El original se conserva sin cambios. El sistema elige la hoja de
+              un Excel, genera la copia analítica, el perfil, la calidad y el
+              dashboard automáticamente.
             </span>
           </div>
           <div className="form-footer">
@@ -318,7 +261,7 @@ export function ImportProject() {
               <Database size={22} />
             </span>
             <h2>De un archivo a una visión completa</h2>
-            <p>Un proceso claro, con el control en tus manos.</p>
+            <p>Sube los datos; el sistema prepara el primer dashboard.</p>
             <ol className="benefits-list">
               <li>
                 <CheckCircle2 size={17} />
@@ -326,11 +269,11 @@ export function ImportProject() {
               </li>
               <li>
                 <CheckCircle2 size={17} />
-                <span>Revisa su calidad antes de analizar</span>
+                <span>Calidad evaluada automáticamente</span>
               </li>
               <li>
                 <CheckCircle2 size={17} />
-                <span>Aprueba cada transformación</span>
+                <span>Indicadores y gráficos sin confirmaciones</span>
               </li>
               <li>
                 <CheckCircle2 size={17} />
@@ -343,17 +286,7 @@ export function ImportProject() {
               El original siempre permanece intacto.
             </p>
           </section>
-          <section className="panel connections-panel">
-            <h3>¿Tus datos están en una base?</h3>
-            <p>Conecta una fuente con permisos de lectura.</p>
-            {["PostgreSQL", "MySQL"].map((name) => (
-              <div className="connection" key={name}>
-                <Database size={18} />
-                <strong>{name}</strong>
-                <span className="badge neutral">Próximamente</span>
-              </div>
-            ))}
-          </section>
+          <SqlServerImport projectName={() => getValues("name")} />
         </aside>
       </div>
     </>

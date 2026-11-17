@@ -1,7 +1,6 @@
 "use client";
 import { useRef, useState } from "react";
 import {
-  Check,
   Database,
   Download,
   FileSpreadsheet,
@@ -15,19 +14,37 @@ import { Button } from "@/components/ui/button";
 import { Dialog } from "@/components/ui/dialog";
 import { errorMessage } from "@/lib/api";
 import { number } from "@/lib/utils";
-import { steps } from "@/lib/demo";
 import { useApp } from "@/lib/providers";
-import { ExecutionPanel } from "@/features/executions/execution-panel";
-import { SemanticUnderstanding } from "@/features/understanding/semantic-editor";
+import { AutomaticAnalysisView } from "./automatic-analysis";
+import { AutomaticOverview } from "./automatic-overview";
+import { DeliverySummary } from "./delivery-summary";
+import { SourceReviewPanel } from "./source-review";
+import { InvestigationPanel } from "./investigation";
+import { OverviewAudit } from "./overview-audit";
+import { CsvExport } from "@/features/reports/csv-export";
+import { ComprehensionTab } from "@/features/comprehension/comprehension-tab";
+import { AiNotice } from "@/features/comprehension/ai-notice";
+import { DashboardTab } from "@/features/dashboard/dashboard-tab";
+import { ReportTab } from "@/features/report/report-tab";
+import { InvestigationTab } from "@/features/investigation/investigation-tab";
+import {
+  DatasetTab,
+  type DatasetSubview,
+} from "@/features/dataset/dataset-tab";
 import {
   useCancelImport,
+  useAutomaticAnalysis,
+  useInvestigation,
+  useProgress,
+  useSourceReview,
   useDiagnostic,
   usePreview,
-  useUploadCsv,
+  useUploadFile,
+  useVersion,
   useVersions,
+  XLSX_MIME,
   type DatasetVersion,
   type Diagnostic,
-  type Separator,
 } from "./api";
 
 const states = {
@@ -37,6 +54,58 @@ const states = {
   failed: "Error",
   cancelled: "Cancelado",
 };
+
+const TABS = [
+  { id: "dataset", label: "Dataset" },
+  { id: "comprehension", label: "Comprensión" },
+  { id: "investigation", label: "Investigación" },
+  { id: "dashboard", label: "Dashboard" },
+  { id: "report", label: "Informe" },
+  { id: "analysis", label: "Análisis" },
+] as const;
+type MainTab = (typeof TABS)[number]["id"];
+
+/** Pestañas principales de la versión: Dataset (Fase 22), Comprensión (Fase 24), Investigación
+ * (Fase 25) y Análisis. Dashboard e Informe siguen dentro de «Análisis» hasta que les toque su
+ * propia pestaña. */
+function MainTabs({
+  value,
+  onChange,
+}: {
+  value: MainTab;
+  onChange: (value: MainTab) => void;
+}) {
+  return (
+    <div
+      className="workspace-tabs"
+      role="tablist"
+      aria-label="Vistas de la versión"
+    >
+      {TABS.map((item, index) => (
+        <button
+          key={item.id}
+          id={`workspace-tab-${item.id}`}
+          type="button"
+          role="tab"
+          aria-selected={value === item.id}
+          aria-controls={`workspace-panel-${item.id}`}
+          tabIndex={value === item.id ? 0 : -1}
+          onClick={() => onChange(item.id)}
+          onKeyDown={(event) => {
+            if (event.key !== "ArrowRight" && event.key !== "ArrowLeft") return;
+            event.preventDefault();
+            const next = TABS[(index + 1) % TABS.length];
+            onChange(next.id);
+            document.getElementById(`workspace-tab-${next.id}`)?.focus();
+          }}
+        >
+          {item.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 export function CsvWorkspace({
   projectId,
   archived,
@@ -47,32 +116,56 @@ export function CsvWorkspace({
   const [offset, setOffset] = useState(0);
   const versions = useVersions(projectId, offset);
   const [selected, setSelected] = useState<string | null>(null);
-  const [stage, setStage] = useState(0);
   const [uploading, setUploading] = useState(false);
   const [cancelling, setCancelling] = useState(false);
-  const [semanticDirty, setSemanticDirty] = useState(false);
-  const [semanticEpoch, setSemanticEpoch] = useState(0);
-  const [pendingChange, setPendingChange] = useState<{
-    kind: "stage" | "version" | "offset" | "upload";
-    value?: string | number;
-  } | null>(null);
-  function applyChange(change: NonNullable<typeof pendingChange>) {
-    if (change.kind === "stage") setStage(Number(change.value));
-    else if (change.kind === "version") setSelected(String(change.value));
-    else if (change.kind === "offset") {
-      setOffset(Number(change.value));
-      setSelected(null);
-    } else setUploading(true);
-  }
-  function requestChange(change: NonNullable<typeof pendingChange>) {
-    if (semanticDirty) setPendingChange(change);
-    else applyChange(change);
-  }
+  // Fase 22: «Dataset» (inspección) y «Análisis» (todo lo automático anterior).
+  const [tab, setTab] = useState<MainTab>("dataset");
+  const [datasetSubview, setDatasetSubview] = useState<DatasetSubview>();
   const cancel = useCancelImport(projectId);
   const items = versions.data?.items ?? [];
-  const version = items.find((v) => v.id === selected) ?? items[0];
+  // La versión elegida puede no estar en la página cargada (p. ej. «Ver v1» con más de 20
+  // versiones): se carga por ID y se añade al selector.
+  const selectedInPage = items.find((v) => v.id === selected);
+  const outside = useVersion(
+    selected && !selectedInPage && versions.isSuccess ? selected : undefined,
+  );
+  const outsideVersion =
+    outside.data?.id === selected ? outside.data : undefined;
+  const loadingOutside = Boolean(
+    selected && !selectedInPage && versions.isSuccess && outside.isPending,
+  );
+  const version = selectedInPage ?? outsideVersion ?? items[0];
+  const parentId = version?.parent_version_id ?? undefined;
+  const parentInPage = items.find((v) => v.id === parentId);
+  const parentLookup = useVersion(
+    parentId && !parentInPage ? parentId : undefined,
+  );
+  const parent =
+    parentInPage ??
+    (parentLookup.data?.id === parentId ? parentLookup.data : undefined);
+  const options =
+    version && !items.some((v) => v.id === version.id)
+      ? [version, ...items]
+      : items;
+  const label = (v: DatasetVersion) => {
+    const origin = v.parent_version_id
+      ? (items.find((item) => item.id === v.parent_version_id) ??
+        (parent?.id === v.parent_version_id ? parent : undefined))
+      : undefined;
+    return v.kind === "derived"
+      ? `v${v.number} · derivada de ${origin ? `v${origin.number}` : "otra versión"}`
+      : `v${v.number} · ${v.file_name}${sheetLabel(v)}`;
+  };
   const diagnostic = useDiagnostic(version);
-  if (versions.isPending)
+  const automatic = useAutomaticAnalysis(version);
+  const progress = useProgress(version);
+  const followed = Boolean(
+    progress.data?.stages.find((stage) => stage.id === "investigation")
+      ?.execution_id,
+  );
+  const investigation = useInvestigation(version, followed);
+  const review = useSourceReview(version);
+  if (versions.isPending || loadingOutside)
     return (
       <div className="loading-screen" aria-label="Cargando versiones">
         <div className="skeleton" />
@@ -92,18 +185,16 @@ export function CsvWorkspace({
           <h2>
             <Database size={18} /> Datos del proyecto
           </h2>
-          <p>
-            Archivos propios · originales inmutables · resultados calculados
-          </p>
+          <p>Archivos propios · originales inmutables · análisis automático</p>
         </div>
         {!archived && (
           <Button
             variant="outline"
             size="sm"
-            onClick={() => requestChange({ kind: "upload" })}
+            onClick={() => setUploading(true)}
           >
             <UploadCloud size={16} />
-            {items.length ? "Subir nueva versión" : "Subir CSV"}
+            {items.length ? "Subir nueva versión" : "Subir archivo"}
           </Button>
         )}
       </div>
@@ -112,8 +203,9 @@ export function CsvWorkspace({
           <FileSpreadsheet size={40} />
           <h3>Tu primer dataset empieza aquí</h3>
           <p>
-            Sube un CSV en UTF-8 de hasta 5 MB. El worker comprobará su
-            estructura y calculará el perfil y las reglas de calidad.
+            Sube un CSV, un libro de Excel (.xlsx) o un PDF con tablas de hasta
+            5 MB. El sistema comprobará su estructura y preparará tu dashboard
+            automáticamente.
           </p>
           {!archived && (
             <CsvUpload
@@ -135,13 +227,12 @@ export function CsvWorkspace({
             <select
               id="real-version"
               value={version.id}
-              onChange={(e) =>
-                requestChange({ kind: "version", value: e.target.value })
-              }
+              onChange={(e) => setSelected(e.target.value)}
             >
-              {items.map((v) => (
+              {options.map((v) => (
                 <option key={v.id} value={v.id}>
-                  v{v.number} · {v.file_name} · {states[v.state]}
+                  {label(v)} · {states[v.state]}
+                  {items.includes(v) ? "" : " · fuera de esta página"}
                 </option>
               ))}
             </select>
@@ -150,13 +241,31 @@ export function CsvWorkspace({
             >
               {states[version.state]}
             </span>
-            <a
-              className="btn btn-outline btn-sm"
-              href={`/api/v1/versions/${version.id}/original`}
-            >
-              <Download size={14} />
-              Descargar original
-            </a>
+            {version.kind === "derived" && version.parent_version_id ? (
+              <a
+                className="btn btn-outline btn-sm"
+                href={`/api/v1/versions/${version.parent_version_id}/original`}
+                title="Una versión derivada no tiene original propio."
+              >
+                <Download size={14} />
+                Descargar original de{" "}
+                {parent ? `v${parent.number}` : "la versión de origen"}
+              </a>
+            ) : (
+              <a
+                className="btn btn-outline btn-sm"
+                href={`/api/v1/versions/${version.id}/original`}
+              >
+                <Download size={14} />
+                Descargar original
+              </a>
+            )}
+            {version.state === "succeeded" && (
+              <CsvExport
+                href={`/api/v1/versions/${version.id}/export.csv`}
+                label={`Exportar v${version.number}`}
+              />
+            )}
             {(versions.data?.total ?? 0) > 20 && (
               <div className="pagination">
                 <Button
@@ -164,7 +273,8 @@ export function CsvWorkspace({
                   variant="ghost"
                   disabled={offset === 0}
                   onClick={() => {
-                    requestChange({ kind: "offset", value: offset - 20 });
+                    setOffset(offset - 20);
+                    setSelected(null);
                   }}
                 >
                   Más recientes
@@ -174,7 +284,8 @@ export function CsvWorkspace({
                   variant="ghost"
                   disabled={offset + 20 >= (versions.data?.total ?? 0)}
                   onClick={() => {
-                    requestChange({ kind: "offset", value: offset + 20 });
+                    setOffset(offset + 20);
+                    setSelected(null);
                   }}
                 >
                   Anteriores
@@ -182,128 +293,228 @@ export function CsvWorkspace({
               </div>
             )}
           </div>
-          <div className="original-meta">
-            <span>{number(version.byte_size)} bytes</span>
-            <span className="mono" title={version.sha256}>
-              SHA-256 {version.sha256}
-            </span>
-          </div>
-          <nav className="stepper" aria-label="Etapas del CSV real">
-            {steps.map((step, i) => (
-              <button
-                key={step}
-                className={`step ${stage === i ? "current" : ""}`}
-                disabled={i > 2}
-                title={
-                  i > 2 ? "Se integrará en el siguiente incremento" : undefined
-                }
-                onClick={() => {
-                  if (i !== stage) requestChange({ kind: "stage", value: i });
-                }}
-              >
-                <span
-                  className={`step-number ${version.state === "succeeded" && i <= 2 ? "done" : ""}`}
-                >
-                  {version.state === "succeeded" && i <= 2 ? (
-                    <Check size={13} />
-                  ) : (
-                    i + 1
-                  )}
-                </span>
-                <span>{step}</span>
-              </button>
-            ))}
-          </nav>
-          <div className="stage-content">
-            <div className="stage-title">
-              <div>
-                <p className="eyebrow">ETAPA {stage + 1} · DATOS REALES</p>
-                <h2>{steps[stage]}</h2>
-              </div>
-              <span className="badge calculated">v{version.number}</span>
-            </div>
-            {["queued", "processing"].includes(version.state) ? (
-              <div className="processing-state" role="status">
-                <LoaderCircle className="spin" size={30} />
-                <h3>
-                  {version.state === "queued"
-                    ? "Esperando al worker"
-                    : "Analizando el CSV"}
-                </h3>
-                <p>
-                  El original ya está guardado. Puedes salir y volver; la
-                  ejecución permanece en PostgreSQL.
-                </p>
-                <small>
-                  Intento {version.attempts} de 3 · no se publican resultados
-                  parciales
-                </small>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => setCancelling(true)}
-                >
-                  Cancelar procesamiento
-                </Button>
-              </div>
-            ) : version.state === "failed" ? (
-              <div className="empty-state">
-                <h3>No se pudo procesar este CSV</h3>
-                <p role="alert">{version.error_message}</p>
-                <code>{version.error_code}</code>
-                <p>
-                  El original sigue disponible. Corrige el archivo y súbelo como
-                  una nueva versión.
-                </p>
-              </div>
-            ) : version.state === "cancelled" ? (
-              <div className="empty-state">
-                <h3>Procesamiento cancelado</h3>
-                <p>No se publicaron resultados. El original se conserva.</p>
-              </div>
-            ) : diagnostic.isPending ? (
-              <p className="empty-copy" role="status">
-                Cargando diagnóstico…
-              </p>
-            ) : diagnostic.isError ? (
-              <div className="empty-state">
-                <p role="alert">{errorMessage(diagnostic.error)}</p>
-                <Button onClick={() => void diagnostic.refetch()}>
-                  Reintentar
-                </Button>
-              </div>
-            ) : diagnostic.data ? (
+          <div
+            className={`version-lineage ${version.kind === "derived" ? "derived" : ""}`}
+            role="status"
+            aria-label="Versión que estás viendo"
+          >
+            <GitBranch size={14} />
+            {version.kind === "derived" ? (
               <>
-                <RealResults
-                  key={`${version.id}-${stage}`}
-                  version={version}
-                  diagnostic={diagnostic.data}
-                  stage={stage}
-                />
-                {stage === 1 && (
-                  <SemanticUnderstanding
-                    key={`${version.id}-${semanticEpoch}`}
-                    versionId={version.id}
-                    baselineExecutionId={version.execution_id}
-                    archived={archived}
-                    onDirtyChange={setSemanticDirty}
-                  />
+                <span>
+                  Estás viendo <strong>v{version.number}</strong>, versión{" "}
+                  <strong>derivada</strong> por limpieza de{" "}
+                  <strong>
+                    {parent ? `v${parent.number}` : "una versión anterior"}
+                  </strong>
+                  .
+                </span>
+                {version.parent_version_id && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => setSelected(version.parent_version_id!)}
+                  >
+                    Ver {parent ? `v${parent.number}` : "versión de origen"}
+                  </Button>
                 )}
               </>
-            ) : null}
+            ) : (
+              <span>
+                Estás viendo <strong>v{version.number}</strong>, importada desde{" "}
+                {version.file_name}.
+              </span>
+            )}
           </div>
-          {version.state === "succeeded" && (
-            <ExecutionPanel
+          <SourceSelection version={version} />
+          <SourceOriginNote version={version} />
+          {["queued", "processing"].includes(version.state) ? (
+            <div className="processing-state" role="status">
+              <LoaderCircle className="spin" size={30} />
+              <h3>
+                {version.state === "queued"
+                  ? "En cola: esperando su turno"
+                  : "Analizando tus datos"}
+              </h3>
+              <p>
+                {version.state === "queued"
+                  ? "El original ya está guardado. Se analizará automáticamente en cuanto terminen las cargas anteriores; no hace falta volver a subirlo."
+                  : "El original ya está guardado. Puedes salir y volver; la ejecución permanece en PostgreSQL."}
+              </p>
+              <small>
+                Intento {version.attempts} de 3 · no se publican resultados
+                parciales
+              </small>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setCancelling(true)}
+              >
+                Cancelar procesamiento
+              </Button>
+            </div>
+          ) : version.state === "failed" ? (
+            <div className="empty-state">
+              <h3>No se pudo procesar este archivo</h3>
+              <p role="alert">{version.error_message}</p>
+              <code>{version.error_code}</code>
+              <p>
+                El original sigue disponible. Corrige el archivo y súbelo como
+                una nueva versión.
+              </p>
+            </div>
+          ) : version.state === "cancelled" ? (
+            <div className="empty-state">
+              <h3>Procesamiento cancelado</h3>
+              <p>No se publicaron resultados. El original se conserva.</p>
+            </div>
+          ) : diagnostic.isPending ? (
+            <p className="empty-copy" role="status">
+              Cargando resultados…
+            </p>
+          ) : diagnostic.isError ? (
+            <div className="empty-state">
+              <p role="alert">{errorMessage(diagnostic.error)}</p>
+              <Button onClick={() => void diagnostic.refetch()}>
+                Reintentar
+              </Button>
+            </div>
+          ) : diagnostic.data?.profile.overview ? (
+            <>
+              <AiNotice versionId={version.id} />
+              <MainTabs
+                value={tab}
+                onChange={(next) => {
+                  setDatasetSubview(undefined);
+                  setTab(next);
+                }}
+              />
+              {tab === "dataset" ? (
+                <div
+                  id="workspace-panel-dataset"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-dataset"
+                >
+                  <DatasetTab
+                    key={`dataset-${version.id}`}
+                    versionId={version.id}
+                    onOpenVersion={(id) => setSelected(id)}
+                    onKeepVersion={() => setSelected(version.id)}
+                    initialSubview={datasetSubview}
+                  />
+                </div>
+              ) : tab === "comprehension" ? (
+                <div
+                  id="workspace-panel-comprehension"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-comprehension"
+                >
+                  <ComprehensionTab
+                    key={`comprehension-${version.id}`}
+                    versionId={version.id}
+                    onOpenDictionary={() => {
+                      setDatasetSubview("dictionary");
+                      setTab("dataset");
+                    }}
+                  />
+                </div>
+              ) : tab === "investigation" ? (
+                <div
+                  id="workspace-panel-investigation"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-investigation"
+                >
+                  <InvestigationTab
+                    key={`investigation-tab-${version.id}`}
+                    versionId={version.id}
+                  />
+                </div>
+              ) : tab === "dashboard" ? (
+                <div
+                  id="workspace-panel-dashboard"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-dashboard"
+                >
+                  <DashboardTab
+                    key={`dashboard-tab-${version.id}`}
+                    versionId={version.id}
+                    onOpenRecords={() => {
+                      setDatasetSubview("records");
+                      setTab("dataset");
+                    }}
+                  />
+                </div>
+              ) : tab === "report" ? (
+                <div
+                  id="workspace-panel-report"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-report"
+                >
+                  <ReportTab
+                    key={`report-tab-${version.id}`}
+                    versionId={version.id}
+                  />
+                </div>
+              ) : (
+                <div
+                  id="workspace-panel-analysis"
+                  role="tabpanel"
+                  aria-labelledby="workspace-tab-analysis"
+                >
+                  {automatic.data && (
+                    <DeliverySummary
+                      key={`summary-${version.id}`}
+                      versionId={version.id}
+                      progress={progress.data}
+                      analysis={automatic.data}
+                    />
+                  )}
+                  {review.data && (
+                    <SourceReviewPanel
+                      key={`review-${version.id}`}
+                      review={review.data}
+                    />
+                  )}
+                  {automatic.data && (
+                    <AutomaticAnalysisView
+                      key={`analysis-${version.id}`}
+                      analysis={automatic.data}
+                    />
+                  )}
+                  {investigation.data ? (
+                    <InvestigationPanel
+                      key={`investigation-${version.id}`}
+                      view={investigation.data}
+                      versionId={version.id}
+                    />
+                  ) : null}
+                  <AutomaticOverview
+                    key={`overview-${version.id}`}
+                    overview={diagnostic.data.profile.overview}
+                    quality={diagnostic.data.quality}
+                    versionNumber={version.number}
+                  />
+                  {progress.data && !followed && !automatic.data ? (
+                    <OverviewAudit
+                      key={`audit-${version.id}`}
+                      versionId={version.id}
+                    />
+                  ) : null}
+                </div>
+              )}
+            </>
+          ) : diagnostic.data ? (
+            <RealResults
               key={version.id}
-              versionId={version.id}
-              archived={archived}
+              version={version}
+              diagnostic={diagnostic.data}
             />
-          )}
+          ) : null}
         </>
       )}
       {uploading && (
         <Dialog
-          title={items.length ? "Añadir una versión del CSV" : "Subir CSV"}
+          title={items.length ? "Añadir una versión" : "Subir archivo"}
           onClose={() => setUploading(false)}
         >
           <CsvUpload
@@ -314,32 +525,6 @@ export function CsvWorkspace({
               setSelected(null);
             }}
           />
-        </Dialog>
-      )}
-      {pendingChange && (
-        <Dialog
-          title="Hay cambios semánticos sin guardar"
-          onClose={() => setPendingChange(null)}
-        >
-          <p className="dialog-copy">
-            Puedes seguir editando o descartar el borrador antes de cambiar de
-            etapa, versión o carga. Las revisiones guardadas no se alteran.
-          </p>
-          <div className="form-footer">
-            <Button variant="ghost" onClick={() => setPendingChange(null)}>
-              Seguir editando
-            </Button>
-            <Button
-              onClick={() => {
-                setSemanticDirty(false);
-                setSemanticEpoch((epoch) => epoch + 1);
-                applyChange(pendingChange);
-                setPendingChange(null);
-              }}
-            >
-              Descartar y continuar
-            </Button>
-          </div>
         </Dialog>
       )}
       {cancelling && version && (
@@ -389,22 +574,16 @@ export function CsvUpload({
 }) {
   const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
-  const [separator, setSeparator] = useState<Separator>("auto");
   const [error, setError] = useState("");
-  const upload = useUploadCsv(projectId);
+  const upload = useUploadFile(projectId);
   const { notify } = useApp();
   function select(value?: File) {
     if (!value || upload.isPending) return;
     setFile(null);
     setError("");
-    if (!value.name.toLowerCase().endsWith(".csv")) {
-      setError(
-        "Selecciona un archivo CSV. XLSX y Parquet se integrarán después.",
-      );
-      return;
-    }
-    if (!value.size || value.size > 5 * 1024 * 1024) {
-      setError("Selecciona un CSV no vacío de hasta 5 MB.");
+    const problem = fileProblem(value);
+    if (problem) {
+      setError(problem);
       return;
     }
     setFile(value);
@@ -415,8 +594,8 @@ export function CsvUpload({
         hidden
         ref={input}
         type="file"
-        accept=".csv,text/csv"
-        aria-label="Archivo CSV"
+        accept={FILE_ACCEPT}
+        aria-label="Archivo CSV o Excel"
         onChange={(e) => select(e.target.files?.[0])}
       />
       <div
@@ -428,31 +607,26 @@ export function CsvUpload({
         }}
       >
         <UploadCloud size={25} />
-        <h3>{file?.name ?? "Arrastra tu CSV aquí"}</h3>
-        <p>UTF-8 · hasta 5 MB · el original se conserva sin cambios</p>
+        <h3>{file?.name ?? "Arrastra tu CSV, Excel o PDF aquí"}</h3>
+        <p>
+          CSV, .xlsx o PDF con tablas · hasta 5 MB · el original se conserva sin
+          cambios
+        </p>
         <Button
           variant="outline"
           disabled={upload.isPending}
           onClick={() => input.current?.click()}
         >
-          Seleccionar CSV
+          Seleccionar archivo
         </Button>
       </div>
-      <label htmlFor={`separator-${projectId}`}>Separador de columnas</label>
-      <select
-        id={`separator-${projectId}`}
-        disabled={upload.isPending}
-        value={separator}
-        onChange={(e) => setSeparator(e.target.value as Separator)}
-      >
-        <option value="auto">Detectar automáticamente</option>
-        <option value=",">Coma (,)</option>
-        <option value=";">Punto y coma (;)</option>
-        <option value="tab">Tabulador</option>
-      </select>
-      {(error || upload.isError) && (
+      <p className="muted">
+        El sistema detecta el separador del CSV o, en un libro de Excel, la hoja
+        o tabla principal y su fila de cabecera.
+      </p>
+      {upload.isError && (
         <p className="auth-error" role="alert">
-          {error || errorMessage(upload.error)}
+          {errorMessage(upload.error)}
         </p>
       )}
       <Button
@@ -460,7 +634,7 @@ export function CsvUpload({
         onClick={async () => {
           if (!file) return;
           try {
-            await upload.mutateAsync({ file, separator });
+            await upload.mutateAsync({ file });
             setFile(null);
             if (input.current) input.current.value = "";
             notify("Original conservado. Procesamiento encolado.");
@@ -475,8 +649,106 @@ export function CsvUpload({
         ) : (
           <UploadCloud size={16} />
         )}
-        {upload.isPending ? "Enviando CSV…" : "Subir y analizar CSV"}
+        {upload.isPending ? "Enviando archivo…" : "Subir y analizar"}
       </Button>
+      {error && (
+        <p className="auth-error" role="alert">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}
+
+export const FILE_ACCEPT = `.csv,text/csv,.xlsx,${XLSX_MIME},.pdf,application/pdf`;
+
+/** Comprobaciones previas comunes al asistente y al espacio de trabajo. */
+export function fileProblem(file: File): string | null {
+  const name = file.name.toLowerCase();
+  if (/\.(xls|xlsm|xlsb)$/.test(name))
+    return "Sólo se admiten libros .xlsx: guarda el archivo como «Libro de Excel (.xlsx)».";
+  if (!/\.(csv|xlsx|pdf)$/.test(name))
+    return "Selecciona un archivo CSV, un libro de Excel (.xlsx) o un PDF con tablas.";
+  if (!file.size) return "El archivo está vacío.";
+  if (file.size > 5 * 1024 * 1024)
+    return "El archivo debe tener como máximo 5 MB.";
+  return null;
+}
+
+/** Hoja o tabla de un libro en la lista de versiones (Fase 18: un libro puede dar varias). */
+function sheetLabel(v: DatasetVersion) {
+  if (v.source_origin?.kind === "pdf") return ` · ${v.source_origin.table}`;
+  const selection = v.source_selection;
+  if (!selection || selection.rule !== "xlsx-selection-v2") return "";
+  return selection.table
+    ? ` · tabla ${selection.table}`
+    : ` · hoja ${selection.sheet}`;
+}
+
+/** Fase 18B: tabla copiada de SQL Server o tabla de un PDF, y qué quedó fuera. */
+function SourceOriginNote({ version }: { version: DatasetVersion }) {
+  const origin = version.source_origin;
+  if (!origin) return null;
+  const together = origin.analyzed_together ?? [];
+  const omitted = origin.omitted ?? [];
+  return (
+    <div className="info-banner" role="note" aria-label="Origen de los datos">
+      {origin.kind === "pdf" ? (
+        <FileSpreadsheet size={16} />
+      ) : (
+        <Database size={16} />
+      )}
+      <span>
+        {origin.kind === "sqlserver"
+          ? `Copia de la tabla ${origin.table} de la base ${origin.database} (${origin.server}). La contraseña no se guardó.`
+          : `${origin.table} del PDF.`}
+        {together.length > 0 &&
+          ` También se analizan, como versiones propias: ${together.join(", ")}.`}
+        {omitted.length > 0 &&
+          ` No se importaron: ${omitted.map((o) => `${o.table} (${o.reason})`).join("; ")}`}
+      </span>
+    </div>
+  );
+}
+
+/** Fase 13B: qué hoja o tabla eligió el sistema en un .xlsx y qué quedó fuera. Desde la
+ * Fase 18 las demás tablas con datos se analizan como versiones propias de la misma carga. */
+function SourceSelection({ version }: { version: DatasetVersion }) {
+  const selection = version.source_selection;
+  if (!selection) return null;
+  const describe = (sheet: string, table?: string | null) =>
+    table ? `la tabla «${table}» (hoja «${sheet}»)` : `la hoja «${sheet}»`;
+  const together = selection.analyzed_together ?? [];
+  const v2 = selection.rule === "xlsx-selection-v2";
+  return (
+    <div className="info-banner" role="note" aria-label="Hoja importada">
+      <FileSpreadsheet size={16} />
+      <span>
+        Se importó {describe(selection.sheet, selection.table)}, con la cabecera
+        en la fila {selection.header_row}.
+        {together.length > 0 && (
+          <>
+            {" "}
+            Del mismo libro también se analizan, como versiones propias:{" "}
+            {together
+              .map((item) => describe(item.sheet, item.table))
+              .join(", ")}
+            .
+          </>
+        )}
+        {selection.omitted.length > 0 && (
+          <>
+            {" "}
+            No se importaron:{" "}
+            {selection.omitted
+              .map((item) => describe(item.sheet, item.table))
+              .join(", ")}
+            {v2
+              ? " (sin al menos dos columnas con cabecera y dos registros, o protegidas)."
+              : ". Para analizarlas, guárdalas como un libro aparte."}
+          </>
+        )}
+      </span>
     </div>
   );
 }
@@ -484,11 +756,9 @@ export function CsvUpload({
 function RealResults({
   version,
   diagnostic,
-  stage,
 }: {
   version: DatasetVersion;
   diagnostic: Diagnostic;
-  stage: number;
 }) {
   const [page, setPage] = useState(0);
   const [issue, setIssue] = useState<string | undefined>();
@@ -507,244 +777,229 @@ function RealResults({
         </div>
         <div>
           <small>Completitud de celdas</small>
-          <strong>
-            {quality.completeness_percent.toLocaleString("es-ES")} %
-          </strong>
+          <strong>{number(quality.completeness_percent)} %</strong>
         </div>
       </div>
-      {stage === 1 ? (
-        <>
-          <div className="info-banner">
-            <ShieldCheck size={18} />
-            <span>
-              Los valores se conservan como texto en Parquet. Los tipos
-              sugeridos son heurísticas deterministas, no decisiones aprobadas
-              ni sugerencias de IA.
-            </span>
-          </div>
-          <div className="table-scroll bordered">
-            <table>
-              <thead>
-                <tr>
-                  <th>Columna</th>
-                  <th>Tipo técnico</th>
-                  <th>Tipo sugerido</th>
-                  <th>Nulos</th>
-                  <th>Únicos</th>
-                  <th>Ejemplos</th>
+      <>
+        <div className="info-banner">
+          <ShieldCheck size={18} />
+          <span>
+            {profile.columns.some((c) => c.technical_type !== "string")
+              ? "Esta versión tiene columnas convertidas por una limpieza (tipo técnico distinto de texto); el resto se conserva como texto. "
+              : "Los valores se conservan como texto en Parquet. "}
+            Los tipos sugeridos son heurísticas deterministas, no sugerencias de
+            IA.
+          </span>
+        </div>
+        <div className="table-scroll bordered">
+          <table>
+            <thead>
+              <tr>
+                <th>Columna</th>
+                <th>Tipo técnico</th>
+                <th>Tipo sugerido</th>
+                <th>Nulos</th>
+                <th>Únicos</th>
+                <th>Ejemplos</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profile.columns.map((column) => (
+                <tr key={column.name}>
+                  <td>
+                    <strong>{column.name}</strong>
+                  </td>
+                  <td className="mono">{column.technical_type}</td>
+                  <td>
+                    <span className="badge neutral">
+                      {column.suggested_type}
+                    </span>
+                  </td>
+                  <td>
+                    {column.null_count} (
+                    {((column.null_count / profile.row_count) * 100).toFixed(2)}{" "}
+                    %)
+                  </td>
+                  <td>{number(column.unique_count)}</td>
+                  <td className="sample-cell">
+                    {column.examples.join(" · ") || "Sin valores"}
+                  </td>
                 </tr>
-              </thead>
-              <tbody>
-                {profile.columns.map((column) => (
-                  <tr key={column.name}>
-                    <td>
-                      <strong>{column.name}</strong>
-                    </td>
-                    <td className="mono">{column.technical_type}</td>
-                    <td>
-                      <span className="badge neutral">
-                        {column.suggested_type}
-                      </span>
-                    </td>
-                    <td>
-                      {column.null_count} (
-                      {((column.null_count / profile.row_count) * 100).toFixed(
-                        2,
-                      )}{" "}
-                      %)
-                    </td>
-                    <td>{number(column.unique_count)}</td>
-                    <td className="sample-cell">
-                      {column.examples.join(" · ") || "Sin valores"}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <div className="section-heading">
+          <h3>Estadísticas numéricas sugeridas</h3>
+          <span className="badge calculated">
+            Decimal · sin convertir el dataset
+          </span>
+        </div>
+        {profile.columns
+          .filter((c) => c.numeric)
+          .map((c) => (
+            <div className="finding-card" key={c.name}>
+              <strong>{c.name}</strong>
+              <p>
+                Suma: <code>{c.numeric!.total}</code> · media:{" "}
+                <code>{c.numeric!.mean}</code>
+              </p>
+              <small>
+                {c.numeric!.count} valores válidos · nulos excluidos · precisión
+                de cálculo de 50 dígitos.
+              </small>
+            </div>
+          ))}
+        <div className="info-banner">
+          <ShieldCheck size={18} />
+          <span>
+            Completitud = celdas no vacías / total de celdas × 100. Se evalúan
+            vacíos, filas duplicadas y valores compuestos sólo de espacios. No
+            es una puntuación universal de calidad.
+          </span>
+        </div>
+        <div className="mini-metrics">
+          <div>
+            <small>Celdas vacías</small>
+            <strong>{number(quality.missing_cells)}</strong>
           </div>
-          <div className="section-heading">
-            <h3>Estadísticas numéricas sugeridas</h3>
-            <span className="badge calculated">
-              Decimal · sin convertir el dataset
-            </span>
+          <div>
+            <small>Filas duplicadas adicionales</small>
+            <strong>{number(quality.duplicate_rows)}</strong>
           </div>
-          {profile.columns
-            .filter((c) => c.numeric)
-            .map((c) => (
-              <div className="finding-card" key={c.name}>
-                <strong>{c.name}</strong>
-                <p>
-                  Suma: <code>{c.numeric!.total}</code> · media:{" "}
-                  <code>{c.numeric!.mean}</code>
-                </p>
-                <small>
-                  {c.numeric!.count} valores válidos · nulos excluidos ·
-                  precisión de cálculo de 50 dígitos.
-                </small>
+          <div>
+            <small>Celdas sólo con espacios</small>
+            <strong>{number(quality.whitespace_cells)}</strong>
+          </div>
+        </div>
+        <div className="section-heading">
+          <h3>Incidencias · {quality.issues.length}</h3>
+          {issue && (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => {
+                setIssue(undefined);
+                setPage(0);
+              }}
+            >
+              <X size={14} />
+              Quitar filtro
+            </Button>
+          )}
+        </div>
+        {quality.issues.map((item) => (
+          <div
+            className={`issue-card ${issue === item.id ? "issue-selected" : ""}`}
+            key={item.id}
+          >
+            <div>
+              <strong>
+                {item.rule} · {item.column ?? "Todas las columnas"}
+              </strong>
+              <p>{item.description}</p>
+              <small>
+                {item.affected_rows} registros · gravedad{" "}
+                {item.severity === "medium" ? "media" : "baja"}
+              </small>
+              <small>{item.proposed_action}</small>
+              <button
+                className="text-link"
+                onClick={() => {
+                  setIssue(item.id);
+                  setPage(0);
+                }}
+              >
+                Ver registros afectados
+              </button>
+            </div>
+            <span className="badge review">{number(item.affected_rows)}</span>
+          </div>
+        ))}
+        {!quality.issues.length && (
+          <div className="success-banner">
+            <ShieldCheck size={20} />
+            No se detectaron incidencias en las tres reglas evaluadas.
+          </div>
+        )}
+        <div className="section-heading">
+          <h3>
+            {issue ? `Registros afectados · ${issue}` : "Vista previa del CSV"}
+          </h3>
+          <span className="badge calculated">Datos reales</span>
+        </div>
+        {preview.isPending ? (
+          <p className="empty-copy" role="status">
+            Cargando registros…
+          </p>
+        ) : preview.isError ? (
+          <div className="empty-state">
+            <p role="alert">{errorMessage(preview.error)}</p>
+            <Button onClick={() => void preview.refetch()}>Reintentar</Button>
+          </div>
+        ) : (
+          preview.data && (
+            <div className="data-table">
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Registro</th>
+                      {preview.data.columns.map((name) => (
+                        <th key={name}>{name}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {preview.data.rows.map((row) => (
+                      <tr key={row.row_number}>
+                        <td>{row.row_number}</td>
+                        {preview.data!.columns.map((name) => (
+                          <td
+                            key={name}
+                            className="csv-value"
+                            title={row.values[name] ?? "nulo"}
+                          >
+                            {row.values[name] === null ? (
+                              <span className="null-value">nulo</span>
+                            ) : (
+                              row.values[name]
+                            )}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
               </div>
-            ))}
-        </>
-      ) : (
-        <>
-          {stage === 2 && (
-            <>
-              <div className="info-banner">
-                <ShieldCheck size={18} />
+              <div className="table-footer">
                 <span>
-                  Completitud = celdas no vacías / total de celdas × 100. Se
-                  evalúan vacíos, filas duplicadas y valores compuestos sólo de
-                  espacios. No es una puntuación universal de calidad.
+                  {preview.data.rows.length} de {number(preview.data.total)}{" "}
+                  registros · página {page + 1}
                 </span>
-              </div>
-              <div className="mini-metrics">
-                <div>
-                  <small>Celdas vacías</small>
-                  <strong>{number(quality.missing_cells)}</strong>
-                </div>
-                <div>
-                  <small>Filas duplicadas adicionales</small>
-                  <strong>{number(quality.duplicate_rows)}</strong>
-                </div>
-                <div>
-                  <small>Celdas sólo con espacios</small>
-                  <strong>{number(quality.whitespace_cells)}</strong>
-                </div>
-              </div>
-              <div className="section-heading">
-                <h3>Incidencias · {quality.issues.length}</h3>
-                {issue && (
+                <div className="pagination">
                   <Button
                     variant="ghost"
                     size="sm"
-                    onClick={() => {
-                      setIssue(undefined);
-                      setPage(0);
-                    }}
+                    disabled={page === 0}
+                    onClick={() => setPage((p) => p - 1)}
                   >
-                    <X size={14} />
-                    Quitar filtro
+                    Anterior
                   </Button>
-                )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    disabled={(page + 1) * 10 >= preview.data.total}
+                    onClick={() => setPage((p) => p + 1)}
+                  >
+                    Siguiente
+                  </Button>
+                </div>
               </div>
-              {quality.issues.map((item) => (
-                <div
-                  className={`issue-card ${issue === item.id ? "issue-selected" : ""}`}
-                  key={item.id}
-                >
-                  <div>
-                    <strong>
-                      {item.rule} · {item.column ?? "Todas las columnas"}
-                    </strong>
-                    <p>{item.description}</p>
-                    <small>
-                      {item.affected_rows} registros · gravedad{" "}
-                      {item.severity === "medium" ? "media" : "baja"}
-                    </small>
-                    <small>{item.proposed_action}</small>
-                    <button
-                      className="text-link"
-                      onClick={() => {
-                        setIssue(item.id);
-                        setPage(0);
-                      }}
-                    >
-                      Ver registros afectados
-                    </button>
-                  </div>
-                  <span className="badge review">
-                    {number(item.affected_rows)}
-                  </span>
-                </div>
-              ))}
-              {!quality.issues.length && (
-                <div className="success-banner">
-                  <ShieldCheck size={20} />
-                  No se detectaron incidencias en las tres reglas evaluadas.
-                </div>
-              )}
-            </>
-          )}
-          <div className="section-heading">
-            <h3>
-              {issue
-                ? `Registros afectados · ${issue}`
-                : "Vista previa del CSV"}
-            </h3>
-            <span className="badge calculated">Datos reales</span>
-          </div>
-          {preview.isPending ? (
-            <p className="empty-copy" role="status">
-              Cargando registros…
-            </p>
-          ) : preview.isError ? (
-            <div className="empty-state">
-              <p role="alert">{errorMessage(preview.error)}</p>
-              <Button onClick={() => void preview.refetch()}>Reintentar</Button>
             </div>
-          ) : (
-            preview.data && (
-              <div className="data-table">
-                <div className="table-scroll">
-                  <table>
-                    <thead>
-                      <tr>
-                        <th>Registro</th>
-                        {preview.data.columns.map((name) => (
-                          <th key={name}>{name}</th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {preview.data.rows.map((row) => (
-                        <tr key={row.row_number}>
-                          <td>{row.row_number}</td>
-                          {preview.data!.columns.map((name) => (
-                            <td
-                              key={name}
-                              className="csv-value"
-                              title={row.values[name] ?? "nulo"}
-                            >
-                              {row.values[name] === null ? (
-                                <span className="null-value">nulo</span>
-                              ) : (
-                                row.values[name]
-                              )}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-                <div className="table-footer">
-                  <span>
-                    {preview.data.rows.length} de {number(preview.data.total)}{" "}
-                    registros · página {page + 1}
-                  </span>
-                  <div className="pagination">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={page === 0}
-                      onClick={() => setPage((p) => p - 1)}
-                    >
-                      Anterior
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      disabled={(page + 1) * 10 >= preview.data.total}
-                      onClick={() => setPage((p) => p + 1)}
-                    >
-                      Siguiente
-                    </Button>
-                  </div>
-                </div>
-              </div>
-            )
-          )}
-        </>
-      )}
+          )
+        )}
+      </>
       <div className="dataset-provenance">
         <span>
           {profile.engine_version} · Polars {profile.polars_version}
@@ -758,7 +1013,8 @@ function RealResults({
       <p className="muted fine-print">
         El original se conserva íntegro. Las celdas vacías se representan como
         nulos en la copia analítica; los espacios y los ceros iniciales
-        permanecen. Las etapas posteriores todavía no procesan este dataset.
+        permanecen. Esta versión es anterior al análisis automático: se muestra
+        su diagnóstico técnico.
       </p>
     </>
   );

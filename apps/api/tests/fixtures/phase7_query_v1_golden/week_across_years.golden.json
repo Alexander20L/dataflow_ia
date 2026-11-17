@@ -1,0 +1,260 @@
+{
+  "schema_version": 1,
+  "operation": "analytics.query@1",
+  "scope": {
+    "execution_id": "00000000-0000-4000-8000-000000000003",
+    "step_id": "query",
+    "slot": "analysis_result",
+    "input": {
+      "version_id": "00000000-0000-4000-8000-000000000001",
+      "artifact_id": "00000000-0000-4000-8000-000000000002",
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "semantic_ref": {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "revision": 2,
+      "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "query_filters": [],
+    "time_grain": "week",
+    "time_range": null
+  },
+  "avg_scale": 4,
+  "dimensions": [
+    {
+      "key": "period",
+      "column_id": "00000000-0000-4000-8000-000000000102",
+      "name": "fecha",
+      "technical_type": "date",
+      "time_grain": "week"
+    }
+  ],
+  "metrics": [
+    {
+      "key": "m0",
+      "revision_id": "00000000-0000-4000-8000-000000000201",
+      "revision": 1,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "sum importe",
+      "aggregation": "sum",
+      "measure_column_id": "00000000-0000-4000-8000-000000000103",
+      "measure_column": "importe",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": "EUR",
+      "scale": 2,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    },
+    {
+      "key": "m1",
+      "revision_id": "00000000-0000-4000-8000-000000000207",
+      "revision": 7,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "sum unidades",
+      "aggregation": "sum",
+      "measure_column_id": "00000000-0000-4000-8000-000000000104",
+      "measure_column": "unidades",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": "EUR",
+      "scale": null,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    }
+  ],
+  "rows": [
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "grain": "week",
+          "start": "2025-02-10"
+        }
+      },
+      "labels": {
+        "period": "2025-W07"
+      },
+      "values": {
+        "m0": "7.77",
+        "m1": "10"
+      },
+      "evidence": {
+        "m0": "a95c96ec80d6d33f1a19454b82fc5a92f2934f539a86a02666c7795648049ca1",
+        "m1": "23c89f9d68179709a076e6963219457fe8900683a7f2a87b021e6102accb9d55"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "grain": "week",
+          "start": "2025-03-31"
+        }
+      },
+      "labels": {
+        "period": "2025-W14"
+      },
+      "values": {
+        "m0": "3.00",
+        "m1": "11"
+      },
+      "evidence": {
+        "m0": "1bf25dfa84cbe6f1178eb0a3f94883ab24060765c794b6cb20fcb926022841f1",
+        "m1": "cb1ae1bbbf4a1b50ad0b1554a874cc9715009d36609d6a2df46bd1422cd08392"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "grain": "week",
+          "start": "2025-12-29"
+        }
+      },
+      "labels": {
+        "period": "2026-W01"
+      },
+      "values": {
+        "m0": "10.10",
+        "m1": "3"
+      },
+      "evidence": {
+        "m0": "980be1c4c4863f4b9f55a7ad3a3ed081079adc20e1545a009f07b4ef153dec39",
+        "m1": "c565eb8677d310ec94ff6900a1c68140fbf52acfe4fdcaacd405cf9d2eb45e9e"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "grain": "week",
+          "start": "2026-01-19"
+        }
+      },
+      "labels": {
+        "period": "2026-W04"
+      },
+      "values": {
+        "m0": "0.20",
+        "m1": "3"
+      },
+      "evidence": {
+        "m0": "b2a69c7c0a0e8d514998a6384b4ea370c884413a2c9e3cbca9771b97ea0f360d",
+        "m1": "6e757325b635eced6fae08ba9812670b33c5cd936528080b6da758d975d32d76"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "grain": "week",
+          "start": "2026-01-26"
+        }
+      },
+      "labels": {
+        "period": "2026-W05"
+      },
+      "values": {
+        "m0": "0.20",
+        "m1": "9"
+      },
+      "evidence": {
+        "m0": "7dc9d223fa9e7bfb723156e5dc4fe764bcbb196818654149b21c921bcb9b7258",
+        "m1": "f705a7bd8185bf9f18d560351601ae5b66a1cf68224f9dd907b0c8ac5c8ced43"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "grain": "week",
+          "start": "2026-02-02"
+        }
+      },
+      "labels": {
+        "period": "2026-W06"
+      },
+      "values": {
+        "m0": "1.00",
+        "m1": "6"
+      },
+      "evidence": {
+        "m0": "bde3cf233a6e4d77951b61961ec56c8dabf273c1558c59e544cb3a80c0e697c8",
+        "m1": "8f93acdb63939268e1aa9a8e0cceb260d192de2f7a0039bce77aff6a29317b05"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "grain": "week",
+          "start": "2026-03-09"
+        }
+      },
+      "labels": {
+        "period": "2026-W11"
+      },
+      "values": {
+        "m0": "-4.25",
+        "m1": "8"
+      },
+      "evidence": {
+        "m0": "1dc0b0937e087d75d1a9457ad946da9811d32f8e516c0d08a09788bf32cbd928",
+        "m1": "77920a08c47dca6bbd991184a9358b9557ee90daa43af5ede44c3a6f80e92b96"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "grain": "week",
+          "start": "2026-03-30"
+        }
+      },
+      "labels": {
+        "period": "2026-W14"
+      },
+      "values": {
+        "m0": "0.25",
+        "m1": "9"
+      },
+      "evidence": {
+        "m0": "dd25e253f9e1c920179668fcca7c1c2d6c86d60ebf642aecf019c3b0646cc071",
+        "m1": "e6db68db50445366856d604b743d8e4c1fddc1e950b861ee0598bcbb4a17ee28"
+      }
+    },
+    {
+      "key": {
+        "dimensions": [],
+        "period": {
+          "missing": true
+        }
+      },
+      "labels": {
+        "period": "(sin valor)"
+      },
+      "values": {
+        "m0": "2.50",
+        "m1": "7"
+      },
+      "evidence": {
+        "m0": "b32b648d6d369702b4d7d956b8232950fb1c13a93c3520b4ae207df913546189",
+        "m1": "7c5078965ffb6c78e07ebd9c39059b1995cf6efd8fa29948e6cb4f8e82aecfaf"
+      }
+    }
+  ],
+  "row_count": 9
+}

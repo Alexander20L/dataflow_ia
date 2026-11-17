@@ -1,7 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { components } from "@dataflow/api-client";
 import { api, requireData } from "@/lib/api";
-import type { Project } from "@/lib/demo";
+import type { Project } from "@/lib/project";
 
 export type ApiProject = components["schemas"]["ProjectResponse"];
 export function projectView(p: ApiProject): Project {
@@ -39,7 +39,7 @@ export function useProjects(
 export function useProject(id: string, enabled = true) {
   return useQuery({
     queryKey: ["project", id],
-    enabled: enabled && id !== "ventas-2026",
+    enabled,
     queryFn: async ({ signal }) =>
       requireData(
         await api.GET("/api/v1/projects/{project_id}", {

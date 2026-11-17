@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "operation": "analytics.query@1",
+  "scope": {
+    "execution_id": "00000000-0000-4000-8000-000000000003",
+    "step_id": "query",
+    "slot": "analysis_result",
+    "input": {
+      "version_id": "00000000-0000-4000-8000-000000000001",
+      "artifact_id": "00000000-0000-4000-8000-000000000002",
+      "artifact_sha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+    },
+    "semantic_ref": {
+      "id": "00000000-0000-4000-8000-000000000004",
+      "revision": 2,
+      "content_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc"
+    },
+    "query_filters": [],
+    "time_grain": null,
+    "time_range": null
+  },
+  "avg_scale": 4,
+  "dimensions": [],
+  "metrics": [
+    {
+      "key": "m0",
+      "revision_id": "00000000-0000-4000-8000-000000000201",
+      "revision": 1,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "sum importe",
+      "aggregation": "sum",
+      "measure_column_id": "00000000-0000-4000-8000-000000000103",
+      "measure_column": "importe",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": "EUR",
+      "scale": 2,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    },
+    {
+      "key": "m1",
+      "revision_id": "00000000-0000-4000-8000-000000000203",
+      "revision": 3,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "count unidades",
+      "aggregation": "count",
+      "measure_column_id": "00000000-0000-4000-8000-000000000104",
+      "measure_column": "unidades",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": null,
+      "scale": null,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    },
+    {
+      "key": "m2",
+      "revision_id": "00000000-0000-4000-8000-000000000204",
+      "revision": 4,
+      "content_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+      "label": "count_distinct cliente",
+      "aggregation": "count_distinct",
+      "measure_column_id": "00000000-0000-4000-8000-000000000105",
+      "measure_column": "cliente",
+      "time_column_id": "00000000-0000-4000-8000-000000000102",
+      "filters": [],
+      "null_policy": "exclude",
+      "unit": null,
+      "currency": null,
+      "scale": null,
+      "counts": {
+        "input_rows": 12,
+        "excluded_by_filters": 0,
+        "excluded_by_nulls": 1,
+        "included_rows": 11
+      }
+    }
+  ],
+  "rows": [
+    {
+      "key": {
+        "dimensions": [],
+        "period": null
+      },
+      "labels": {},
+      "values": {
+        "m0": "20.77",
+        "m1": "11",
+        "m2": "6"
+      },
+      "evidence": {
+        "m0": "00b040f2a2600f34a27091fa2b60de3505fc339e6ffa421ea604fbd2500f1e31",
+        "m1": "f234ba5938276f29c054e3cf7414a8ccee34b7437dea022cd8d5cd72921a1f2c",
+        "m2": "59785f3c086deb489de816c896459bcf3068b5345a7c0776b02c2e51c13b0071"
+      }
+    }
+  ],
+  "row_count": 1
+}
