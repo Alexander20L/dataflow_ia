@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     processing_timeout_seconds: int = Field(default=45, ge=5, le=60)
     # Fase 18B: servidores SQL Server a los que se permite conectar (vacío: desactivado).
     sqlserver_allowed_hosts: list[str] = []
+    # Fase 31: servidores PostgreSQL a los que se permite conectar (vacío: desactivado).
+    postgresql_allowed_hosts: list[str] = []
 
     # Explicación IA (Fase 10, ADR-022; Fase 13B). `auto` (por defecto): Anthropic si hay clave
     # configurada; si no, desactivada (sin IA todo lo demás funciona). La clave nunca se registra

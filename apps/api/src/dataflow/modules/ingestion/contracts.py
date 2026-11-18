@@ -218,12 +218,14 @@ class ReadPdfParameters(BaseModel):
 
 class SqlServerConnection(BaseModel):
     """Datos de conexión de un solo uso (Fase 18B). La contraseña se usa para copiar las tablas
-    y se descarta: no se guarda, no entra en el plan ni en la huella de idempotencia."""
+    y se descarta: no se guarda, no entra en el plan ni en la huella de idempotencia. Fase 31:
+    `schema_name` limita la copia a un esquema (`sqlserver-selection-v2`)."""
 
     model_config = ConfigDict(extra="forbid")
     server: str = Field(min_length=1, max_length=253, pattern=r"^[A-Za-z0-9.\-]+$")
     port: int = Field(default=1433, ge=1, le=65535)
     database: str = Field(min_length=1, max_length=128)
+    schema_name: str | None = Field(default=None, min_length=1, max_length=128)
     user: str = Field(min_length=1, max_length=128)
     password: SecretStr = Field(min_length=1, max_length=256)
 
@@ -246,12 +248,93 @@ class OmittedSource(BaseModel):
     reason: str
 
 
+class PostgresConnection(BaseModel):
+    """Fase 31: datos de conexión de un solo uso a PostgreSQL. Como en SQL Server, la contraseña
+    se usa para copiar las tablas de un esquema y se descarta."""
+
+    model_config = ConfigDict(extra="forbid")
+    server: str = Field(min_length=1, max_length=253, pattern=r"^[A-Za-z0-9.\-]+$")
+    port: int = Field(default=5432, ge=1, le=65535)
+    database: str = Field(min_length=1, max_length=63)
+    schema_name: str = Field(default="public", min_length=1, max_length=63)
+    user: str = Field(min_length=1, max_length=63)
+    password: SecretStr = Field(min_length=1, max_length=256)
+
+
+class RelatedFile(BaseModel):
+    """Fase 31: un archivo de un conjunto relacionado (CSV o .xlsx), en base64."""
+
+    model_config = ConfigDict(extra="forbid")
+    name: str = Field(min_length=1, max_length=255)
+    content_base64: str = Field(min_length=1)
+
+
+class RelatedFilesRequest(BaseModel):
+    """Fase 31: de 2 a 5 archivos que se analizan por separado y, si comparten claves, unidos
+    (`relations-v1`)."""
+
+    model_config = ConfigDict(extra="forbid")
+    files: list[RelatedFile] = Field(min_length=2, max_length=5)
+
+
+class RelatedTable(BaseModel):
+    """Fase 31: una tabla del modelo de datos con sus columnas, claves y papel: de hechos
+    (apunta a otras y nadie apunta a ella), entidad principal (a ella apuntan las de hechos),
+    dimensión (describe a otra) o por separado (sin clave común)."""
+
+    label: str
+    rows: int
+    columns: int
+    headers: list[str] = Field(default_factory=list)
+    keys: list[str] = Field(default_factory=list)
+    role: Literal["fact", "entity", "dimension", "separate"]
+    reason: str
+
+
+class TableRelation(BaseModel):
+    """Fase 31: relación entre dos tablas (`table.column` → `references_table.references_column`),
+    su cardinalidad y si se usó en alguna vista, con su motivo."""
+
+    table: str
+    column: str
+    references_table: str
+    references_column: str
+    origin: Literal["declared", "detected"]
+    cardinality: Literal["N:1", "1:1"] = "N:1"
+    status: Literal["joined", "not_joined"]
+    reason: str
+    added_columns: list[str] = Field(default_factory=list)
+
+
+class RelatedView(BaseModel):
+    """Fase 31: una vista del modelo que se analiza como versión propia: la de una tabla de
+    hechos con lo que apunta (`fact`) o la vista general por entidad con métricas de cada tabla
+    de hechos (`entity`)."""
+
+    name: str
+    kind: Literal["fact", "entity"]
+    base: str
+    tables: list[str]
+    rows: int
+    columns: int
+    headers: list[str] = Field(default_factory=list)
+    description: str
+
+
 class SourceOrigin(BaseModel):
     """De dónde sale una versión que no es un archivo tabular (Fase 18B): una tabla copiada de
-    SQL Server o una tabla de un PDF. Decisión del sistema; no hay nada que elegir."""
+    SQL Server o una tabla de un PDF. Decisión del sistema; no hay nada que elegir. Fase 31: una
+    tabla copiada de PostgreSQL, o una versión de un conjunto relacionado (`related`): una de sus
+    tablas o una vista (`joined`), con el modelo de datos que decidió `relations-v1`."""
 
-    kind: Literal["sqlserver", "pdf"]
-    rule: Literal["sqlserver-selection-v1", "pdf-selection-v1"]
+    kind: Literal["sqlserver", "pdf", "postgresql", "related"]
+    rule: Literal[
+        "sqlserver-selection-v1",
+        "sqlserver-selection-v2",
+        "pdf-selection-v1",
+        "postgresql-selection-v1",
+        "relations-v1",
+    ]
     table: str
     server: str | None = None
     database: str | None = None
@@ -261,6 +344,37 @@ class SourceOrigin(BaseModel):
     foreign_keys: list[ForeignKey] = Field(default_factory=list)
     analyzed_together: list[str] = Field(default_factory=list)
     omitted: list[OmittedSource] = Field(default_factory=list)
+    # Fase 31: modelo de datos del conjunto; `joined` y `view_kind` si la versión es una vista.
+    joined: bool = False
+    view_kind: Literal["fact", "entity"] | None = None
+    tables: list[RelatedTable] = Field(default_factory=list)
+    relations: list[TableRelation] = Field(default_factory=list)
+    views: list[RelatedView] = Field(default_factory=list)
+
+
+class DataModel(BaseModel):
+    """Fase 31: «foto» del esquema antes de analizar (no guarda nada): tablas con sus columnas y
+    claves, relaciones y las vistas que se analizarían; `main` es la vista que se abriría."""
+
+    rule: Literal["relations-v1"] = "relations-v1"
+    main: str | None
+    tables: list[RelatedTable]
+    relations: list[TableRelation]
+    views: list[RelatedView]
+    omitted: list[OmittedSource] = Field(default_factory=list)
+
+
+class RelatedSet(BaseModel):
+    """Resultado de `relations-v1` (interno entre el subproceso y la API): el modelo y cada vista
+    como CSV estándar (`csv`, por nombre de vista). `xlsx`: la hoja o tabla que se leyó de cada
+    libro (por etiqueta)."""
+
+    main: str | None
+    tables: list[RelatedTable]
+    relations: list[TableRelation]
+    views: list[RelatedView] = Field(default_factory=list)
+    csv: dict[str, str] = Field(default_factory=dict)
+    xlsx: dict[str, XlsxSelection] = Field(default_factory=dict)
 
 
 class SnapshotTable(BaseModel):

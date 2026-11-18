@@ -1,4 +1,5 @@
-"""Copia de tablas de SQL Server (Fase 18B, regla `sqlserver-selection-v1`).
+"""Copia de tablas de SQL Server (Fase 18B, regla `sqlserver-selection-v1`; Fase 31,
+`sqlserver-selection-v2`: un esquema opcional y hasta 10 tablas).
 
 Sólo se usa desde el subproceso de ingesta. La conexión es de lectura, cifrada y de un solo uso:
 la contraseña no se guarda ni se registra. Cada tabla elegida se copia completa (o se omite con su
@@ -16,6 +17,9 @@ from dataflow.platform.errors import ApplicationError
 
 SELECTION_RULE = "sqlserver-selection-v1"
 MAX_TABLES = 5
+# Fase 31: un esquema se analiza como modelo de datos; caben más tablas.
+SELECTION_RULE_V2 = "sqlserver-selection-v2"
+MAX_TABLES_V2 = 10
 UNSUPPORTED = {
     "binary",
     "varbinary",
@@ -132,7 +136,7 @@ def catalog(cursor: Cursor) -> list[Candidate]:
 
 
 def choose(
-    candidates: list[Candidate], max_rows: int, max_columns: int
+    candidates: list[Candidate], max_rows: int, max_columns: int, limit: int = MAX_TABLES
 ) -> tuple[list[Candidate], list[tuple[str, str]]]:
     """Regla `sqlserver-selection-v1`: tablas de usuario con al menos dos columnas admitidas y
     dos registros, dentro de los límites; de mayor a menor tamaño (registros × columnas), empates
@@ -152,8 +156,8 @@ def choose(
         else:
             eligible.append(item)
     eligible.sort(key=lambda c: (-(c.rows * len(c.supported)), c.schema, c.name))
-    omitted.extend((c.label, "Hay otras tablas más grandes.") for c in eligible[MAX_TABLES:])
-    return eligible[:MAX_TABLES], omitted
+    omitted.extend((c.label, "Hay otras tablas más grandes.") for c in eligible[limit:])
+    return eligible[:limit], omitted
 
 
 def canonical(value: object) -> str | None:
@@ -229,9 +233,19 @@ def foreign_keys(cursor: Cursor) -> dict[tuple[str, str], list[tuple[str, str]]]
     return found
 
 
-def snapshot(connection: Connection, max_rows: int, max_columns: int) -> Snapshot:
+def snapshot(
+    connection: Connection, max_rows: int, max_columns: int, schema: str | None = None
+) -> Snapshot:
+    """`sqlserver-selection-v2`: las tablas del esquema pedido (o de todos), hasta 10."""
     cursor = connection.cursor()
-    chosen, omitted = choose(catalog(cursor), max_rows, max_columns)
+    candidates = [c for c in catalog(cursor) if schema is None or c.schema == schema]
+    if schema is not None and not candidates:
+        raise ApplicationError(
+            "SQLSERVER_SCHEMA_EMPTY",
+            f"El esquema «{schema}» no existe o no tiene tablas que la cuenta pueda leer.",
+            422,
+        )
+    chosen, omitted = choose(candidates, max_rows, max_columns, MAX_TABLES_V2)
     declared = foreign_keys(cursor)
     tables: list[TableCopy] = []
     for table in chosen:
@@ -284,10 +298,12 @@ def connect(
     return connection
 
 
-def read_database(opener: Callable[[], Connection], max_rows: int, max_columns: int) -> Snapshot:
+def read_database(
+    opener: Callable[[], Connection], max_rows: int, max_columns: int, schema: str | None = None
+) -> Snapshot:
     connection = opener()
     try:
-        return snapshot(connection, max_rows, max_columns)
+        return snapshot(connection, max_rows, max_columns, schema)
     except ApplicationError:
         raise
     except Exception as exc:

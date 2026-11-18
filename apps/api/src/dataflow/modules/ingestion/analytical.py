@@ -9,11 +9,13 @@ from dataflow.modules.executions.public import ProcessingConfig
 from dataflow.modules.ingestion.application import AnalysisOutput, ReadOutput
 from dataflow.modules.ingestion.contracts import (
     PdfSelection,
+    PostgresConnection,
     PreviewPage,
     PreviewRow,
     ReadPdfParameters,
     ReadXlsxParameters,
     RecordsPage,
+    RelatedSet,
     SourceFacts,
     SourceReading,
     SqlServerConnection,
@@ -158,6 +160,7 @@ class IsolatedAnalyzer:
                 "server": connection.server,
                 "port": connection.port,
                 "database": connection.database,
+                "schema": connection.schema_name,
                 "user": connection.user,
                 "password": connection.password.get_secret_value(),
                 "timeout": config.timeout_seconds,
@@ -167,6 +170,31 @@ class IsolatedAnalyzer:
             "snapshot_sqlserver", payload, config, config.timeout_seconds, ["snapshot.json"]
         )
         return SqlSnapshot.model_validate_json(files["snapshot.json"])
+
+    def snapshot_postgresql(
+        self, connection: PostgresConnection, config: ProcessingConfig
+    ) -> SqlSnapshot:
+        """Fase 31: como SQL Server; la contraseña sólo viaja al directorio temporal privado."""
+        payload = json.dumps(
+            {
+                "server": connection.server,
+                "port": connection.port,
+                "database": connection.database,
+                "schema": connection.schema_name,
+                "user": connection.user,
+                "password": connection.password.get_secret_value(),
+                "timeout": config.timeout_seconds,
+            }
+        ).encode()
+        files = self.run(
+            "snapshot_postgresql", payload, config, config.timeout_seconds, ["snapshot.json"]
+        )
+        return SqlSnapshot.model_validate_json(files["snapshot.json"])
+
+    def relate(self, payload: bytes, config: ProcessingConfig) -> RelatedSet:
+        """Fase 31: lee las tablas del conjunto y aplica `relations-v1`."""
+        files = self.run("relate", payload, config, config.timeout_seconds, ["relate.json"])
+        return RelatedSet.model_validate_json(files["relate.json"])
 
     def inspect_xlsx(
         self,

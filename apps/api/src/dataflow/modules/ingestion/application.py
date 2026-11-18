@@ -1,4 +1,7 @@
+import base64
+import binascii
 import hashlib
+import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,14 +18,18 @@ from dataflow.modules.executions.public import (
     legacy_state,
 )
 from dataflow.modules.ingestion.contracts import (
+    DataModel,
     Diagnostic,
     IngestionSummary,
     PdfChoice,
     PdfSelection,
+    PostgresConnection,
     PreviewPage,
     ReadPdfParameters,
     ReadXlsxParameters,
     RecordsPage,
+    RelatedFilesRequest,
+    RelatedSet,
     SourceOrigin,
     SourceReading,
     SourceReview,
@@ -128,6 +135,10 @@ class XlsxInspector(Protocol):
     la Fase 18B también elige las tablas de un PDF y copia las de SQL Server."""
 
     def select_pdf(self, content: bytes, config: ProcessingConfig) -> PdfSelection: ...
+    def snapshot_postgresql(
+        self, connection: PostgresConnection, config: ProcessingConfig
+    ) -> SqlSnapshot: ...
+    def relate(self, payload: bytes, config: ProcessingConfig) -> RelatedSet: ...
     def snapshot_sqlserver(
         self, connection: SqlServerConnection, config: ProcessingConfig
     ) -> SqlSnapshot: ...
@@ -144,6 +155,8 @@ class XlsxInspector(Protocol):
 
 XLSX_REJECTED = (".xls", ".xlsm", ".xlsb", ".xltm", ".xlt")
 UNSAFE_NAME = "/\\\x00\r\n"
+# Fase 31: los archivos de un conjunto relacionado pueden sumar el doble del límite de uno.
+RELATED_TOTAL = 2
 
 
 class PreviewReader(Protocol):
@@ -201,6 +214,13 @@ class Sibling:
     plan: Callable[[DatasetVersion], PlanRevision]
     content: bytes | None = None  # None: comparte el original de la versión principal
     name: str | None = None
+    extension: str | None = None  # Fase 31: la de su propio original (si no, la de la carga)
+
+
+def view_file_name(view: str) -> str:
+    """Fase 31: nombre de archivo de una vista del modelo («estudiantes (vista general).csv»)."""
+    safe = "".join("_" if c in UNSAFE_NAME or ord(c) < 32 else c for c in view)
+    return f"{safe[:250]}.csv"
 
 
 def table_file_name(label: str) -> str:
@@ -425,8 +445,101 @@ class IngestionService:
     ) -> Version:
         """Fase 18B: copia de un solo uso de las tablas de una base de SQL Server. Sólo hosts de
         la lista permitida (evita usar el servidor para llegar a equipos internos). Cada tabla
-        elegida por `sqlserver-selection-v1` se guarda como CSV estándar inmutable (su original)
-        y se analiza como versión propia; la contraseña no se guarda."""
+        elegida se guarda como CSV estándar inmutable (su original) y se analiza como versión
+        propia; la contraseña no se guarda. Fase 31 (`sqlserver-selection-v2`): un esquema
+        opcional y hasta 10 tablas; con el modelo de datos de `relations-v1` (claves foráneas
+        declaradas) cada vista es otra versión y la que se devuelve es la principal."""
+        snapshot = self._sqlserver_snapshot(owner, project, connection, allowed_hosts)
+        return self._submit_snapshot(
+            owner,
+            project,
+            snapshot,
+            "sqlserver",
+            f"{connection.server}:{connection.port}",
+            connection.database + (f"/{connection.schema_name}" if connection.schema_name else ""),
+            key,
+            correlation,
+        )
+
+    def submit_postgresql(
+        self,
+        owner: UUID,
+        project: UUID,
+        connection: PostgresConnection,
+        allowed_hosts: Sequence[str],
+        key: UUID,
+        correlation: str,
+    ) -> Version:
+        """Fase 31: igual que SQL Server, con las tablas de un esquema de PostgreSQL
+        (`postgresql-selection-v1`)."""
+        snapshot = self._postgresql_snapshot(owner, project, connection, allowed_hosts)
+        return self._submit_snapshot(
+            owner,
+            project,
+            snapshot,
+            "postgresql",
+            f"{connection.server}:{connection.port}",
+            f"{connection.database}/{connection.schema_name}",
+            key,
+            correlation,
+        )
+
+    def inspect_sqlserver(
+        self,
+        owner: UUID,
+        project: UUID,
+        connection: SqlServerConnection,
+        allowed_hosts: Sequence[str],
+    ) -> DataModel:
+        """Fase 31: «foto» del esquema de SQL Server (tablas, claves y relaciones) sin guardar
+        nada; la contraseña se usa para leer y se descarta."""
+        snapshot = self._sqlserver_snapshot(owner, project, connection, allowed_hosts)
+        return self._snapshot_model(snapshot)
+
+    def inspect_postgresql(
+        self,
+        owner: UUID,
+        project: UUID,
+        connection: PostgresConnection,
+        allowed_hosts: Sequence[str],
+    ) -> DataModel:
+        """Fase 31: «foto» del esquema de PostgreSQL sin guardar nada."""
+        snapshot = self._postgresql_snapshot(owner, project, connection, allowed_hosts)
+        return self._snapshot_model(snapshot)
+
+    def _sqlserver_snapshot(
+        self,
+        owner: UUID,
+        project: UUID,
+        connection: SqlServerConnection,
+        allowed_hosts: Sequence[str],
+    ) -> SqlSnapshot:
+        self._allowed(owner, project, connection.server, allowed_hosts, "SQLSERVER", "SQL Server")
+        if self.inspector is None:
+            raise ApplicationError("SQLSERVER_UNAVAILABLE", "SQL Server no está activo.", 503)
+        return self.inspector.snapshot_sqlserver(connection, self.config)
+
+    def _postgresql_snapshot(
+        self,
+        owner: UUID,
+        project: UUID,
+        connection: PostgresConnection,
+        allowed_hosts: Sequence[str],
+    ) -> SqlSnapshot:
+        self._allowed(owner, project, connection.server, allowed_hosts, "POSTGRESQL", "PostgreSQL")
+        if self.inspector is None:
+            raise ApplicationError("POSTGRESQL_UNAVAILABLE", "PostgreSQL no está activo.", 503)
+        return self.inspector.snapshot_postgresql(connection, self.config)
+
+    def _allowed(
+        self,
+        owner: UUID,
+        project: UUID,
+        server: str,
+        allowed_hosts: Sequence[str],
+        prefix: str,
+        engine: str,
+    ) -> None:
         try:
             self.projects.require(owner, project, writable=True)
         finally:
@@ -434,41 +547,106 @@ class IngestionService:
         allowed = {host.strip().lower() for host in allowed_hosts if host.strip()}
         if not allowed:
             raise ApplicationError(
-                "SQLSERVER_DISABLED",
-                "La conexión a SQL Server no está activada en este entorno.",
+                f"{prefix}_DISABLED",
+                f"La conexión a {engine} no está activada en este entorno.",
                 503,
             )
-        if connection.server.lower() not in allowed:
+        if server.lower() not in allowed:
             raise ApplicationError(
-                "SQLSERVER_HOST_NOT_ALLOWED",
+                f"{prefix}_HOST_NOT_ALLOWED",
                 "Ese servidor no está en la lista de servidores permitidos.",
                 422,
             )
-        if self.inspector is None:
-            raise ApplicationError("SQLSERVER_UNAVAILABLE", "SQL Server no está activo.", 503)
-        snapshot = self.inspector.snapshot_sqlserver(connection, self.config)
+
+    def _relate(
+        self, tables: list[tuple[str, str, bytes]], declared: list[dict[str, str]], data: bool
+    ) -> RelatedSet:
+        """`relations-v1` en el subproceso de ingesta. `data`: con las vistas en CSV (para
+        registrarlas) o sólo el modelo (la «foto» del esquema)."""
+        assert self.inspector is not None
+        payload = {
+            "tables": [
+                {
+                    "label": label,
+                    "format": kind,
+                    "content_base64": base64.b64encode(content).decode(),
+                }
+                for label, kind, content in tables
+            ],
+            "declared": declared,
+            "with_data": data,
+        }
+        return self.inspector.relate(json.dumps(payload).encode(), self.config)
+
+    def _snapshot_relations(self, snapshot: SqlSnapshot, data: bool) -> RelatedSet:
+        return self._relate(
+            [(t.label, "standard", t.csv.encode("utf-8")) for t in snapshot.tables],
+            [
+                {
+                    "table": t.label,
+                    "column": fk.column,
+                    "references_table": fk.references.rsplit(".", 1)[0],
+                    "references_column": fk.references.rsplit(".", 1)[-1],
+                }
+                for t in snapshot.tables
+                for fk in t.foreign_keys
+            ],
+            data,
+        )
+
+    def _snapshot_model(self, snapshot: SqlSnapshot) -> DataModel:
+        related = self._snapshot_relations(snapshot, data=False)
+        return DataModel(
+            main=related.main,
+            tables=related.tables,
+            relations=related.relations,
+            views=related.views,
+            omitted=snapshot.omitted,
+        )
+
+    def _submit_snapshot(
+        self,
+        owner: UUID,
+        project: UUID,
+        snapshot: SqlSnapshot,
+        kind: Literal["sqlserver", "postgresql"],
+        server: str,
+        database: str,
+        key: UUID,
+        correlation: str,
+    ) -> Version:
         captured = datetime.now(UTC).replace(microsecond=0).isoformat()
         labels = [t.label for t in snapshot.tables]
-        parts = []
+        prefix = kind.upper()
+        related = (
+            self._snapshot_relations(snapshot, data=True) if len(snapshot.tables) > 1 else None
+        )
+        rule: Literal["sqlserver-selection-v2", "postgresql-selection-v1"] = (
+            "sqlserver-selection-v2" if kind == "sqlserver" else "postgresql-selection-v1"
+        )
+        members: list[Sibling] = []
         for table in snapshot.tables:
             data = table.csv.encode("utf-8")
             if len(data) > self.maximum_upload:
                 raise ApplicationError(
-                    "SQLSERVER_TABLE_TOO_LARGE",
+                    f"{prefix}_TABLE_TOO_LARGE",
                     f"La tabla {table.label} supera el tamaño máximo de un original.",
                     413,
                 )
             decision = SourceOrigin(
-                kind="sqlserver",
-                rule="sqlserver-selection-v1",
+                kind=kind,
+                rule=rule,
                 table=table.label,
-                server=f"{connection.server}:{connection.port}",
-                database=connection.database,
+                server=server,
+                database=database,
                 captured_at=captured,
                 excluded_columns=table.excluded_columns,
                 foreign_keys=table.foreign_keys,
                 analyzed_together=[label for label in labels if label != table.label],
                 omitted=snapshot.omitted,
+                tables=related.tables if related else [],
+                relations=related.relations if related else [],
+                views=related.views if related else [],
             )
             file_name = table_file_name(table.label)
             fingerprint = digest(
@@ -476,26 +654,240 @@ class IngestionService:
                 {
                     "name": file_name,
                     "sha256": hashlib.sha256(data).hexdigest(),
-                    "sqlserver": f"{connection.server}:{connection.port}/{connection.database}",
+                    kind: f"{server}/{database}",
                 },
             )
-            parts.append((table, data, file_name, fingerprint, self._csv_plan(owner, decision)))
-        main, *rest = parts
+            members.append(
+                Sibling(
+                    uuid5(key, f"{kind}-table:{table.label}"),
+                    fingerprint,
+                    self._csv_plan(owner, decision),
+                    data,
+                    file_name,
+                )
+            )
+        origin = {
+            "server": server,
+            "database": database,
+            "captured_at": captured,
+            "omitted": snapshot.omitted,
+        }
+        return self._register_set(owner, project, related, members, origin, key, correlation)
+
+    def _related_files(self, request: RelatedFilesRequest) -> list[tuple[str, str, bytes]]:
+        """Archivos de un conjunto relacionado ya comprobados (nombre, formato y tamaño)."""
+        files: list[tuple[str, str, bytes]] = []
+        seen: set[str] = set()
+        for item in request.files:
+            name, lowered = item.name, item.name.lower()
+            kind = next((k for k in ("csv", "xlsx") if lowered.endswith(f".{k}")), "")
+            if not kind or any(c in name for c in UNSAFE_NAME):
+                raise ApplicationError(
+                    "RELATED_FORMAT", f"«{name}»: sólo se admiten archivos CSV o .xlsx.", 422
+                )
+            if lowered in seen:
+                raise ApplicationError(
+                    "RELATED_DUPLICATE_NAMES", "Hay dos archivos con el mismo nombre.", 422
+                )
+            seen.add(lowered)
+            try:
+                content = base64.b64decode(item.content_base64, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise ApplicationError(
+                    "RELATED_FILE_INVALID", f"«{name}» no llegó completo; vuelve a elegirlo.", 422
+                ) from exc
+            self._check_content(content, f"«{name}» supera el límite de tamaño.")
+            files.append((name, kind, content))
+        total = sum(len(content) for _, _, content in files)
+        if total > self.maximum_upload * RELATED_TOTAL:
+            raise ApplicationError(
+                "RELATED_TOO_LARGE",
+                "Los archivos juntos superan "
+                f"{RELATED_TOTAL * self.maximum_upload // (1024 * 1024)} MB.",
+                413,
+            )
+        if self.inspector is None:
+            raise ApplicationError(
+                "RELATED_UNAVAILABLE", "La lectura de archivos no está activa.", 503
+            )
+        return files
+
+    def inspect_related(
+        self, owner: UUID, project: UUID, request: RelatedFilesRequest
+    ) -> DataModel:
+        """Fase 31: «foto» del modelo de datos de los archivos sin guardar nada."""
+        try:
+            self.projects.require(owner, project, writable=True)
+        finally:
+            self.uow.rollback()
+        related = self._relate(self._related_files(request), [], data=False)
+        return DataModel(
+            main=related.main,
+            tables=related.tables,
+            relations=related.relations,
+            views=related.views,
+        )
+
+    def submit_related(
+        self,
+        owner: UUID,
+        project: UUID,
+        request: RelatedFilesRequest,
+        key: UUID,
+        correlation: str,
+    ) -> Version:
+        """Fase 31: de 2 a 5 archivos (CSV o .xlsx) en una sola carga. Cada archivo se analiza
+        como versión propia con su original; con el modelo de datos de `relations-v1`, cada vista
+        (la de cada tabla de hechos y la vista general por entidad) es otra versión y se devuelve
+        la principal, con la decisión en `source_origin`."""
+        try:
+            self.projects.require(owner, project, writable=True)
+        finally:
+            self.uow.rollback()
+        files = self._related_files(request)
+        related = self._relate(files, [], data=True)
+        names = [name for name, _, _ in files]
+        rows = {t.label: t.rows for t in related.tables}
+        members: list[Sibling] = []
+        for name, kind, content in sorted(files, key=lambda f: (-rows.get(f[0], 0), f[0])):
+            origin = SourceOrigin(
+                kind="related",
+                rule="relations-v1",
+                table=name,
+                analyzed_together=[other for other in names if other != name],
+                tables=related.tables,
+                relations=related.relations,
+                views=related.views,
+            )
+            sha256 = hashlib.sha256(content).hexdigest()
+            if kind == "csv":
+                encoding = resolve_encoding(content)
+                separator = resolve_separator(content, "auto", encoding)
+                plan = self._related_csv_plan(owner, separator, encoding, origin)
+                fingerprint = import_fingerprint(name, sha256, "auto")
+            else:
+                selection = related.xlsx[name]
+                parameters = ReadXlsxParameters(
+                    sheet=selection.sheet, table=selection.table, header_row=selection.header_row
+                )
+                plan = self._related_xlsx_plan(owner, parameters, selection, origin)
+                fingerprint = xlsx_import_fingerprint(name, sha256, parameters)
+            members.append(
+                Sibling(uuid5(key, f"related-table:{name}"), fingerprint, plan, content, name, kind)
+            )
+        return self._register_set(owner, project, related, members, {}, key, correlation)
+
+    def _register_set(
+        self,
+        owner: UUID,
+        project: UUID,
+        related: RelatedSet | None,
+        members: list[Sibling],
+        origin: dict[str, Any],
+        key: UUID,
+        correlation: str,
+    ) -> Version:
+        """Las tablas y cada vista del modelo como versiones propias. La vista principal es la
+        versión que se devuelve (la que se abre); sin vistas, la tabla con más registros."""
+        views: list[Sibling] = []
+        main_view: Sibling | None = None
+        for view in related.views if related else []:
+            assert related is not None
+            data = related.csv[view.name].encode("utf-8")
+            if len(data) > self.maximum_upload:
+                raise ApplicationError(
+                    "RELATED_JOINED_TOO_LARGE",
+                    f"La vista «{view.name}» supera el tamaño máximo de un original; sube menos "
+                    "columnas o menos registros.",
+                    413,
+                )
+            name = view_file_name(view.name)
+            decision = SourceOrigin(
+                kind="related",
+                rule="relations-v1",
+                table=view.name,
+                joined=True,
+                view_kind=view.kind,
+                analyzed_together=[m.name for m in members if m.name],
+                tables=related.tables,
+                relations=related.relations,
+                views=related.views,
+                **origin,
+            )
+            fingerprint = digest(
+                "import_request",
+                {
+                    "name": name,
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "related": sorted(m.fingerprint for m in members),
+                },
+            )
+            item = Sibling(
+                uuid5(key, f"related-view:{view.name}"),
+                fingerprint,
+                self._csv_plan(owner, decision),
+                data,
+                name,
+                "csv",
+            )
+            if view.name == related.main:
+                main_view = item
+            else:
+                views.append(item)
+        main = main_view or members[0]
+        rest = [m for m in [*members, *views] if m is not main]
+        assert main.content is not None and main.name is not None
         return self._register(
             owner,
             project,
-            main[2],
-            main[1],
+            main.name,
+            main.content,
             key,
             correlation,
-            "csv",
-            main[3],
-            main[4],
-            [
-                Sibling(uuid5(key, f"sqlserver-table:{t.label}"), fp, plan, data, file_name)
-                for t, data, file_name, fp, plan in rest
-            ],
+            main.extension or "csv",
+            main.fingerprint,
+            main.plan,
+            rest,
         )
+
+    def _related_csv_plan(
+        self,
+        owner: UUID,
+        separator: str,
+        encoding: Literal["utf-8-sig", "cp1252"],
+        decision: SourceOrigin,
+    ) -> Callable[[DatasetVersion], PlanRevision]:
+        def plan(version: DatasetVersion) -> PlanRevision:
+            return build_plan(
+                owner,
+                version,
+                self.config,
+                "auto",
+                separator,
+                encoding=encoding,
+                source_origin=decision,
+            )
+
+        return plan
+
+    def _related_xlsx_plan(
+        self,
+        owner: UUID,
+        parameters: ReadXlsxParameters,
+        selection: XlsxSelection,
+        decision: SourceOrigin,
+    ) -> Callable[[DatasetVersion], PlanRevision]:
+        def plan(version: DatasetVersion) -> PlanRevision:
+            return build_plan(
+                owner,
+                version,
+                self.config,
+                xlsx=parameters,
+                source_selection=selection,
+                source_origin=decision,
+            )
+
+        return plan
 
     def _csv_plan(
         self, owner: UUID, decision: SourceOrigin
@@ -602,7 +994,8 @@ class IngestionService:
                 if item.content is not None:
                     own = self.objects.put(
                         f"originals/{owner}/{sibling_id}/"
-                        f"{hashlib.sha256(item.content).hexdigest()}.{extension}",
+                        f"{hashlib.sha256(item.content).hexdigest()}"
+                        f".{item.extension or extension}",
                         item.content,
                     )
                 registered.append(
