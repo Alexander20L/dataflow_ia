@@ -4942,22 +4942,310 @@ tbody tr:hover {
 }
 
 /* Fase 18B: conexión de un solo uso a SQL Server. */
-.sqlserver-form {
+/* Fase 31: tres formas de traer los datos (archivo, varios relacionados o base de datos). */
+.source-modes {
   display: grid;
-  gap: 6px;
-  margin-top: 12px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.source-modes button {
+  display: grid;
+  justify-items: start;
+  gap: 4px;
+  padding: 14px;
+  text-align: left;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface);
+  color: inherit;
+  cursor: pointer;
   min-width: 0;
 }
-.sqlserver-form input {
-  width: 100%;
+.source-modes button svg {
+  color: var(--muted);
+}
+.source-modes button strong {
+  font-size: 12px;
+}
+.source-modes button small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.source-modes button.selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.source-modes button.selected svg {
+  color: var(--primary);
+}
+.source-modes button:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+.selected-files {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.database-fields {
+  display: grid;
+  gap: 10px;
+  margin: 0 0 16px;
+  padding: 0;
+  border: 0;
   min-width: 0;
 }
-.sqlserver-form .security-note {
+.database-fields legend {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+.engine-choice {
   display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.engine-choice label {
+  display: flex;
+  align-items: center;
   gap: 6px;
+  padding: 8px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 12px;
+  cursor: pointer;
+}
+.engine-choice label.selected {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.database-grid {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 8px 12px;
   align-items: center;
   font-size: 12px;
-  margin: 8px 0;
+}
+.database-grid input {
+  width: 100%;
+  min-width: 0;
+  font-size: 12px;
+}
+.database-fields .security-note {
+  font-size: 11px !important;
+  margin: 4px 0 0;
+}
+.related-sources {
+  margin: 12px 0;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  min-width: 0;
+  overflow-x: auto;
+}
+.related-sources header {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.related-sources header svg {
+  color: var(--primary);
+  margin-top: 2px;
+}
+.related-sources h3 {
+  font-size: 13px;
+}
+.related-sources header p {
+  font-size: 11px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+.related-sources table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+.related-sources th,
+.related-sources td {
+  text-align: left;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+}
+.role-chip {
+  display: inline-block;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  background: var(--surface-secondary);
+  border: 1px solid var(--border);
+  white-space: nowrap;
+}
+.role-chip.fact,
+.role-chip.entity {
+  background: var(--primary-soft);
+  color: var(--primary);
+  border-color: transparent;
+}
+.relation-list {
+  display: grid;
+  gap: 8px;
+  margin: 12px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 11px;
+}
+.relation-list li {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+.relation-list li.joined svg {
+  color: #16a34a;
+}
+.relation-list li.not_joined svg {
+  color: var(--muted);
+}
+.relation-list small {
+  color: var(--muted);
+}
+.related-sources > table,
+.related-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+  margin-top: 12px;
+}
+.related-table th,
+.related-table td {
+  text-align: left;
+  padding: 6px 8px;
+  border-top: 1px solid var(--border);
+  vertical-align: top;
+}
+.schema-preview {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin: 4px 0 16px;
+}
+.schema-preview small {
+  font-size: 10px;
+  color: var(--muted);
+}
+.schema-diagram {
+  margin: 0 0 12px;
+}
+.schema-scroll {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--surface-secondary);
+}
+.schema-diagram svg {
+  display: block;
+  font-size: 11px;
+}
+.schema-diagram .table-box > rect:first-child {
+  fill: var(--surface);
+  stroke: var(--border);
+}
+.schema-diagram .table-box.fact > rect:first-child,
+.schema-diagram .table-box.entity > rect:first-child {
+  stroke: var(--primary);
+}
+.schema-diagram .table-head {
+  fill: var(--primary-soft);
+}
+.schema-diagram .table-box.separate .table-head {
+  fill: var(--surface-secondary);
+}
+.schema-diagram .table-name {
+  font-weight: 600;
+  fill: var(--foreground);
+}
+.schema-diagram .table-role,
+.schema-diagram .column-tag,
+.schema-diagram .column.more {
+  fill: var(--muted);
+  font-size: 10px;
+}
+.schema-diagram .column {
+  fill: var(--foreground);
+}
+.schema-diagram .column.key {
+  font-weight: 600;
+}
+.schema-diagram .edge path {
+  stroke: var(--primary);
+  stroke-width: 1.5;
+}
+.schema-diagram .edge.unused path {
+  stroke: var(--muted);
+  stroke-dasharray: 4 4;
+}
+.schema-diagram .edge text {
+  fill: var(--muted);
+  font-size: 10px;
+}
+.schema-diagram .arrow-head {
+  fill: var(--primary);
+}
+.schema-diagram figcaption {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 14px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--muted);
+}
+.schema-diagram .legend::before {
+  content: "";
+  display: inline-block;
+  width: 18px;
+  margin-right: 6px;
+  vertical-align: middle;
+  border-top: 2px solid var(--primary);
+}
+.schema-diagram .legend.unused::before {
+  border-top: 2px dashed var(--muted);
+}
+.view-list {
+  display: grid;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 0;
+  list-style: none;
+}
+.view-list li {
+  display: grid;
+  gap: 2px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 11px;
+}
+.view-list li.current {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+.view-list span,
+.view-list small {
+  color: var(--muted);
+}
+@media (max-width: 720px) {
+  .source-modes {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .database-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 /* Fase 19: entendimiento del negocio y valoración opcional de relaciones. */

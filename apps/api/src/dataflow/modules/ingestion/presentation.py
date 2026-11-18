@@ -4,16 +4,19 @@ from urllib.parse import quote
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Path, Query, Request, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 from starlette.concurrency import run_in_threadpool
 
 from dataflow.bootstrap.dependencies import Analysis, CurrentIdentity, Ingestion
 from dataflow.modules.analytics.contracts import AutomaticAnalysis, AutomaticEvidence
 from dataflow.modules.ingestion.contracts import (
+    DataModel,
     Diagnostic,
     IngestionSummary,
+    PostgresConnection,
     ReadXlsxParameters,
     RecordsPage,
+    RelatedFilesRequest,
     SourceOrigin,
     SourceReview,
     SqlServerConnection,
@@ -283,6 +286,168 @@ async def import_sqlserver(
         request.state.correlation_id,
     )
     return VersionResponse.model_validate(version)
+
+
+@router.post(
+    "/projects/{project_id}/imports/postgresql",
+    status_code=202,
+    response_model=VersionResponse,
+    operation_id="importPostgresql",
+)
+async def import_postgresql(
+    project_id: UUID,
+    body: PostgresConnection,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    request_key: Annotated[UUID, Header(alias="Idempotency-Key")],
+) -> VersionResponse:
+    """Fase 31: copia de un solo uso de las tablas de un esquema de PostgreSQL
+    (`postgresql-selection-v1`); cada tabla es una versión con su CSV original y, si se
+    relacionan (`relations-v1`), la tabla unida es la versión que se devuelve. La contraseña se
+    usa para la copia y se descarta. Sólo servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS`."""
+    version = await run_in_threadpool(
+        service.submit_postgresql,
+        identity.user.id,
+        project_id,
+        body,
+        get_settings().postgresql_allowed_hosts,
+        request_key,
+        request.state.correlation_id,
+    )
+    return VersionResponse.model_validate(version)
+
+
+def inline_schema() -> dict[str, object]:
+    """Esquema de RelatedFilesRequest con RelatedFile dentro (sin referencias): el cuerpo se lee
+    con límite de tamaño, así que la ruta no declara el modelo como parámetro."""
+    schema = RelatedFilesRequest.model_json_schema()
+    definitions = schema.pop("$defs")
+    schema["properties"]["files"]["items"] = definitions["RelatedFile"]
+    return schema
+
+
+RELATED_BODY = {
+    "requestBody": {
+        "required": True,
+        "content": {"application/json": {"schema": inline_schema()}},
+    }
+}
+
+
+async def related_body(request: Request) -> RelatedFilesRequest:
+    """Cuerpo JSON de un conjunto relacionado, leído con límite de tamaño."""
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        raise ApplicationError(
+            "RELATED_CONTENT_TYPE", "Envía los archivos con Content-Type application/json.", 415
+        )
+    maximum = get_settings().max_upload_bytes * 3 + 65536  # base64 de dos veces el límite
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > maximum:
+            raise ApplicationError(
+                "RELATED_TOO_LARGE", "Los archivos juntos superan el límite permitido.", 413
+            )
+        chunks.append(chunk)
+    try:
+        return RelatedFilesRequest.model_validate_json(b"".join(chunks))
+    except ValidationError as exc:
+        raise ApplicationError(
+            "RELATED_INVALID", "Elige entre 2 y 5 archivos CSV o .xlsx.", 422
+        ) from exc
+
+
+@router.post(
+    "/projects/{project_id}/imports/related",
+    status_code=202,
+    response_model=VersionResponse,
+    operation_id="uploadRelatedFiles",
+    openapi_extra=RELATED_BODY,
+)
+async def upload_related(
+    project_id: UUID,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    request_key: Annotated[UUID, Header(alias="Idempotency-Key")],
+) -> VersionResponse:
+    """Fase 31: de 2 a 5 archivos CSV o .xlsx relacionados (en base64). Cada uno se analiza como
+    versión propia y, con el modelo de datos de `relations-v1`, cada vista (la de cada tabla de
+    hechos y la vista general por entidad) también; se devuelve la vista principal, con el modelo
+    en `source_origin`. Sin relaciones, la tabla con más registros."""
+    body = await related_body(request)
+    version = await run_in_threadpool(
+        service.submit_related,
+        identity.user.id,
+        project_id,
+        body,
+        request_key,
+        request.state.correlation_id,
+    )
+    return VersionResponse.model_validate(version)
+
+
+@router.post(
+    "/projects/{project_id}/imports/related/inspect",
+    response_model=DataModel,
+    operation_id="inspectRelatedFiles",
+    openapi_extra=RELATED_BODY,
+)
+async def inspect_related(
+    project_id: UUID,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+) -> DataModel:
+    """Fase 31: «foto» del modelo de datos de los archivos (tablas, claves, relaciones y vistas
+    que se analizarían) sin guardar nada."""
+    body = await related_body(request)
+    return await run_in_threadpool(service.inspect_related, identity.user.id, project_id, body)
+
+
+@router.post(
+    "/projects/{project_id}/imports/sqlserver/inspect",
+    response_model=DataModel,
+    operation_id="inspectSqlServer",
+)
+async def inspect_sqlserver(
+    project_id: UUID,
+    body: SqlServerConnection,
+    identity: CurrentIdentity,
+    service: Ingestion,
+) -> DataModel:
+    """Fase 31: «foto» del esquema de SQL Server sin guardar nada; la contraseña se usa para
+    leer y se descarta."""
+    return await run_in_threadpool(
+        service.inspect_sqlserver,
+        identity.user.id,
+        project_id,
+        body,
+        get_settings().sqlserver_allowed_hosts,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/imports/postgresql/inspect",
+    response_model=DataModel,
+    operation_id="inspectPostgresql",
+)
+async def inspect_postgresql(
+    project_id: UUID,
+    body: PostgresConnection,
+    identity: CurrentIdentity,
+    service: Ingestion,
+) -> DataModel:
+    """Fase 31: «foto» del esquema de PostgreSQL sin guardar nada."""
+    return await run_in_threadpool(
+        service.inspect_postgresql,
+        identity.user.id,
+        project_id,
+        body,
+        get_settings().postgresql_allowed_hosts,
+    )
 
 
 @router.get(

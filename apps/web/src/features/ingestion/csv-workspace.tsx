@@ -19,6 +19,7 @@ import { AutomaticAnalysisView } from "./automatic-analysis";
 import { AutomaticOverview } from "./automatic-overview";
 import { DeliverySummary } from "./delivery-summary";
 import { SourceReviewPanel } from "./source-review";
+import { RelatedSources } from "./related-sources";
 import { InvestigationPanel } from "./investigation";
 import { OverviewAudit } from "./overview-audit";
 import { CsvExport } from "@/features/reports/csv-export";
@@ -328,6 +329,7 @@ export function CsvWorkspace({
           </div>
           <SourceSelection version={version} />
           <SourceOriginNote version={version} />
+          <RelatedSources version={version} />
           {["queued", "processing"].includes(version.state) ? (
             <div className="processing-state" role="status">
               <LoaderCircle className="spin" size={30} />
@@ -678,6 +680,8 @@ export function fileProblem(file: File): string | null {
 /** Hoja o tabla de un libro en la lista de versiones (Fase 18: un libro puede dar varias). */
 function sheetLabel(v: DatasetVersion) {
   if (v.source_origin?.kind === "pdf") return ` · ${v.source_origin.table}`;
+  if (v.source_origin?.kind === "related" && v.source_origin.joined)
+    return " · tablas unidas";
   const selection = v.source_selection;
   if (!selection || selection.rule !== "xlsx-selection-v2") return "";
   return selection.table
@@ -685,7 +689,10 @@ function sheetLabel(v: DatasetVersion) {
     : ` · hoja ${selection.sheet}`;
 }
 
-/** Fase 18B: tabla copiada de SQL Server o tabla de un PDF, y qué quedó fuera. */
+const ENGINES = { sqlserver: "SQL Server", postgresql: "PostgreSQL" } as const;
+
+/** Fase 18B: tabla copiada de SQL Server o tabla de un PDF, y qué quedó fuera. Fase 31: tabla
+ * de PostgreSQL o de un conjunto relacionado (el detalle va en «Tablas relacionadas»). */
 function SourceOriginNote({ version }: { version: DatasetVersion }) {
   const origin = version.source_origin;
   if (!origin) return null;
@@ -699,9 +706,13 @@ function SourceOriginNote({ version }: { version: DatasetVersion }) {
         <Database size={16} />
       )}
       <span>
-        {origin.kind === "sqlserver"
-          ? `Copia de la tabla ${origin.table} de la base ${origin.database} (${origin.server}). La contraseña no se guardó.`
-          : `${origin.table} del PDF.`}
+        {origin.kind === "sqlserver" || origin.kind === "postgresql"
+          ? `Copia de la tabla ${origin.table} de la base ${origin.database} de ${ENGINES[origin.kind]} (${origin.server}). La contraseña no se guardó.`
+          : origin.kind === "related"
+            ? origin.joined
+              ? `Tabla unida por la regla ${origin.rule}${origin.database ? ` a partir de la base ${origin.database} (${origin.server}); la contraseña no se guardó` : ""}.`
+              : `${origin.table}, parte de un conjunto de archivos relacionados.`
+            : `${origin.table} del PDF.`}
         {together.length > 0 &&
           ` También se analizan, como versiones propias: ${together.join(", ")}.`}
         {omitted.length > 0 &&
