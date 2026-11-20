@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { components } from "@dataflow/api-client";
-import { api, requireData } from "@/lib/api";
+import { ApiError, api, requireData } from "@/lib/api";
 
 export type DatasetVersion = components["schemas"]["VersionResponse"];
 export type Diagnostic = components["schemas"]["Diagnostic"];
@@ -254,28 +254,201 @@ export function useSourceReview(version?: DatasetVersion) {
 }
 
 export type SqlServerConnection = components["schemas"]["SqlServerConnection"];
+export type PostgresConnection = components["schemas"]["PostgresConnection"];
+export type DatabaseEngine = "sqlserver" | "postgresql";
+export type DatabaseAccess = components["schemas"]["DatabaseAccess"];
+export type DatabaseCopy = components["schemas"]["DatabaseCopy"];
 
-// Fase 18B: copia de un solo uso de las tablas de una base de SQL Server. La contraseña viaja
-// sólo en esta petición; el servidor no la guarda.
-export function useImportSqlServer() {
+/** Fase 33: la copia de una base sigue en segundo plano; se consulta cada pocos segundos hasta
+ * que termina. Una copia fallida se convierte en un error con su motivo. */
+async function finishedCopy(copy: DatabaseCopy): Promise<DatabaseCopy> {
+  let current = copy;
+  while (current.state === "queued" || current.state === "running") {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    current = requireData(
+      await api.GET("/api/v1/database-copies/{copy_id}", {
+        params: { path: { copy_id: current.id } },
+      }),
+    );
+  }
+  if (current.state === "failed")
+    throw new ApiError(
+      current.error_message ?? "No se pudo copiar la base.",
+      422,
+    );
+  return current;
+}
+
+/** Fase 32: a qué bases se puede conectar en este entorno (lista, modo público o ninguna) y,
+ * en el modo público, desde qué direcciones sale DataFlow. */
+export function useDatabaseAccess() {
+  return useQuery({
+    queryKey: ["database-access"],
+    queryFn: async ({ signal }) =>
+      requireData(await api.GET("/api/v1/database-access", { signal })),
+    staleTime: 5 * 60 * 1000,
+  });
+}
+
+/** Fase 18B, 31 y 33: copia de un solo uso de todas las tablas de una base (SQL Server o
+ * PostgreSQL), en segundo plano. Devuelve la copia terminada: su `version_id` es la versión
+ * principal (la tabla unida si las tablas se relacionan). */
+export function useImportDatabase() {
   const client = useQueryClient();
   return useMutation({
+    mutationFn: async (
+      request:
+        | {
+            engine: "sqlserver";
+            projectId: string;
+            connection: SqlServerConnection;
+          }
+        | {
+            engine: "postgresql";
+            projectId: string;
+            connection: PostgresConnection;
+          },
+    ) => {
+      const params = {
+        path: { project_id: request.projectId },
+        header: { "Idempotency-Key": crypto.randomUUID() },
+      };
+      return finishedCopy(
+        requireData(
+          request.engine === "sqlserver"
+            ? await api.POST(
+                "/api/v1/projects/{project_id}/imports/sqlserver",
+                {
+                  params,
+                  body: request.connection,
+                },
+              )
+            : await api.POST(
+                "/api/v1/projects/{project_id}/imports/postgresql",
+                { params, body: request.connection },
+              ),
+        ),
+      );
+    },
+    onSuccess: async (copy) => {
+      await client.invalidateQueries({
+        queryKey: ["versions", copy.project_id],
+      });
+    },
+  });
+}
+
+export type DataModel = components["schemas"]["DataModel"];
+
+/** Fase 31: «foto» del esquema de una base (tablas, claves, relaciones y vistas) sin guardar
+ * nada; la contraseña se usa para leer y se descarta. */
+export function useInspectDatabase() {
+  return useMutation({
+    mutationFn: async (
+      request:
+        | {
+            engine: "sqlserver";
+            projectId: string;
+            connection: SqlServerConnection;
+          }
+        | {
+            engine: "postgresql";
+            projectId: string;
+            connection: PostgresConnection;
+          },
+    ): Promise<DataModel> => {
+      const params = { path: { project_id: request.projectId } };
+      const copy = await finishedCopy(
+        requireData(
+          request.engine === "sqlserver"
+            ? await api.POST(
+                "/api/v1/projects/{project_id}/imports/sqlserver/inspect",
+                { params, body: request.connection },
+              )
+            : await api.POST(
+                "/api/v1/projects/{project_id}/imports/postgresql/inspect",
+                { params, body: request.connection },
+              ),
+        ),
+      );
+      if (!copy.model) throw new ApiError("No se pudo leer el esquema.", 422);
+      return copy.model;
+    },
+  });
+}
+
+/** Fase 31: «foto» del modelo de datos de los archivos sin guardar nada. */
+export function useInspectRelated() {
+  return useMutation({
     mutationFn: async ({
+      files,
       projectId,
-      connection,
     }: {
+      files: File[];
       projectId: string;
-      connection: SqlServerConnection;
-    }) =>
+    }): Promise<DataModel> =>
       requireData(
-        await api.POST("/api/v1/projects/{project_id}/imports/sqlserver", {
+        await api.POST(
+          "/api/v1/projects/{project_id}/imports/related/inspect",
+          {
+            params: { path: { project_id: projectId } },
+            body: { files: await encodeFiles(files) },
+          },
+        ),
+      ),
+  });
+}
+
+async function encodeFiles(files: File[]) {
+  return Promise.all(
+    files.map(async (file) => ({
+      name: file.name,
+      content_base64: await toBase64(file),
+    })),
+  );
+}
+
+async function toBase64(file: File) {
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  let binary = "";
+  for (let i = 0; i < bytes.length; i += 0x8000)
+    binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(binary);
+}
+
+/** Fase 31: de 2 a 5 archivos relacionados en una sola carga. Cada uno se analiza por separado
+ * y, si comparten claves, también unidos (`relations-v1`). La clave de idempotencia se conserva
+ * mientras la selección no cambie (un reintento no duplica la carga). */
+export function useUploadRelated() {
+  const client = useQueryClient();
+  const keys = useRef(new Map<string, string>());
+  return useMutation({
+    mutationFn: async ({
+      files,
+      projectId,
+    }: {
+      files: File[];
+      projectId: string;
+    }) => {
+      const signature = `${projectId}|${files
+        .map((f) => `${f.name}:${f.size}:${f.lastModified}`)
+        .join("|")}`;
+      let key = keys.current.get(signature);
+      if (!key) {
+        key = crypto.randomUUID();
+        keys.current.set(signature, key);
+      }
+      const body = { files: await encodeFiles(files) };
+      return requireData(
+        await api.POST("/api/v1/projects/{project_id}/imports/related", {
           params: {
             path: { project_id: projectId },
-            header: { "Idempotency-Key": crypto.randomUUID() },
+            header: { "Idempotency-Key": key },
           },
-          body: connection,
+          body,
         }),
-      ),
+      );
+    },
     onSuccess: async (version) => {
       await client.invalidateQueries({
         queryKey: ["versions", version.project_id],

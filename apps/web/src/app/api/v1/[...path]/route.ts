@@ -20,6 +20,9 @@ async function proxy(
     "x-csrf-token",
     "x-correlation-id",
     "idempotency-key",
+    // La IP de la persona que pone Caddy en producción; la API sólo la cree si llega desde
+    // su red interna (FORWARDED_ALLOW_IPS, ADR-052) y la usa en los límites de intentos.
+    "x-forwarded-for",
   ]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);
@@ -32,16 +35,33 @@ async function proxy(
     (path.length === 3 ||
       (path[3] === "xlsx" &&
         (path.length === 4 || (path.length === 5 && path[4] === "inspect"))));
+  // Fase 31: de 2 a 5 archivos relacionados en base64 (hasta dos veces el límite de uno).
+  const isRelatedUpload =
+    request.method === "POST" &&
+    path[0] === "projects" &&
+    path[2] === "imports" &&
+    path[3] === "related" &&
+    (path.length === 4 || (path.length === 5 && path[4] === "inspect"));
+  // Copias de una base (Fases 18B y 31) y lectura de archivos relacionados: pueden tardar más.
+  const isSlowImport =
+    isRelatedUpload ||
+    (request.method === "POST" &&
+      path[0] === "projects" &&
+      path[2] === "imports" &&
+      (path[3] === "sqlserver" || path[3] === "postgresql") &&
+      (path.length === 4 || (path.length === 5 && path[4] === "inspect")));
   const isSemanticSave =
     request.method === "POST" &&
     path.length === 3 &&
     path[0] === "representations" &&
     path[2] === "semantic-contracts";
-  const maximumBody = isCsvUpload
-    ? 5 * 1024 * 1024
-    : isSemanticSave
-      ? 2 * 1024 * 1024
-      : 65536;
+  const maximumBody = isRelatedUpload
+    ? 3 * 5 * 1024 * 1024 + 65536
+    : isCsvUpload
+      ? 5 * 1024 * 1024
+      : isSemanticSave
+        ? 2 * 1024 * 1024
+        : 65536;
   let body: Uint8Array | undefined;
   if (!["GET", "HEAD"].includes(request.method) && request.body) {
     const reader = request.body.getReader();
@@ -77,7 +97,10 @@ async function proxy(
       body: body as BodyInit | undefined,
       cache: "no-store",
       redirect: "manual",
-      signal: AbortSignal.any([request.signal, AbortSignal.timeout(15000)]),
+      signal: AbortSignal.any([
+        request.signal,
+        AbortSignal.timeout(isSlowImport ? 60000 : 15000),
+      ]),
     });
     const outgoing = new Headers({ "cache-control": "no-store" });
     for (const name of [

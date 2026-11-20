@@ -33,9 +33,11 @@ logger = logging.getLogger("dataflow.http")
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 # Fase 29 (ADR-047): con DATAFLOW_AI_REQUIRED=true no se arranca sin IA activa.
 get_settings().require_ai()
+# Fase 32 (ADR-050): el modo público de bases de datos no arranca sin aislamiento (32B).
+get_settings().require_database_isolation()
 app = FastAPI(
     title="DataFlow AI API",
-    version="0.38.0",
+    version="0.42.0",
     description="DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     responses={
         status: {"model": ErrorResponse}

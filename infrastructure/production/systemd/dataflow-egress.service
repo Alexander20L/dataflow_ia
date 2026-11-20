@@ -1,0 +1,17 @@
+# Cortafuegos de salida del conector (Fase 32B, ADR-050/052). Las reglas de iptables no
+# sobreviven a un reinicio: se reaplican al arrancar Docker y en cada despliegue.
+[Unit]
+Description=DataFlow AI: salida del conector limitada a direcciones públicas
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+# Docker recrea el puente df-egress al arrancar; se espera hasta 2 minutos.
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 60); do ip link show df-egress >/dev/null 2>&1 && exit 0; sleep 2; done; exit 1'
+ExecStart=/bin/sh /opt/dataflow/infrastructure/compose/egress-firewall.sh
+ExecStop=/bin/sh /opt/dataflow/infrastructure/compose/egress-firewall.sh --remove
+
+[Install]
+WantedBy=multi-user.target

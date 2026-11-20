@@ -1,10 +1,12 @@
 """Proceso aislado y acotado; no importa ni utiliza conexiones de base de datos."""
 
 import argparse
+import base64
 import csv
 import hashlib
 import io
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -13,7 +15,9 @@ from pydantic import TypeAdapter
 
 from dataflow.integrations.sources.pdf_reader import read_table as pdf_read_table
 from dataflow.integrations.sources.pdf_reader import select as pdf_select
-from dataflow.integrations.sources.sqlserver_reader import connect, read_database
+from dataflow.integrations.sources.postgresql_reader import connect as pg_connect
+from dataflow.integrations.sources.postgresql_reader import read_database as pg_read_database
+from dataflow.integrations.sources.sqlserver_reader import Budget, connect, read_database
 from dataflow.integrations.sources.xlsx_reader import (
     SELECTION_RULE_V2,
     Workbook,
@@ -29,13 +33,20 @@ from dataflow.modules.ingestion.contracts import (
     PdfChoice,
     PdfSelection,
     ReadPdfParameters,
+    RelatedSet,
+    RelatedTable,
+    RelatedView,
     SheetFacts,
     SnapshotTable,
     SourceFacts,
     SourceReading,
     SqlSnapshot,
+    TableRelation,
+    XlsxCandidate,
+    XlsxSelection,
 )
 from dataflow.modules.ingestion.domain import ENGINE_VERSION, detect_separator
+from dataflow.modules.ingestion.relations import Declared, Table, relate
 from dataflow.modules.quality.public import (
     Rule,
     RulesetReference,
@@ -51,6 +62,7 @@ from dataflow.modules.understanding.public import (
     interpret,
     profile_rows,
 )
+from dataflow.platform import destinations
 from dataflow.platform.csv_export import write_csv
 from dataflow.platform.data_types import DataType
 from dataflow.platform.errors import ApplicationError
@@ -276,10 +288,74 @@ def read_xlsx_table(
     )
 
 
+def budget(params: dict[str, Any]) -> Budget:
+    """Fase 32: límites de la copia que llegan con los parámetros (o los de por defecto)."""
+    default = Budget()
+    return Budget(
+        int(params.get("max_bytes", default.max_bytes)),
+        int(params.get("max_cell_bytes", default.max_cell_bytes)),
+    )
+
+
+def limit_memory(extra: int = 1024 * 1024 * 1024) -> None:
+    """Fase 32: un servidor que no controlamos no puede agotar la memoria. El límite es la
+    memoria virtual que el proceso ya tiene reservada (Python y sus bibliotecas) más `extra`.
+    Sólo en Linux; en Windows queda el plazo del proceso."""
+    if sys.platform != "linux":
+        return
+    import resource
+
+    try:
+        status = Path("/proc/self/status").read_text(encoding="utf-8")
+    except OSError:
+        return
+    size = next((line.split()[1] for line in status.splitlines() if line.startswith("VmSize:")), "")
+    if not size.isdigit():
+        return
+    limit = int(size) * 1024 + extra
+    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+
+
+REFUSALS = {
+    "DISABLED": (
+        "POSTGRESQL_DISABLED",
+        "La conexión a PostgreSQL no está activada en este entorno.",
+    ),
+    "HOST_NOT_ALLOWED": (
+        "POSTGRESQL_HOST_NOT_ALLOWED",
+        "Ese servidor no está en la lista de servidores permitidos.",
+    ),
+    "HOST_UNKNOWN": ("DATABASE_HOST_UNKNOWN", "No se encontró ese servidor. Revisa el nombre."),
+    "HOST_PRIVATE": (
+        "DATABASE_HOST_PRIVATE",
+        "Esa dirección pertenece a una red privada. DataFlow sólo se conecta a servidores "
+        "accesibles desde internet.",
+    ),
+}
+
+
+def postgresql_destination(params: dict[str, Any]) -> destinations.Allowed:
+    """Fase 32 (`database-destination-v1`): la comprobación que cuenta, justo antes de conectar
+    y con la resolución de este proceso. Sin política (llamadas internas y pruebas), el servidor
+    se trata como de la lista."""
+    server, port = str(params["server"]), int(params["port"])
+    policy = (
+        destinations.DestinationPolicy.from_json(params["policy"])
+        if params.get("policy") is not None
+        else destinations.DestinationPolicy((server,))
+    )
+    decision = destinations.decide(server, destinations.resolve(server, port), policy)
+    if isinstance(decision, destinations.Denied):
+        code, message = REFUSALS[decision.reason]
+        raise ApplicationError(code, message, 422)
+    return decision
+
+
 def snapshot_sqlserver(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
     """Fase 18B: copia las tablas elegidas por `sqlserver-selection-v1` como CSV estándar. La
     contraseña sólo existe en el directorio temporal de este proceso."""
     params = json.loads(source.read_text(encoding="utf-8"))
+    limit_memory()
     result = read_database(
         lambda: connect(
             str(params["server"]),
@@ -291,8 +367,169 @@ def snapshot_sqlserver(source: Path, output: Path, max_rows: int, max_columns: i
         ),
         max_rows,
         max_columns,
+        params.get("schema"),
+        budget(params),
     )
+    write_snapshot(output, result, "allowlist")
+
+
+def related_table(
+    label: str, kind: str, content: bytes, max_rows: int, max_columns: int
+) -> tuple[Table, XlsxSelection | None]:
+    """Una tabla del conjunto como celdas canónicas: un CSV con su codificación, separador y
+    valores regionales (como read_csv@2); un libro con la hoja o tabla de `xlsx-selection-v2`
+    (como read_xlsx@2); una tabla copiada de una base, ya en CSV estándar."""
+    selection: XlsxSelection | None = None
+    try:
+        if kind == "xlsx":
+            book = Workbook(content)
+            chosen = book.automatic_tables(max(1, max_rows + 1) * max_columns)
+            result = book.read_table(
+                chosen.sheet, chosen.table, chosen.header_row, max_rows, max_columns
+            )
+            headers, rows = result.headers, result.rows
+            regional(headers, rows, "xlsx", file_convention=False)
+            selection = XlsxSelection(
+                rule=SELECTION_RULE_V2,
+                sheet=chosen.sheet,
+                table=chosen.table,
+                header_row=chosen.header_row,
+                # En un conjunto relacionado sólo cuenta la tabla principal de cada libro.
+                omitted=[XlsxCandidate(sheet=s, table=t) for s, t in chosen.omitted]
+                + [XlsxCandidate(sheet=s, table=t) for s, t, _ in chosen.additional],
+            )
+        elif kind == "standard":
+            headers, rows, _ = parse_csv(content, ",", max_rows, max_columns)
+        else:
+            try:
+                content.decode("utf-8-sig")
+                encoding = "utf-8-sig"
+            except UnicodeDecodeError:
+                encoding = "cp1252"
+            headers, rows, _ = parse_csv(content, "auto", max_rows, max_columns, encoding)
+            regional(headers, rows, "csv", file_convention=True)
+    except ApplicationError as exc:
+        raise ApplicationError(exc.code, f"{label}: {exc.message}", exc.status) from None
+    return Table(label, list(headers), rows), selection
+
+
+def relate_tables(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
+    """Fase 31: lee las tablas del conjunto y aplica `relations-v1`. La tabla unida sale como CSV
+    estándar (ida y vuelta exacta con la lectura)."""
+    params = json.loads(source.read_text(encoding="utf-8"))
+    tables: list[Table] = []
+    selections: dict[str, XlsxSelection] = {}
+    for item in params["tables"]:
+        table, selection = related_table(
+            str(item["label"]),
+            str(item["format"]),
+            base64.b64decode(item["content_base64"]),
+            max_rows,
+            max_columns,
+        )
+        tables.append(table)
+        if selection is not None:
+            selections[table.label] = selection
+    declared = [
+        Declared(
+            str(d["table"]),
+            str(d["column"]),
+            str(d["references_table"]),
+            str(d["references_column"]),
+        )
+        for d in params.get("declared", [])
+    ]
+    result = relate(tables, declared, max_columns)
+    related = RelatedSet(
+        main=result.main,
+        tables=[
+            RelatedTable(
+                label=t.label,
+                rows=t.rows,
+                columns=len(t.headers),
+                headers=t.headers,
+                keys=t.keys,
+                role=t.role,
+                reason=t.reason,
+            )
+            for t in result.tables
+        ],
+        relations=[
+            TableRelation(
+                table=r.table,
+                column=r.column,
+                references_table=r.references_table,
+                references_column=r.references_column,
+                origin=r.origin,
+                cardinality=r.cardinality,
+                status=r.status,
+                reason=r.reason,
+                added_columns=r.added_columns,
+            )
+            for r in result.relations
+        ],
+        views=[
+            RelatedView(
+                name=v.name,
+                kind=v.kind,
+                base=v.base,
+                tables=v.tables,
+                rows=len(v.rows),
+                columns=len(v.headers),
+                headers=v.headers,
+                description=v.description,
+            )
+            for v in result.views
+        ],
+        csv={
+            v.name: write_csv(v.headers, v.rows, "standard").decode("utf-8")
+            for v in result.views
+            if params.get("with_data", True)
+        },
+        xlsx=selections,
+    )
+    (output / "relate.json").write_text(related.model_dump_json(), encoding="utf-8")
+
+
+def snapshot_postgresql(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
+    """Fase 31: copia las tablas de un esquema elegidas por `postgresql-selection-v1` como CSV
+    estándar. La contraseña sólo existe en el directorio temporal de este proceso."""
+    params = json.loads(source.read_text(encoding="utf-8"))
+    limit_memory()
+    destination = postgresql_destination(params)
+    # Fase 32: en el modo público el certificado se verifica siempre; el de la persona (si lo
+    # pegó) sólo existe en el directorio temporal de este proceso, como la contraseña.
+    verify = destination.access == "public"
+    ca_file: str | None = None
+    if verify and params.get("ca_certificate"):
+        path = source.parent / "server-ca.pem"
+        path.write_text(str(params["ca_certificate"]), encoding="utf-8")
+        ca_file = str(path)
+    result = pg_read_database(
+        lambda: pg_connect(
+            str(params["server"]),
+            int(params["port"]),
+            str(params["database"]),
+            str(params["user"]),
+            str(params["password"]),
+            int(params["timeout"]),
+            destination.address,
+            verify,
+            ca_file,
+        ),
+        str(params["schema"]),
+        max_rows,
+        max_columns,
+        budget(params),
+        verify,
+    )
+    write_snapshot(output, result, destination.access)
+
+
+def write_snapshot(output: Path, result: Any, access: str | None = None) -> None:
     snapshot = SqlSnapshot(
+        access=access,
+        tls=getattr(result, "tls", None),
         tables=[
             SnapshotTable(
                 label=table.label,
@@ -567,6 +804,8 @@ def main() -> None:
             "analytical_quality",
             "quality_rules",
             "snapshot_sqlserver",
+            "snapshot_postgresql",
+            "relate",
             "select_pdf",
             "read_pdf",
             "source_facts",
@@ -607,6 +846,10 @@ def main() -> None:
             )
         elif args.mode == "snapshot_sqlserver":
             snapshot_sqlserver(args.input, args.output, args.max_rows, args.max_columns)
+        elif args.mode == "snapshot_postgresql":
+            snapshot_postgresql(args.input, args.output, args.max_rows, args.max_columns)
+        elif args.mode == "relate":
+            relate_tables(args.input, args.output, args.max_rows, args.max_columns)
         elif args.mode == "select_pdf":
             select_pdf(args.input, args.output, args.max_rows, args.max_columns)
         elif args.mode == "read_pdf":

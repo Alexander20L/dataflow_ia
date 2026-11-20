@@ -800,6 +800,9 @@ def progress(version: UUID, runs: list[RunSummary]) -> Progress:
                 state=STATES[run.state],
                 detail="Generando una versión nueva con tus marcas; la anterior sigue disponible."
                 if renewing
+                # Fase 33: aplazada hasta que se renueve el presupuesto de IA.
+                else run.error_message or DETAILS["queued"]
+                if run.state == "queued" and run.error_code == "AI_BUDGET_WAITING"
                 else DETAILS.get(run.state, f"Falló ({run.error_code or 'error'})."),
                 execution_id=run.id,
                 finished_at=run.finished_at,

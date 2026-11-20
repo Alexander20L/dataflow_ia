@@ -24,7 +24,7 @@ from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
-from dataflow.bootstrap.ai import ai_job_config
+from dataflow.bootstrap.ai import ai_job_config, ai_unavailability
 from dataflow.bootstrap.dashboard_job import request_report_update
 from dataflow.bootstrap.exploration_job import request_exploration_update
 from dataflow.bootstrap.loads import same_load
@@ -586,16 +586,8 @@ class ComprehensionStep:
         self.prepared: dict[UUID, str | None] = {}
 
     def prepare(self, lease: Lease, step: PlanStepSpec) -> None:
-        reason = None
-        try:
-            self.copilot.available(lease.owner_id, lease.execution.project_id)
-        except ApplicationError as error:
-            reason = (
-                error.code
-                if error.code != "COPILOT_UNAVAILABLE"
-                else (self.copilot.config.unavailable or "disabled")
-            )
-        self.prepared[lease.attempt_id] = reason
+        # Fase 33: con el presupuesto de IA agotado, el trabajo se aplaza (no sigue sin IA).
+        self.prepared[lease.attempt_id] = ai_unavailability(self.copilot, lease)
 
     def compute(
         self, lease: Lease, step: PlanStepSpec, source: StepInput, timeout: float

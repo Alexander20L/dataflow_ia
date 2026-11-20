@@ -26,12 +26,47 @@ class Settings(BaseSettings):
     registration_enabled: bool = True
     storage_path: Path = Path(".data/objects")
     max_upload_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=5 * 1024 * 1024)
-    max_owner_storage_bytes: int = Field(default=100 * 1024 * 1024, ge=1)
+    # Fase 33: 1 GB, para que quepan todas las tablas de una base.
+    max_owner_storage_bytes: int = Field(default=1024 * 1024 * 1024, ge=1)
     max_csv_rows: int = Field(default=100_000, ge=1, le=100_000)
     max_csv_columns: int = Field(default=128, ge=1, le=128)
     processing_timeout_seconds: int = Field(default=45, ge=5, le=60)
     # Fase 18B: servidores SQL Server a los que se permite conectar (vacío: desactivado).
     sqlserver_allowed_hosts: list[str] = []
+    # Fase 31: servidores PostgreSQL a los que se permite conectar (vacío: desactivado).
+    postgresql_allowed_hosts: list[str] = []
+    # Fase 32 (ADR-050): modo público. Además de la lista, cualquier servidor PostgreSQL cuyas
+    # direcciones sean todas públicas y no estén denegadas (`database-destination-v1`). La base
+    # de DataFlow siempre se deniega; `database_denied_hosts` añade nombres o CIDR propios.
+    database_public_access: bool = False
+    database_denied_hosts: list[str] = []
+    # Direcciones de salida de DataFlow que la persona debe permitir en su base (sólo se muestran).
+    database_egress_ips: list[str] = []
+    # Límites frente a un servidor que no controlamos: bytes de una copia y celdas.
+    # Fase 33: 200 MB (antes 50); al llegar se omiten las tablas restantes en vez de fallar. La
+    # copia entera vive en la memoria del subproceso hasta que termina: no subirlo sin medir.
+    database_max_bytes: int = Field(
+        default=200 * 1024 * 1024, ge=1024 * 1024, le=1024 * 1024 * 1024
+    )
+    database_max_cell_bytes: int = Field(default=64 * 1024, ge=1024, le=1024 * 1024)
+    # Intentos de conexión («Ver esquema» y «Analizar»): por usuario en 15 min, fallidos por
+    # usuario y día, y hacia un mismo destino en 15 min (todas las cuentas).
+    database_attempts_per_user: int = Field(default=10, ge=1, le=1000)
+    database_failures_per_day: int = Field(default=30, ge=1, le=10000)
+    database_attempts_per_target: int = Field(default=20, ge=1, le=10000)
+    # Fase 32B: el modo público necesita el servicio `connector` (red de salida aislada, sin
+    # credenciales de DataFlow), salvo que se reconozca que no está aislado (sólo desarrollo).
+    database_public_unisolated: bool = False
+    # Fase 33 (ADR-051): copias en segundo plano. Plazo de una copia (copia, lectura y relaciones)
+    # e hilos por proceso de API; como mucho una copia en curso por cuenta.
+    database_copy_timeout_seconds: int = Field(default=1800, ge=60, le=3600)
+    database_copy_workers: int = Field(default=2, ge=1, le=8)
+    # URL interna del servicio `connector` y su token compartido (variable o secreto de Docker).
+    # En el conector, `connector_token*` es el que exige a la API.
+    connector_url: str | None = None
+    connector_token: SecretStr | None = None
+    connector_token_file: Path | None = None
+    connector_port: int = Field(default=8100, ge=1, le=65535)
 
     # Explicación IA (Fase 10, ADR-022; Fase 13B). `auto` (por defecto): Anthropic si hay clave
     # configurada; si no, desactivada (sin IA todo lo demás funciona). La clave nunca se registra
@@ -50,8 +85,10 @@ class Settings(BaseSettings):
     ai_timeout_seconds: int = Field(default=60, ge=5, le=120)
     ai_job_timeout_seconds: int = Field(default=100, ge=30, le=100)
     ai_max_output_tokens: int = Field(default=4000, ge=500, le=16000)
-    ai_user_daily_tokens: int = Field(default=200_000, ge=1)
-    ai_project_monthly_cost_usd: Decimal = Field(default=Decimal("5"), ge=0)
+    # Fase 33: 1 000 000 (antes 200 000), unas 30 versiones analizadas al día.
+    ai_user_daily_tokens: int = Field(default=1_000_000, ge=1)
+    # Fase 33: 50 USD (antes 5), para analizar una base entera sin esperar al mes siguiente.
+    ai_project_monthly_cost_usd: Decimal = Field(default=Decimal("50"), ge=0)
     # Fase 29 (ADR-047): en producción la IA debe estar activa. Con `true`, la API y el worker no
     # arrancan sin un proveedor activo (clave configurada); por defecto, `false` (sin IA todo
     # sigue funcionando y la interfaz avisa de que el análisis se hizo sin IA).
@@ -78,6 +115,37 @@ class Settings(BaseSettings):
                 "DATAFLOW_AI_REQUIRED=true pero la IA no está activa: configura la clave "
                 "(DATAFLOW_AI_API_KEY o DATAFLOW_AI_API_KEY_FILE) o desactiva el requisito."
             )
+
+    def require_database_isolation(self) -> None:
+        """Fase 32: el modo público de bases de datos no arranca sin el servicio `connector`
+        (32B) salvo que se reconozca que es un entorno de desarrollo."""
+        if not self.database_public_access or self.database_public_unisolated:
+            return
+        if not self.connector_url:
+            raise RuntimeError(
+                "DATAFLOW_DATABASE_PUBLIC_ACCESS=true necesita el servicio connector con la red de "
+                "salida aislada (DATAFLOW_CONNECTOR_URL, Fase 32B). Para probar en local sin él, "
+                "añade DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true."
+            )
+        if self.connector_secret() is None:
+            raise RuntimeError(
+                "DATAFLOW_CONNECTOR_URL necesita el token compartido con el conector "
+                "(DATAFLOW_CONNECTOR_TOKEN o DATAFLOW_CONNECTOR_TOKEN_FILE, de al menos 32 "
+                "caracteres)."
+            )
+
+    def connector_secret(self) -> str | None:
+        """Token compartido API ↔ connector: el archivo (secreto de Docker) tiene prioridad.
+        Vacío, ilegible o de menos de 32 caracteres: ninguno."""
+        value: str | None = None
+        if self.connector_token_file is not None:
+            try:
+                value = self.connector_token_file.read_text(encoding="utf-8").strip()
+            except OSError:
+                return None
+        elif self.connector_token is not None:
+            value = self.connector_token.get_secret_value().strip()
+        return value if value and len(value) >= 32 else None
 
     def ai_key(self) -> str | None:
         """Clave del proveedor: el archivo (secreto de Docker) tiene prioridad sobre la

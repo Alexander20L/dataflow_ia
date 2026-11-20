@@ -7,7 +7,7 @@ dashboard publicado, en un trabajo del worker. Este servicio decide si puede lla
 
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Literal, Protocol
 from uuid import UUID
@@ -57,19 +57,25 @@ class CopilotService:
             reason = self.config.unavailable or "disabled"
             raise ApplicationError("COPILOT_UNAVAILABLE", UNAVAILABLE_MESSAGES[reason], 503)
         usage = self.usage(owner, project)
+        # Fase 33: `renews_at` dice cuándo se renueva, para que los trabajos esperen hasta entonces.
+        today = self.clock().replace(hour=0, minute=0, second=0, microsecond=0)
         if usage.user_tokens_today >= usage.user_daily_tokens_limit:
             raise ApplicationError(
                 "AI_BUDGET_EXCEEDED",
                 f"Alcanzaste el límite diario de {usage.user_daily_tokens_limit} tokens de IA. "
                 "Se renueva a las 00:00 UTC.",
                 429,
+                {"renews_at": (today + timedelta(days=1)).isoformat()},
             )
         if Decimal(usage.project_cost_month_usd) >= Decimal(usage.project_monthly_cost_limit_usd):
+            month = today.replace(day=1)
+            following = (month + timedelta(days=32)).replace(day=1)
             raise ApplicationError(
                 "AI_BUDGET_EXCEEDED",
                 f"El proyecto alcanzó su límite mensual de costo de IA "
                 f"(US$ {usage.project_monthly_cost_limit_usd}). Se renueva el día 1 (UTC).",
                 429,
+                {"renews_at": following.isoformat()},
             )
         return self.provider
 

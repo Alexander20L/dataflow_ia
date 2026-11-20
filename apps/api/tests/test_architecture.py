@@ -222,11 +222,47 @@ def test_source_readers_run_only_in_the_isolated_ingestion_process() -> None:
         for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
             if module.startswith("dataflow.integrations.sources"):
                 assert file == processor, (file, module)
+    postgresql = src / "integrations" / "sources" / "postgresql_reader.py"
     for file in (src / "integrations" / "sources").rglob("*.py"):
-        for module in imports(ast.parse(file.read_text(encoding="utf-8"))):
+        tree = ast.parse(file.read_text(encoding="utf-8"))
+        for module in imports(tree):
+            if file == postgresql and module == "psycopg":
+                continue  # comprobado abajo: sólo dentro de connect()
             assert not module.startswith(
                 ("sqlalchemy", "psycopg", "socket", "urllib", "http", "dataflow.modules")
             ), (file, module)
+    # Fase 31 (ADR-049): el lector de PostgreSQL conecta con la base *del usuario* con psycopg,
+    # como el de SQL Server con pymssql: el import vive sólo en connect() y el lector no puede
+    # leer la configuración ni la conexión de la base de la aplicación.
+    tree = ast.parse(postgresql.read_text(encoding="utf-8"))
+    connect = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == "connect"
+    )
+    inside = {id(node) for node in ast.walk(connect)}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import | ast.ImportFrom):
+            names = [a.name for a in node.names] if isinstance(node, ast.Import) else [node.module]
+            for name in names:
+                if name and name.startswith("psycopg"):
+                    assert id(node) in inside, ("psycopg fuera de connect()", name)
+                assert not (name or "").startswith(
+                    ("dataflow.platform.config", "dataflow.platform.database")
+                ), name
+
+
+def test_the_destination_rule_only_uses_the_standard_library() -> None:
+    """Fase 32 (ADR-050): `database-destination-v1` es pura salvo `resolve`; la usan la API y
+    el subproceso de ingesta, así que no puede leer la configuración ni módulos de negocio: quien
+    llama le pasa la política."""
+    path = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "platform" / "destinations.py"
+    for module in imports(ast.parse(path.read_text(encoding="utf-8"))):
+        assert module.split(".")[0] in {
+            "ipaddress",
+            "socket",
+            "collections",
+            "dataclasses",
+            "typing",
+        }, module
 
 
 def test_delivery_only_reorders_published_results() -> None:

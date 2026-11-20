@@ -1,4 +1,5 @@
-"""Copia de tablas de SQL Server (Fase 18B, regla `sqlserver-selection-v1`).
+"""Copia de tablas de SQL Server (Fase 18B, regla `sqlserver-selection-v1`; Fase 31,
+`sqlserver-selection-v2`: un esquema opcional y hasta 10 tablas).
 
 Sólo se usa desde el subproceso de ingesta. La conexión es de lectura, cifrada y de un solo uso:
 la contraseña no se guarda ni se registra. Cada tabla elegida se copia completa (o se omite con su
@@ -16,6 +17,12 @@ from dataflow.platform.errors import ApplicationError
 
 SELECTION_RULE = "sqlserver-selection-v1"
 MAX_TABLES = 5
+# Fase 31: un esquema se analiza como modelo de datos; caben más tablas.
+SELECTION_RULE_V2 = "sqlserver-selection-v2"
+MAX_TABLES_V2 = 10
+# Fase 33 (ADR-051): todas las tablas que caben, de menor a mayor; el tope de bytes de la copia
+# omite las que ya no entran en vez de fallar.
+SELECTION_RULE_V3 = "sqlserver-selection-v3"
 UNSUPPORTED = {
     "binary",
     "varbinary",
@@ -58,6 +65,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
 class Cursor(Protocol):
     def execute(self, operation: str) -> object: ...
     def fetchall(self) -> Sequence[Sequence[Any]]: ...
+    def fetchmany(self, size: int) -> Sequence[Sequence[Any]]: ...
 
 
 class Connection(Protocol):
@@ -106,6 +114,72 @@ class TableCopy:
 class Snapshot:
     tables: list[TableCopy]
     omitted: list[tuple[str, str]]  # (esquema.tabla, motivo)
+    # Fase 32: cómo se cifró la conexión (`verified`, `encrypted` o `none`), si se sabe.
+    tls: str | None = None
+
+
+# Fase 32 (ADR-050): lo que devuelve el servidor es entrada no confiable. La copia se lee por
+# lotes y se cuentan sus bytes: una celda demasiado grande omite la tabla y pasar del total
+# detiene la copia. Nunca se trunca.
+BATCH = 1000
+
+
+@dataclass
+class Budget:
+    max_bytes: int = 50 * 1024 * 1024
+    max_cell_bytes: int = 64 * 1024
+    used: int = 0
+
+
+def cell_size(value: object) -> int:
+    if isinstance(value, str | bytes | bytearray | memoryview):
+        return len(value)
+    return 16
+
+
+def too_large(budget: Budget) -> ApplicationError:
+    return fail(
+        "DATABASE_TOO_LARGE",
+        f"La base supera el tamaño que se puede copiar ({budget.max_bytes // (1024 * 1024)} MB). "
+        "Elige un esquema con menos datos.",
+    )
+
+
+class BudgetExhausted(Exception):
+    """Fase 33: la copia llegó a su tope de bytes; esta tabla y las siguientes se omiten."""
+
+
+def full_copy(budget: Budget) -> str:
+    return (
+        f"La copia alcanzó su tamaño máximo ({budget.max_bytes // (1024 * 1024)} MB): "
+        "no se copia en parte."
+    )
+
+
+def fetch_rows(cursor: Any, max_rows: int, budget: Budget) -> list[Sequence[Any]] | str:
+    """Filas de la consulta ya ejecutada, o el motivo por el que la tabla se omite. Al pasar del
+    tope de bytes de la copia, `BudgetExhausted`."""
+    rows: list[Sequence[Any]] = []
+    while True:
+        batch = cursor.fetchmany(BATCH)
+        if not batch:
+            return rows
+        for record in batch:
+            size = 0
+            for value in record:
+                length = cell_size(value)
+                if length > budget.max_cell_bytes:
+                    return (
+                        f"Tiene celdas de más de {budget.max_cell_bytes // 1024} KB: "
+                        "no se copia en parte."
+                    )
+                size += length
+            budget.used += size
+            if budget.used > budget.max_bytes:
+                raise BudgetExhausted
+            rows.append(record)
+            if len(rows) > max_rows:
+                return f"Más de {max_rows} registros: no se copia en parte."
 
 
 def fail(code: str, message: str) -> ApplicationError:
@@ -131,8 +205,41 @@ def catalog(cursor: Cursor) -> list[Candidate]:
     ]
 
 
-def choose(
+def choose_all(
     candidates: list[Candidate], max_rows: int, max_columns: int
+) -> tuple[list[Candidate], list[tuple[str, str]]]:
+    """Fase 33 (`sqlserver-selection-v3`, `postgresql-selection-v2`): todas las tablas dentro de
+    los límites, de menor a mayor tamaño (registros × columnas; empates por nombre), para que
+    con el tope de bytes de la copia entren las más posibles."""
+    chosen, omitted = choose(candidates, max_rows, max_columns, len(candidates))
+    chosen.sort(key=lambda c: (c.rows * len(c.supported), c.schema, c.name))
+    return chosen, omitted
+
+
+def copy_all(
+    tables: list[Candidate],
+    copier: Callable[[Candidate], "TableCopy | str"],
+    budget: Budget,
+) -> tuple[list["TableCopy"], list[tuple[str, str]]]:
+    """Copia cada tabla en orden; al llegar al tope de bytes, la tabla en curso y las restantes
+    se omiten con ese motivo."""
+    copied: list[TableCopy] = []
+    omitted: list[tuple[str, str]] = []
+    for index, table in enumerate(tables):
+        try:
+            result = copier(table)
+        except BudgetExhausted:
+            omitted.extend((t.label, full_copy(budget)) for t in tables[index:])
+            break
+        if isinstance(result, str):
+            omitted.append((table.label, result))
+        else:
+            copied.append(result)
+    return copied, omitted
+
+
+def choose(
+    candidates: list[Candidate], max_rows: int, max_columns: int, limit: int = MAX_TABLES
 ) -> tuple[list[Candidate], list[tuple[str, str]]]:
     """Regla `sqlserver-selection-v1`: tablas de usuario con al menos dos columnas admitidas y
     dos registros, dentro de los límites; de mayor a menor tamaño (registros × columnas), empates
@@ -152,8 +259,8 @@ def choose(
         else:
             eligible.append(item)
     eligible.sort(key=lambda c: (-(c.rows * len(c.supported)), c.schema, c.name))
-    omitted.extend((c.label, "Hay otras tablas más grandes.") for c in eligible[MAX_TABLES:])
-    return eligible[:MAX_TABLES], omitted
+    omitted.extend((c.label, "Hay otras tablas más grandes.") for c in eligible[limit:])
+    return eligible[:limit], omitted
 
 
 def canonical(value: object) -> str | None:
@@ -191,16 +298,18 @@ def dates_only(rows: list[list[str | None]], index: int, values: list[object]) -
                 row[index] = value.date().isoformat()
 
 
-def copy(cursor: Cursor, table: Candidate, max_rows: int) -> TableCopy | str:
+def copy(
+    cursor: Cursor, table: Candidate, max_rows: int, budget: Budget | None = None
+) -> TableCopy | str:
     """Copia completa de la tabla o el motivo por el que se omite."""
     columns = table.supported
     names = ", ".join(quote(c.name) for c in columns)
     cursor.execute(
         f"SELECT TOP ({max_rows + 1}) {names} FROM {quote(table.schema)}.{quote(table.name)}"
     )
-    raw = cursor.fetchall()
-    if len(raw) > max_rows:
-        return f"Más de {max_rows} registros: no se copia en parte."
+    raw = fetch_rows(cursor, max_rows, budget or Budget())
+    if isinstance(raw, str):
+        return raw
     if len(raw) < 2:
         return "Menos de dos registros."
     rows = [[canonical(v) for v in record] for record in raw]
@@ -229,23 +338,35 @@ def foreign_keys(cursor: Cursor) -> dict[tuple[str, str], list[tuple[str, str]]]
     return found
 
 
-def snapshot(connection: Connection, max_rows: int, max_columns: int) -> Snapshot:
+def snapshot(
+    connection: Connection,
+    max_rows: int,
+    max_columns: int,
+    schema: str | None = None,
+    budget: Budget | None = None,
+) -> Snapshot:
+    """`sqlserver-selection-v3` (Fase 33): todas las tablas del esquema pedido (o de todos)
+    que caben, de menor a mayor."""
     cursor = connection.cursor()
-    chosen, omitted = choose(catalog(cursor), max_rows, max_columns)
+    candidates = [c for c in catalog(cursor) if schema is None or c.schema == schema]
+    if schema is not None and not candidates:
+        raise ApplicationError(
+            "SQLSERVER_SCHEMA_EMPTY",
+            f"El esquema «{schema}» no existe o no tiene tablas que la cuenta pueda leer.",
+            422,
+        )
+    chosen, omitted = choose_all(candidates, max_rows, max_columns)
     declared = foreign_keys(cursor)
-    tables: list[TableCopy] = []
-    for table in chosen:
-        result = copy(cursor, table, max_rows)
-        if isinstance(result, str):
-            omitted.append((table.label, result))
-        else:
-            copied = {c for c in result.headers}
-            result.foreign_keys = [
-                (column, reference)
-                for column, reference in declared.get((table.schema, table.name), [])
-                if column in copied
-            ]
-            tables.append(result)
+    budget = budget or Budget()
+    tables, skipped = copy_all(chosen, lambda table: copy(cursor, table, max_rows, budget), budget)
+    omitted.extend(skipped)
+    for result in tables:
+        copied = set(result.headers)
+        result.foreign_keys = [
+            (column, reference)
+            for column, reference in declared.get((result.schema, result.name), [])
+            if column in copied
+        ]
     if not tables:
         raise ApplicationError(
             "SQLSERVER_NO_TABLES",
@@ -284,10 +405,16 @@ def connect(
     return connection
 
 
-def read_database(opener: Callable[[], Connection], max_rows: int, max_columns: int) -> Snapshot:
+def read_database(
+    opener: Callable[[], Connection],
+    max_rows: int,
+    max_columns: int,
+    schema: str | None = None,
+    budget: Budget | None = None,
+) -> Snapshot:
     connection = opener()
     try:
-        return snapshot(connection, max_rows, max_columns)
+        return snapshot(connection, max_rows, max_columns, schema, budget)
     except ApplicationError:
         raise
     except Exception as exc:

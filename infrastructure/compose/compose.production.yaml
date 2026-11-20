@@ -1,0 +1,84 @@
+# Producción en un servidor Linux (ADR-052): se aplica encima de compose.yaml.
+#
+#   docker compose --env-file /opt/dataflow/.env -f compose.yaml -f compose.production.yaml \
+#     --profile full --profile public-databases up -d --no-build
+#
+# Lo normal es no llamarlo a mano: `infrastructure/production/deploy.sh` lo hace en cada
+# despliegue. Las imágenes vienen de GHCR (las publica `.github/workflows/deploy.yml`); el
+# servidor no compila nada. Las variables salen de /opt/dataflow/.env, que crea `provision.sh`.
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
+services:
+  postgres:
+    restart: unless-stopped
+    ports: !reset []
+    logging: *logging
+  api:
+    image: ${DATAFLOW_IMAGE_API:?falta DATAFLOW_IMAGE_API}:${DATAFLOW_VERSION:?falta DATAFLOW_VERSION}
+    restart: unless-stopped
+    ports: !reset []
+    # Las copias de bases (Fase 33) viven en memoria de los hilos de la API.
+    mem_limit: 1536m
+    environment:
+      DATAFLOW_ALLOWED_ORIGINS: '["https://${DATAFLOW_DOMAIN:?falta DATAFLOW_DOMAIN}"]'
+      DATAFLOW_COOKIE_SECURE: "true"
+      DATAFLOW_REGISTRATION_ENABLED: ${DATAFLOW_REGISTRATION_ENABLED:-true}
+      # Uvicorn sólo cree la cabecera X-Forwarded-For que llega desde la red `backend` (el
+      # proxy de Next, que reenvía la que pone Caddy): así el límite de intentos ve la IP real
+      # de cada persona y no la del proxy. Ningún otro origen puede fijarla.
+      FORWARDED_ALLOW_IPS: ${DATAFLOW_BACKEND_SUBNET:-172.31.251.0/24}
+    logging: *logging
+  worker:
+    image: ${DATAFLOW_IMAGE_API}:${DATAFLOW_VERSION}
+    mem_limit: 1g
+    cpus: 2
+    logging: *logging
+  web:
+    image: ${DATAFLOW_IMAGE_WEB:?falta DATAFLOW_IMAGE_WEB}:${DATAFLOW_VERSION}
+    restart: unless-stopped
+    ports: !reset []
+    networks:
+      - backend
+      - edge
+    logging: *logging
+  connector:
+    image: ${DATAFLOW_IMAGE_API}:${DATAFLOW_VERSION}
+    logging: *logging
+  # Única entrada desde internet: HTTPS con certificado automático (Let's Encrypt) hacia la web.
+  # Sólo está en la red `edge`: no llega a la API, al worker ni a PostgreSQL.
+  caddy:
+    image: caddy:2.10-alpine
+    profiles: ["full"]
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    environment:
+      DATAFLOW_DOMAIN: ${DATAFLOW_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - edge
+    depends_on:
+      - web
+    logging: *logging
+
+networks:
+  # Subred fija para que la API sepa en qué proxy confiar (FORWARDED_ALLOW_IPS).
+  backend:
+    ipam:
+      config:
+        - subnet: ${DATAFLOW_BACKEND_SUBNET:-172.31.251.0/24}
+  # Caddy ↔ web.
+  edge: {}
+
+volumes:
+  caddy_data:
+  caddy_config:

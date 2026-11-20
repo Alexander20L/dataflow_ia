@@ -11,7 +11,8 @@ from sqlalchemy.orm import Session
 
 from dataflow.bootstrap import models  # noqa: F401
 from dataflow.bootstrap.app import app
-from dataflow.bootstrap.dependencies import object_store
+from dataflow.bootstrap.database_copies import InlineCopyRunner
+from dataflow.bootstrap.dependencies import copy_runner, object_store
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.platform.config import get_settings
 from dataflow.platform.database import Base, get_db
@@ -65,6 +66,8 @@ def client(db: Session) -> Iterator[TestClient]:
         yield db
 
     app.dependency_overrides[get_db] = override_db
+    # Fase 33: las copias de bases corren en línea, con la sesión de la prueba.
+    app.dependency_overrides[copy_runner] = lambda: InlineCopyRunner(db)
     with TestClient(app, headers={"Origin": "http://localhost:3002"}) as client:
         yield client
     app.dependency_overrides.clear()

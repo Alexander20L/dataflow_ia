@@ -6,6 +6,7 @@ from dataflow.modules.executions.contracts import (
     Artifact,
     ArtifactKind,
     ArtifactOutput,
+    Deferred,
     Execution,
     ExecutionRepository,
     InputKind,
@@ -49,11 +50,15 @@ class Executions:
         correlation: str,
         input_artifact: UUID | None = None,
         input_sha256: str | None = None,
+        admitted: bool = False,
     ) -> Execution:
+        """`admitted` (Fase 33): el trabajo es parte de una carga ya admitida en la cola (las
+        versiones de una misma base entran juntas aunque pasen del límite de pendientes)."""
         if digest("plan", plan.content) != plan.content_sha256:
             raise ApplicationError("PLAN_HASH_MISMATCH", "El plan no coincide con su hash.", 409)
         _ = plan.config
-        self.ensure_capacity(owner, project, kind)
+        if not admitted:
+            self.ensure_capacity(owner, project, kind)
         return self.repository.enqueue(
             owner,
             project,
@@ -260,6 +265,15 @@ class ExecutionRunner:
                 self.uow.rollback()
                 return True
             self.uow.commit()
+        except Deferred as deferred:
+            # Fase 33: vuelve a la cola hasta que pueda hacerse (sin gastar un intento).
+            self.uow.rollback()
+            try:
+                self.repository.defer(lease, deferred.until, deferred.code, deferred.message)
+                self.uow.commit()
+            except Exception:
+                self.uow.rollback()
+                raise
         except Exception as exc:
             self.uow.rollback()
             details = None

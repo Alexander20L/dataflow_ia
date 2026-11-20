@@ -1,4 +1,7 @@
+import base64
+import binascii
 import hashlib
+import json
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
@@ -15,14 +18,22 @@ from dataflow.modules.executions.public import (
     legacy_state,
 )
 from dataflow.modules.ingestion.contracts import (
+    DatabaseCopy,
+    DataModel,
     Diagnostic,
     IngestionSummary,
+    OmittedSource,
     PdfChoice,
     PdfSelection,
+    PostgresConnection,
     PreviewPage,
     ReadPdfParameters,
     ReadXlsxParameters,
     RecordsPage,
+    RelatedFilesRequest,
+    RelatedSet,
+    RelatedView,
+    SnapshotTable,
     SourceOrigin,
     SourceReading,
     SourceReview,
@@ -45,8 +56,10 @@ from dataflow.modules.ingestion.structure import compare
 from dataflow.modules.quality.contracts import QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
 from dataflow.modules.understanding.public import SemanticReference, SemanticService, TableReference
+from dataflow.platform import destinations
 from dataflow.platform.canonical import digest
 from dataflow.platform.csv_export import CsvProfile, table_csv
+from dataflow.platform.destinations import DestinationPolicy
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.transactions import UnitOfWork
 
@@ -128,8 +141,18 @@ class XlsxInspector(Protocol):
     la Fase 18B también elige las tablas de un PDF y copia las de SQL Server."""
 
     def select_pdf(self, content: bytes, config: ProcessingConfig) -> PdfSelection: ...
+    def snapshot_postgresql(
+        self,
+        connection: PostgresConnection,
+        config: ProcessingConfig,
+        policy: DestinationPolicy | None = None,
+        timeout: int | None = None,
+    ) -> SqlSnapshot: ...
+    def relate(
+        self, payload: bytes, config: ProcessingConfig, timeout: int | None = None
+    ) -> RelatedSet: ...
     def snapshot_sqlserver(
-        self, connection: SqlServerConnection, config: ProcessingConfig
+        self, connection: SqlServerConnection, config: ProcessingConfig, timeout: int | None = None
     ) -> SqlSnapshot: ...
 
     def inspect_xlsx(
@@ -142,8 +165,107 @@ class XlsxInspector(Protocol):
     ) -> XlsxInspection: ...
 
 
+@dataclass(frozen=True)
+class AttemptLimits:
+    """Fase 32 (ADR-050): intentos de conexión a bases de datos. Por usuario en 15 min, fallidos
+    por usuario y día, y hacia un mismo destino en 15 min (todas las cuentas: protege a terceros
+    de que DataFlow sirva para probar contraseñas contra su servidor)."""
+
+    per_user: int = 10
+    failures_per_day: int = 30
+    per_target: int = 20
+
+
+class ConnectionAttempts(Protocol):
+    def admit(self, user: UUID, client: str, target: str, limits: AttemptLimits) -> UUID | None:
+        """Registra el intento y devuelve su id, o None si supera algún límite."""
+        ...
+
+    def succeeded(self, attempt: UUID) -> None: ...
+
+
+DatabaseEngine = Literal["postgresql", "sqlserver"]
+CopyKind = Literal["photo", "import"]
+
+
+class DatabaseCopies(Protocol):
+    """Fase 33 (ADR-051): estado de las copias de bases en segundo plano (sin credenciales)."""
+
+    def create(
+        self,
+        owner: UUID,
+        project: UUID,
+        engine: DatabaseEngine,
+        kind: CopyKind,
+        server: str,
+        database: str,
+        schema: str | None,
+    ) -> DatabaseCopy: ...
+    def get(self, owner: UUID, copy: UUID) -> DatabaseCopy | None: ...
+    def running(self, copy: UUID) -> None: ...
+    def succeeded(
+        self,
+        copy: UUID,
+        version: UUID | None,
+        model: DataModel | None,
+        tables: int,
+        omitted: int,
+    ) -> None: ...
+    def failed(self, copy: UUID, code: str, message: str) -> None: ...
+
+
+@dataclass(frozen=True)
+class CopyTicket:
+    """Fase 33: lo que la comprobación previa decidió en la petición y la copia necesita después,
+    en segundo plano (el intento y si el servidor es de la lista)."""
+
+    copy: UUID
+    attempt: UUID | None
+    listed: bool
+    access: "ConnectionAccess"
+
+
+class SnapshotConnector(Protocol):
+    """Fase 32B (ADR-050): copia de una base fuera del proceso de la API, en el servicio
+    `connector` (red de salida aislada, sin credenciales de DataFlow). Sólo para destinos que no
+    están en la lista: los de la lista son de confianza y se copian como antes."""
+
+    def snapshot_postgresql(
+        self,
+        connection: PostgresConnection,
+        config: ProcessingConfig,
+        policy: DestinationPolicy,
+        timeout: int | None = None,
+    ) -> SqlSnapshot: ...
+
+
+@dataclass(frozen=True)
+class ConnectionAccess:
+    """Fase 32: a qué servidores se puede conectar (`database-destination-v1`) y desde qué IP
+    llega la petición (para el límite de intentos)."""
+
+    policy: DestinationPolicy
+    client: str = ""
+
+
+DESTINATION_REFUSALS = {
+    "HOST_UNKNOWN": (
+        "DATABASE_HOST_UNKNOWN",
+        "No se encontró ese servidor. Revisa el nombre.",
+        422,
+    ),
+    "HOST_PRIVATE": (
+        "DATABASE_HOST_PRIVATE",
+        "Esa dirección pertenece a una red privada. DataFlow sólo se conecta a servidores "
+        "accesibles desde internet.",
+        422,
+    ),
+}
+
 XLSX_REJECTED = (".xls", ".xlsm", ".xlsb", ".xltm", ".xlt")
 UNSAFE_NAME = "/\\\x00\r\n"
+# Fase 31: los archivos de un conjunto relacionado pueden sumar el doble del límite de uno.
+RELATED_TOTAL = 2
 
 
 class PreviewReader(Protocol):
@@ -201,6 +323,13 @@ class Sibling:
     plan: Callable[[DatasetVersion], PlanRevision]
     content: bytes | None = None  # None: comparte el original de la versión principal
     name: str | None = None
+    extension: str | None = None  # Fase 31: la de su propio original (si no, la de la carga)
+
+
+def view_file_name(view: str) -> str:
+    """Fase 31: nombre de archivo de una vista del modelo («estudiantes (vista general).csv»)."""
+    safe = "".join("_" if c in UNSAFE_NAME or ord(c) < 32 else c for c in view)
+    return f"{safe[:250]}.csv"
 
 
 def table_file_name(label: str) -> str:
@@ -224,11 +353,20 @@ class IngestionService:
         quota: int,
         maximum_upload: int = 5 * 1024 * 1024,
         inspector: XlsxInspector | None = None,
+        attempts: ConnectionAttempts | None = None,
+        attempt_limits: AttemptLimits | None = None,
+        connector: SnapshotConnector | None = None,
+        copies: DatabaseCopies | None = None,
+        copy_timeout: int = 1800,
     ) -> None:
         self.datasets, self.executions, self.objects = datasets, executions, objects
         self.projects, self.preview_reader, self.uow = projects, preview, uow
         self.config, self.quota, self.maximum_upload = config, quota, maximum_upload
         self.inspector = inspector
+        self.attempts, self.attempt_limits = attempts, attempt_limits or AttemptLimits()
+        self.connector = connector
+        # Fase 33: copias en segundo plano y su plazo (el de la copia, la lectura y las relaciones).
+        self.copies, self.copy_timeout = copies, copy_timeout
 
     def submit(
         self,
@@ -414,61 +552,360 @@ class IngestionService:
             ],
         )
 
-    def submit_sqlserver(
+    def start_database_copy(
         self,
         owner: UUID,
         project: UUID,
-        connection: SqlServerConnection,
-        allowed_hosts: Sequence[str],
+        engine: DatabaseEngine,
+        kind: CopyKind,
+        connection: PostgresConnection | SqlServerConnection,
+        access: ConnectionAccess,
+    ) -> tuple[DatabaseCopy, CopyTicket]:
+        """Fase 33 (ADR-051): en la petición, la comprobación previa del destino y el intento
+        (Fase 32) y el registro de la copia, que se hace después en segundo plano. Responde al
+        momento; la contraseña no se guarda (sólo vive en memoria hasta que termine la copia)."""
+        if self.copies is None:
+            raise ApplicationError(
+                "DATABASE_COPY_UNAVAILABLE", "Las copias de bases no están activas.", 503
+            )
+        if engine == "sqlserver":
+            # SQL Server sigue sólo con la lista (Fase 32): sin verificar certificados ni impedir
+            # redirecciones no se abre al modo público.
+            access = ConnectionAccess(
+                DestinationPolicy(access.policy.allowed_hosts, False, access.policy.denied),
+                access.client,
+            )
+            prefix, label = "SQLSERVER", "SQL Server"
+        else:
+            prefix, label = "POSTGRESQL", "PostgreSQL"
+        attempt, listed = self._gate(
+            owner, project, connection.server, connection.port, access, prefix, label
+        )
+        try:
+            copy = self.copies.create(
+                owner,
+                project,
+                engine,
+                kind,
+                f"{connection.server}:{connection.port}",
+                connection.database,
+                connection.schema_name,
+            )
+            self.uow.commit()
+        except Exception:
+            self.uow.rollback()
+            raise
+        return copy, CopyTicket(copy.id, attempt, listed, access)
+
+    def database_copy(self, owner: UUID, copy: UUID) -> DatabaseCopy:
+        if self.copies is None:
+            raise ApplicationError("NOT_FOUND", "Copia no encontrada.", 404)
+        try:
+            found = self.copies.get(owner, copy)
+            self.uow.commit()  # `get` puede marcar como interrumpida una copia sin latido
+        except Exception:
+            self.uow.rollback()
+            raise
+        if found is None:
+            raise ApplicationError("NOT_FOUND", "Copia no encontrada.", 404)
+        return found
+
+    def run_database_copy(
+        self,
+        owner: UUID,
+        project: UUID,
+        engine: DatabaseEngine,
+        kind: CopyKind,
+        connection: PostgresConnection | SqlServerConnection,
+        ticket: CopyTicket,
         key: UUID,
         correlation: str,
-    ) -> Version:
-        """Fase 18B: copia de un solo uso de las tablas de una base de SQL Server. Sólo hosts de
-        la lista permitida (evita usar el servidor para llegar a equipos internos). Cada tabla
-        elegida por `sqlserver-selection-v1` se guarda como CSV estándar inmutable (su original)
-        y se analiza como versión propia; la contraseña no se guarda."""
+    ) -> None:
+        """Fase 33: la copia en segundo plano. Nunca lanza: el resultado (la versión principal,
+        el modelo o el error) queda en el registro de la copia."""
+        assert self.copies is not None
+        try:
+            self.copies.running(ticket.copy)
+            self.uow.commit()
+            snapshot = self._database_snapshot(engine, connection, ticket)
+            self._succeeded(ticket.attempt)
+            if kind == "photo":
+                model = self._snapshot_model(snapshot, self.copy_timeout)
+                self.copies.succeeded(
+                    ticket.copy, None, model, len(snapshot.tables), len(model.omitted)
+                )
+            else:
+                schema = connection.schema_name
+                version, copied, omitted = self._submit_snapshot(
+                    owner,
+                    project,
+                    snapshot,
+                    engine,
+                    f"{connection.server}:{connection.port}",
+                    connection.database + (f"/{schema}" if schema else ""),
+                    key,
+                    correlation,
+                )
+                self.copies.succeeded(ticket.copy, version.id, None, copied, omitted)
+            self.uow.commit()
+        except Exception as exc:
+            self.uow.rollback()
+            code, message = (
+                (exc.code, exc.message)
+                if isinstance(exc, ApplicationError)
+                else ("DATABASE_COPY_FAILED", "No se pudo completar la copia de la base.")
+            )
+            self.copies.failed(ticket.copy, code, message)
+            self.uow.commit()
+
+    def _database_snapshot(
+        self,
+        engine: DatabaseEngine,
+        connection: PostgresConnection | SqlServerConnection,
+        ticket: CopyTicket,
+    ) -> SqlSnapshot:
+        """La copia en sí, con el plazo largo de las copias en segundo plano. Fase 32B: un
+        destino fuera de la lista se copia en el servicio `connector` si existe."""
+        if isinstance(connection, SqlServerConnection):
+            if self.inspector is None:
+                raise ApplicationError("SQLSERVER_UNAVAILABLE", "SQL Server no está activo.", 503)
+            return self.inspector.snapshot_sqlserver(
+                connection, self.config, timeout=self.copy_timeout
+            )
+        if not ticket.listed and self.connector is not None:
+            return self.connector.snapshot_postgresql(
+                connection, self.config, ticket.access.policy, timeout=self.copy_timeout
+            )
+        if self.inspector is None:
+            raise ApplicationError("POSTGRESQL_UNAVAILABLE", "PostgreSQL no está activo.", 503)
+        return self.inspector.snapshot_postgresql(
+            connection, self.config, ticket.access.policy, timeout=self.copy_timeout
+        )
+
+    def _gate(
+        self,
+        owner: UUID,
+        project: UUID,
+        server: str,
+        port: int,
+        access: ConnectionAccess,
+        prefix: str,
+        engine: str,
+    ) -> tuple[UUID | None, bool]:
+        """Fase 32 (`database-destination-v1`, ADR-050): comprobación previa en la API, para
+        responder sin lanzar el subproceso (que la repite justo antes de conectar), y límite
+        de intentos. Un servidor de la lista no se resuelve aquí. Devuelve el intento y si el
+        servidor es de la lista."""
         try:
             self.projects.require(owner, project, writable=True)
         finally:
             self.uow.rollback()
-        allowed = {host.strip().lower() for host in allowed_hosts if host.strip()}
-        if not allowed:
+        policy = access.policy
+        if not policy.enabled:
             raise ApplicationError(
-                "SQLSERVER_DISABLED",
-                "La conexión a SQL Server no está activada en este entorno.",
+                f"{prefix}_DISABLED",
+                f"La conexión a {engine} no está activada en este entorno.",
                 503,
             )
-        if connection.server.lower() not in allowed:
+        target = server.strip().lower()
+        if not policy.listed(server):
+            if not policy.public:
+                raise ApplicationError(
+                    f"{prefix}_HOST_NOT_ALLOWED",
+                    "Ese servidor no está en la lista de servidores permitidos.",
+                    422,
+                )
+            decision = destinations.decide(server, destinations.resolve(server, port), policy)
+            if isinstance(decision, destinations.Denied):
+                code, message, status = DESTINATION_REFUSALS[decision.reason]
+                raise ApplicationError(code, message, status)
+            target = decision.address
+        return self._admit(owner, access.client, target), policy.listed(server)
+
+    def _admit(self, owner: UUID, client: str, target: str) -> UUID | None:
+        if self.attempts is None:
+            return None
+        try:
+            attempt = self.attempts.admit(owner, client, target, self.attempt_limits)
+            self.uow.commit()
+        except Exception:
+            self.uow.rollback()
+            raise
+        if attempt is None:
             raise ApplicationError(
-                "SQLSERVER_HOST_NOT_ALLOWED",
-                "Ese servidor no está en la lista de servidores permitidos.",
-                422,
+                "DATABASE_RATE_LIMITED",
+                "Demasiados intentos de conexión. Espera unos minutos.",
+                429,
             )
-        if self.inspector is None:
-            raise ApplicationError("SQLSERVER_UNAVAILABLE", "SQL Server no está activo.", 503)
-        snapshot = self.inspector.snapshot_sqlserver(connection, self.config)
+        return attempt
+
+    def _succeeded(self, attempt: UUID | None) -> None:
+        if attempt is None or self.attempts is None:
+            return
+        try:
+            self.attempts.succeeded(attempt)
+            self.uow.commit()
+        except Exception:
+            self.uow.rollback()
+            raise
+
+    def _relate(
+        self,
+        tables: list[tuple[str, str, bytes]],
+        declared: list[dict[str, str]],
+        data: bool,
+        timeout: int | None = None,
+    ) -> RelatedSet:
+        """`relations-v1` en el subproceso de ingesta. `data`: con las vistas en CSV (para
+        registrarlas) o sólo el modelo (la «foto» del esquema)."""
+        assert self.inspector is not None
+        payload = {
+            "tables": [
+                {
+                    "label": label,
+                    "format": kind,
+                    "content_base64": base64.b64encode(content).decode(),
+                }
+                for label, kind, content in tables
+            ],
+            "declared": declared,
+            "with_data": data,
+        }
+        return self.inspector.relate(json.dumps(payload).encode(), self.config, timeout)
+
+    def _snapshot_relations(
+        self, snapshot: SqlSnapshot, data: bool, timeout: int | None = None
+    ) -> RelatedSet:
+        return self._relate(
+            [(t.label, "standard", t.csv.encode("utf-8")) for t in snapshot.tables],
+            [
+                {
+                    "table": t.label,
+                    "column": fk.column,
+                    "references_table": fk.references.rsplit(".", 1)[0],
+                    "references_column": fk.references.rsplit(".", 1)[-1],
+                }
+                for t in snapshot.tables
+                for fk in t.foreign_keys
+            ],
+            data,
+            timeout,
+        )
+
+    def _snapshot_model(self, snapshot: SqlSnapshot, timeout: int | None = None) -> DataModel:
+        related = self._snapshot_relations(snapshot, data=False, timeout=timeout)
+        return DataModel(
+            main=related.main,
+            tables=related.tables,
+            relations=related.relations,
+            views=related.views,
+            omitted=snapshot.omitted,
+        )
+
+    def _fit_tables(self, owner: UUID, snapshot: SqlSnapshot) -> tuple[SqlSnapshot, int]:
+        """Fase 33: las tablas (ya de menor a mayor) que caben como originales y en la cuota de
+        la cuenta; las demás se omiten con su motivo. Devuelve también el espacio que queda."""
+        try:
+            room = self.quota - self.datasets.used_bytes(owner)
+        finally:
+            self.uow.rollback()
+        megabytes = self.maximum_upload // (1024 * 1024)
+        kept: list[SnapshotTable] = []
+        omitted = list(snapshot.omitted)
+        for table in snapshot.tables:
+            size = len(table.csv.encode("utf-8"))
+            if size > self.maximum_upload:
+                reason = f"Supera el tamaño máximo de un original ({megabytes} MB)."
+                omitted.append(OmittedSource(table=table.label, reason=reason))
+            elif size > room:
+                reason = "No cabe en la cuota de archivos originales de la cuenta."
+                omitted.append(OmittedSource(table=table.label, reason=reason))
+            else:
+                kept.append(table)
+                room -= size
+        if not kept:
+            raise ApplicationError(
+                "STORAGE_QUOTA",
+                "Ninguna tabla de la base cabe en la cuota de archivos originales de la cuenta.",
+                413,
+            )
+        return snapshot.model_copy(update={"tables": kept, "omitted": omitted}), room
+
+    def _fit_views(
+        self, related: RelatedSet, room: int, omitted: list[OmittedSource]
+    ) -> RelatedSet:
+        """Fase 33: las vistas que no caben (tamaño de un original o cuota) se omiten con su
+        motivo en vez de impedir la carga; si cae la principal, se abre la tabla mayor."""
+        kept: list[RelatedView] = []
+        for view in related.views:
+            size = len(related.csv.get(view.name, "").encode("utf-8"))
+            if size > self.maximum_upload or size > room:
+                reason = (
+                    "La vista supera el tamaño máximo de un original."
+                    if size > self.maximum_upload
+                    else "La vista no cabe en la cuota de archivos originales de la cuenta."
+                )
+                omitted.append(OmittedSource(table=view.name, reason=reason))
+            else:
+                kept.append(view)
+                room -= size
+        names = {v.name for v in kept}
+        return related.model_copy(
+            update={
+                "views": kept,
+                "csv": {k: v for k, v in related.csv.items() if k in names},
+                "main": related.main if related.main in names else None,
+            }
+        )
+
+    def _submit_snapshot(
+        self,
+        owner: UUID,
+        project: UUID,
+        snapshot: SqlSnapshot,
+        kind: Literal["sqlserver", "postgresql"],
+        server: str,
+        database: str,
+        key: UUID,
+        correlation: str,
+    ) -> tuple[Version, int, int]:
+        """Cada tabla (y cada vista del modelo) como versión. Fase 33: lo que no cabe se omite
+        con su motivo. Devuelve la versión principal, las tablas copiadas y las omitidas."""
         captured = datetime.now(UTC).replace(microsecond=0).isoformat()
+        snapshot, room = self._fit_tables(owner, snapshot)
         labels = [t.label for t in snapshot.tables]
-        parts = []
+        omitted = list(snapshot.omitted)
+        related = (
+            self._fit_views(
+                self._snapshot_relations(snapshot, data=True, timeout=self.copy_timeout),
+                room,
+                omitted,
+            )
+            if len(snapshot.tables) > 1
+            else None
+        )
+        rule: Literal["sqlserver-selection-v3", "postgresql-selection-v2"] = (
+            "sqlserver-selection-v3" if kind == "sqlserver" else "postgresql-selection-v2"
+        )
+        members: list[Sibling] = []
         for table in snapshot.tables:
             data = table.csv.encode("utf-8")
-            if len(data) > self.maximum_upload:
-                raise ApplicationError(
-                    "SQLSERVER_TABLE_TOO_LARGE",
-                    f"La tabla {table.label} supera el tamaño máximo de un original.",
-                    413,
-                )
             decision = SourceOrigin(
-                kind="sqlserver",
-                rule="sqlserver-selection-v1",
+                kind=kind,
+                rule=rule,
                 table=table.label,
-                server=f"{connection.server}:{connection.port}",
-                database=connection.database,
+                server=server,
+                database=database,
                 captured_at=captured,
                 excluded_columns=table.excluded_columns,
                 foreign_keys=table.foreign_keys,
                 analyzed_together=[label for label in labels if label != table.label],
-                omitted=snapshot.omitted,
+                omitted=omitted,
+                tables=related.tables if related else [],
+                relations=related.relations if related else [],
+                views=related.views if related else [],
+                access=snapshot.access,
+                tls=snapshot.tls,
             )
             file_name = table_file_name(table.label)
             fingerprint = digest(
@@ -476,26 +913,245 @@ class IngestionService:
                 {
                     "name": file_name,
                     "sha256": hashlib.sha256(data).hexdigest(),
-                    "sqlserver": f"{connection.server}:{connection.port}/{connection.database}",
+                    kind: f"{server}/{database}",
                 },
             )
-            parts.append((table, data, file_name, fingerprint, self._csv_plan(owner, decision)))
-        main, *rest = parts
+            members.append(
+                Sibling(
+                    uuid5(key, f"{kind}-table:{table.label}"),
+                    fingerprint,
+                    self._csv_plan(owner, decision),
+                    data,
+                    file_name,
+                )
+            )
+        # Sin vista principal, se abre la tabla con más registros (como en la Fase 31).
+        members.sort(key=lambda m: -len(m.content or b""))
+        origin = {
+            "server": server,
+            "database": database,
+            "captured_at": captured,
+            "omitted": omitted,
+            "access": snapshot.access,
+            "tls": snapshot.tls,
+        }
+        version = self._register_set(owner, project, related, members, origin, key, correlation)
+        return version, len(snapshot.tables), len(omitted)
+
+    def _related_files(self, request: RelatedFilesRequest) -> list[tuple[str, str, bytes]]:
+        """Archivos de un conjunto relacionado ya comprobados (nombre, formato y tamaño)."""
+        files: list[tuple[str, str, bytes]] = []
+        seen: set[str] = set()
+        for item in request.files:
+            name, lowered = item.name, item.name.lower()
+            kind = next((k for k in ("csv", "xlsx") if lowered.endswith(f".{k}")), "")
+            if not kind or any(c in name for c in UNSAFE_NAME):
+                raise ApplicationError(
+                    "RELATED_FORMAT", f"«{name}»: sólo se admiten archivos CSV o .xlsx.", 422
+                )
+            if lowered in seen:
+                raise ApplicationError(
+                    "RELATED_DUPLICATE_NAMES", "Hay dos archivos con el mismo nombre.", 422
+                )
+            seen.add(lowered)
+            try:
+                content = base64.b64decode(item.content_base64, validate=True)
+            except (binascii.Error, ValueError) as exc:
+                raise ApplicationError(
+                    "RELATED_FILE_INVALID", f"«{name}» no llegó completo; vuelve a elegirlo.", 422
+                ) from exc
+            self._check_content(content, f"«{name}» supera el límite de tamaño.")
+            files.append((name, kind, content))
+        total = sum(len(content) for _, _, content in files)
+        if total > self.maximum_upload * RELATED_TOTAL:
+            raise ApplicationError(
+                "RELATED_TOO_LARGE",
+                "Los archivos juntos superan "
+                f"{RELATED_TOTAL * self.maximum_upload // (1024 * 1024)} MB.",
+                413,
+            )
+        if self.inspector is None:
+            raise ApplicationError(
+                "RELATED_UNAVAILABLE", "La lectura de archivos no está activa.", 503
+            )
+        return files
+
+    def inspect_related(
+        self, owner: UUID, project: UUID, request: RelatedFilesRequest
+    ) -> DataModel:
+        """Fase 31: «foto» del modelo de datos de los archivos sin guardar nada."""
+        try:
+            self.projects.require(owner, project, writable=True)
+        finally:
+            self.uow.rollback()
+        related = self._relate(self._related_files(request), [], data=False)
+        return DataModel(
+            main=related.main,
+            tables=related.tables,
+            relations=related.relations,
+            views=related.views,
+        )
+
+    def submit_related(
+        self,
+        owner: UUID,
+        project: UUID,
+        request: RelatedFilesRequest,
+        key: UUID,
+        correlation: str,
+    ) -> Version:
+        """Fase 31: de 2 a 5 archivos (CSV o .xlsx) en una sola carga. Cada archivo se analiza
+        como versión propia con su original; con el modelo de datos de `relations-v1`, cada vista
+        (la de cada tabla de hechos y la vista general por entidad) es otra versión y se devuelve
+        la principal, con la decisión en `source_origin`."""
+        try:
+            self.projects.require(owner, project, writable=True)
+        finally:
+            self.uow.rollback()
+        files = self._related_files(request)
+        related = self._relate(files, [], data=True)
+        names = [name for name, _, _ in files]
+        rows = {t.label: t.rows for t in related.tables}
+        members: list[Sibling] = []
+        for name, kind, content in sorted(files, key=lambda f: (-rows.get(f[0], 0), f[0])):
+            origin = SourceOrigin(
+                kind="related",
+                rule="relations-v1",
+                table=name,
+                analyzed_together=[other for other in names if other != name],
+                tables=related.tables,
+                relations=related.relations,
+                views=related.views,
+            )
+            sha256 = hashlib.sha256(content).hexdigest()
+            if kind == "csv":
+                encoding = resolve_encoding(content)
+                separator = resolve_separator(content, "auto", encoding)
+                plan = self._related_csv_plan(owner, separator, encoding, origin)
+                fingerprint = import_fingerprint(name, sha256, "auto")
+            else:
+                selection = related.xlsx[name]
+                parameters = ReadXlsxParameters(
+                    sheet=selection.sheet, table=selection.table, header_row=selection.header_row
+                )
+                plan = self._related_xlsx_plan(owner, parameters, selection, origin)
+                fingerprint = xlsx_import_fingerprint(name, sha256, parameters)
+            members.append(
+                Sibling(uuid5(key, f"related-table:{name}"), fingerprint, plan, content, name, kind)
+            )
+        return self._register_set(owner, project, related, members, {}, key, correlation)
+
+    def _register_set(
+        self,
+        owner: UUID,
+        project: UUID,
+        related: RelatedSet | None,
+        members: list[Sibling],
+        origin: dict[str, Any],
+        key: UUID,
+        correlation: str,
+    ) -> Version:
+        """Las tablas y cada vista del modelo como versiones propias. La vista principal es la
+        versión que se devuelve (la que se abre); sin vistas, la tabla con más registros."""
+        views: list[Sibling] = []
+        main_view: Sibling | None = None
+        for view in related.views if related else []:
+            assert related is not None
+            data = related.csv[view.name].encode("utf-8")
+            if len(data) > self.maximum_upload:
+                raise ApplicationError(
+                    "RELATED_JOINED_TOO_LARGE",
+                    f"La vista «{view.name}» supera el tamaño máximo de un original; sube menos "
+                    "columnas o menos registros.",
+                    413,
+                )
+            name = view_file_name(view.name)
+            decision = SourceOrigin(
+                kind="related",
+                rule="relations-v1",
+                table=view.name,
+                joined=True,
+                view_kind=view.kind,
+                analyzed_together=[m.name for m in members if m.name],
+                tables=related.tables,
+                relations=related.relations,
+                views=related.views,
+                **origin,
+            )
+            fingerprint = digest(
+                "import_request",
+                {
+                    "name": name,
+                    "sha256": hashlib.sha256(data).hexdigest(),
+                    "related": sorted(m.fingerprint for m in members),
+                },
+            )
+            item = Sibling(
+                uuid5(key, f"related-view:{view.name}"),
+                fingerprint,
+                self._csv_plan(owner, decision),
+                data,
+                name,
+                "csv",
+            )
+            if view.name == related.main:
+                main_view = item
+            else:
+                views.append(item)
+        main = main_view or members[0]
+        rest = [m for m in [*members, *views] if m is not main]
+        assert main.content is not None and main.name is not None
         return self._register(
             owner,
             project,
-            main[2],
-            main[1],
+            main.name,
+            main.content,
             key,
             correlation,
-            "csv",
-            main[3],
-            main[4],
-            [
-                Sibling(uuid5(key, f"sqlserver-table:{t.label}"), fp, plan, data, file_name)
-                for t, data, file_name, fp, plan in rest
-            ],
+            main.extension or "csv",
+            main.fingerprint,
+            main.plan,
+            rest,
         )
+
+    def _related_csv_plan(
+        self,
+        owner: UUID,
+        separator: str,
+        encoding: Literal["utf-8-sig", "cp1252"],
+        decision: SourceOrigin,
+    ) -> Callable[[DatasetVersion], PlanRevision]:
+        def plan(version: DatasetVersion) -> PlanRevision:
+            return build_plan(
+                owner,
+                version,
+                self.config,
+                "auto",
+                separator,
+                encoding=encoding,
+                source_origin=decision,
+            )
+
+        return plan
+
+    def _related_xlsx_plan(
+        self,
+        owner: UUID,
+        parameters: ReadXlsxParameters,
+        selection: XlsxSelection,
+        decision: SourceOrigin,
+    ) -> Callable[[DatasetVersion], PlanRevision]:
+        def plan(version: DatasetVersion) -> PlanRevision:
+            return build_plan(
+                owner,
+                version,
+                self.config,
+                xlsx=parameters,
+                source_selection=selection,
+                source_origin=decision,
+            )
+
+        return plan
 
     def _csv_plan(
         self, owner: UUID, decision: SourceOrigin
@@ -602,7 +1258,8 @@ class IngestionService:
                 if item.content is not None:
                     own = self.objects.put(
                         f"originals/{owner}/{sibling_id}/"
-                        f"{hashlib.sha256(item.content).hexdigest()}.{extension}",
+                        f"{hashlib.sha256(item.content).hexdigest()}"
+                        f".{item.extension or extension}",
                         item.content,
                     )
                 registered.append(
@@ -625,6 +1282,8 @@ class IngestionService:
             self.datasets.bind_import(version_id, run.id)
             for item, sibling in registered:
                 sibling_id = sibling.id
+                # Fase 33: las versiones de una misma carga (todas las tablas de una base) entran
+                # juntas; la cola ya admitió la carga arriba.
                 sibling_run = self.executions.enqueue(
                     owner,
                     project,
@@ -634,6 +1293,7 @@ class IngestionService:
                     item.fingerprint,
                     item.plan(sibling),
                     correlation,
+                    admitted=True,
                 )
                 self.datasets.bind_import(sibling_id, sibling_run.id)
             self.uow.commit()

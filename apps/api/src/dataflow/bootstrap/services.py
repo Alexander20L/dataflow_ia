@@ -11,6 +11,7 @@ from dataflow.bootstrap.comprehension_job import (
     enqueue_comprehension,
     record_comprehension_calls,
 )
+from dataflow.bootstrap.connector_client import HttpConnector
 from dataflow.bootstrap.dashboard_job import (
     DashboardInput,
     DashboardStep,
@@ -105,7 +106,12 @@ from dataflow.modules.executions.contracts import (
 from dataflow.modules.executions.infrastructure import SQLExecutionRepository
 from dataflow.modules.exploration.infrastructure import SQLInvestigationControls
 from dataflow.modules.ingestion.analytical import IsolatedAnalyzer, PolarsPreview
-from dataflow.modules.ingestion.application import AnalysisService, Analyzer, IngestionService
+from dataflow.modules.ingestion.application import (
+    AnalysisService,
+    Analyzer,
+    AttemptLimits,
+    IngestionService,
+)
 from dataflow.modules.ingestion.contracts import SourceReview
 from dataflow.modules.ingestion.executor import (
     ProfileStep,
@@ -119,6 +125,7 @@ from dataflow.modules.ingestion.executor import (
     SourceInputResolver,
     TableInputResolver,
 )
+from dataflow.modules.ingestion.infrastructure import SQLConnectionAttempts, SQLDatabaseCopies
 from dataflow.modules.ingestion.plans import analysis_fingerprint, build_plan
 from dataflow.modules.inspection.public import SQLColumnAnnotations
 from dataflow.modules.planning.application import PlanningService
@@ -128,7 +135,7 @@ from dataflow.modules.quality.application import RulesetService
 from dataflow.modules.quality.infrastructure import SQLRulesetRepository
 from dataflow.modules.understanding.application import SemanticService
 from dataflow.modules.understanding.semantic_repository import SQLSemanticRepository
-from dataflow.platform.config import get_settings
+from dataflow.platform.config import Settings, get_settings
 from dataflow.platform.database import SQLUnitOfWork
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.runtime import require_ready
@@ -169,7 +176,31 @@ def make_ingestion(db: Session, objects: LocalObjects) -> IngestionService:
             settings.processing_timeout_seconds,
             settings.max_csv_rows,
             settings.max_csv_columns,
+            settings.database_max_bytes,
+            settings.database_max_cell_bytes,
         ),
+        SQLConnectionAttempts(db),
+        AttemptLimits(
+            settings.database_attempts_per_user,
+            settings.database_failures_per_day,
+            settings.database_attempts_per_target,
+        ),
+        database_connector(settings),
+        SQLDatabaseCopies(db),
+        settings.database_copy_timeout_seconds,
+    )
+
+
+def database_connector(settings: Settings) -> HttpConnector | None:
+    """Fase 32B: el servicio `connector` copia los destinos que no están en la lista."""
+    token = settings.connector_secret()
+    if not settings.connector_url or token is None:
+        return None
+    return HttpConnector(
+        settings.connector_url,
+        token,
+        settings.database_max_bytes,
+        settings.database_max_cell_bytes,
     )
 
 

@@ -1,19 +1,32 @@
 from datetime import datetime
 from typing import Annotated, Literal
-from urllib.parse import quote
-from uuid import UUID
+from urllib.parse import quote, urlsplit
+from uuid import UUID, uuid4
 
 from fastapi import APIRouter, Header, Path, Query, Request, Response
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel, ConfigDict, ValidationError
 from starlette.concurrency import run_in_threadpool
 
-from dataflow.bootstrap.dependencies import Analysis, CurrentIdentity, Ingestion
+from dataflow.bootstrap.database_copies import copy_job
+from dataflow.bootstrap.dependencies import (
+    Analysis,
+    CopyRunnerDep,
+    CurrentIdentity,
+    Ingestion,
+    Objects,
+)
 from dataflow.modules.analytics.contracts import AutomaticAnalysis, AutomaticEvidence
+from dataflow.modules.ingestion.application import ConnectionAccess, CopyKind, DatabaseEngine
 from dataflow.modules.ingestion.contracts import (
+    DatabaseAccess,
+    DatabaseCopy,
+    DataModel,
     Diagnostic,
     IngestionSummary,
+    PostgresConnection,
     ReadXlsxParameters,
     RecordsPage,
+    RelatedFilesRequest,
     SourceOrigin,
     SourceReview,
     SqlServerConnection,
@@ -23,11 +36,46 @@ from dataflow.modules.ingestion.contracts import (
 from dataflow.modules.ingestion.domain import ImportState
 from dataflow.modules.quality.contracts import QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
+from dataflow.platform import destinations
 from dataflow.platform.config import get_settings
 from dataflow.platform.csv_export import CsvProfile
 from dataflow.platform.errors import ApplicationError
 
 router = APIRouter(prefix="/api/v1", tags=["Datasets"])
+
+
+def connection_access(request: Request, allowed_hosts: list[str]) -> ConnectionAccess:
+    """Fase 32 (ADR-050): la política de destinos de este entorno. En el modo público se
+    deniegan siempre la base de DataFlow y `DATAFLOW_DATABASE_DENIED_HOSTS`, ya resueltas."""
+    settings = get_settings()
+    denied: tuple[str, ...] = ()
+    if settings.database_public_access:
+        own = urlsplit(settings.database_url).hostname or ""
+        denied = destinations.denied_networks([own, *settings.database_denied_hosts])
+    policy = destinations.DestinationPolicy(
+        tuple(allowed_hosts), settings.database_public_access, denied
+    )
+    return ConnectionAccess(policy, request.client.host if request.client else "")
+
+
+@router.get("/database-access", response_model=DatabaseAccess, operation_id="getDatabaseAccess")
+def database_access(identity: CurrentIdentity) -> DatabaseAccess:
+    """Fase 32: a qué bases se puede conectar en este entorno y, en el modo público, desde qué
+    direcciones sale DataFlow (la persona debe permitirlas en su base)."""
+    del identity  # sólo para personas con sesión
+    settings = get_settings()
+    listed = any(h.strip() for h in settings.postgresql_allowed_hosts)
+    postgresql: Literal["disabled", "allowlist", "public"] = (
+        "public" if settings.database_public_access else "allowlist" if listed else "disabled"
+    )
+    sqlserver: Literal["disabled", "allowlist"] = (
+        "allowlist" if any(h.strip() for h in settings.sqlserver_allowed_hosts) else "disabled"
+    )
+    return DatabaseAccess(
+        postgresql=postgresql,
+        sqlserver=sqlserver,
+        egress_ips=settings.database_egress_ips if postgresql == "public" else [],
+    )
 
 
 class VersionResponse(BaseModel):
@@ -256,10 +304,54 @@ async def upload_pdf(
     return VersionResponse.model_validate(version)
 
 
+async def start_copy(
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    runner: CopyRunnerDep,
+    objects: Objects,
+    project_id: UUID,
+    engine: DatabaseEngine,
+    kind: CopyKind,
+    connection: PostgresConnection | SqlServerConnection,
+    key: UUID,
+) -> DatabaseCopy:
+    """Fase 33 (ADR-051): comprobación previa e intento en la petición; la copia sigue en
+    segundo plano (la contraseña sólo vive en memoria) y se consulta con `getDatabaseCopy`."""
+    allowed = (
+        get_settings().postgresql_allowed_hosts
+        if engine == "postgresql"
+        else get_settings().sqlserver_allowed_hosts
+    )
+    owner = identity.user.id
+    copy, ticket = await run_in_threadpool(
+        service.start_database_copy,
+        owner,
+        project_id,
+        engine,
+        kind,
+        connection,
+        connection_access(request, allowed),
+    )
+    job = copy_job(
+        objects,
+        owner,
+        project_id,
+        engine,
+        kind,
+        connection,
+        ticket,
+        key,
+        request.state.correlation_id,
+    )
+    await run_in_threadpool(runner.submit, owner, copy.id, job)
+    return await run_in_threadpool(service.database_copy, owner, copy.id)
+
+
 @router.post(
     "/projects/{project_id}/imports/sqlserver",
     status_code=202,
-    response_model=VersionResponse,
+    response_model=DatabaseCopy,
     operation_id="importSqlServer",
 )
 async def import_sqlserver(
@@ -268,21 +360,222 @@ async def import_sqlserver(
     request: Request,
     identity: CurrentIdentity,
     service: Ingestion,
+    runner: CopyRunnerDep,
+    objects: Objects,
+    request_key: Annotated[UUID, Header(alias="Idempotency-Key")],
+) -> DatabaseCopy:
+    """Fase 18B: copia de un solo uso de las tablas de una base de SQL Server. Fase 33
+    (`sqlserver-selection-v3`): todas las tablas que caben, en segundo plano; cada tabla y cada
+    vista es una versión. La contraseña se usa para la copia y se descarta. Sólo servidores de
+    `DATAFLOW_SQLSERVER_ALLOWED_HOSTS`."""
+    return await start_copy(
+        request,
+        identity,
+        service,
+        runner,
+        objects,
+        project_id,
+        "sqlserver",
+        "import",
+        body,
+        request_key,
+    )
+
+
+@router.post(
+    "/projects/{project_id}/imports/postgresql",
+    status_code=202,
+    response_model=DatabaseCopy,
+    operation_id="importPostgresql",
+)
+async def import_postgresql(
+    project_id: UUID,
+    body: PostgresConnection,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    runner: CopyRunnerDep,
+    objects: Objects,
+    request_key: Annotated[UUID, Header(alias="Idempotency-Key")],
+) -> DatabaseCopy:
+    """Fase 31: copia de un solo uso de las tablas de un esquema de PostgreSQL. Fase 33
+    (`postgresql-selection-v2`): todas las tablas que caben, en segundo plano; la versión
+    principal queda en la copia al terminar. La contraseña se usa para la copia y se descarta.
+    Servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS` o, con el modo público (Fase 32),
+    cualquiera con direcciones públicas (`database-destination-v1`)."""
+    return await start_copy(
+        request,
+        identity,
+        service,
+        runner,
+        objects,
+        project_id,
+        "postgresql",
+        "import",
+        body,
+        request_key,
+    )
+
+
+@router.get(
+    "/database-copies/{copy_id}", response_model=DatabaseCopy, operation_id="getDatabaseCopy"
+)
+async def database_copy(
+    copy_id: UUID, identity: CurrentIdentity, service: Ingestion
+) -> DatabaseCopy:
+    """Fase 33: estado de una copia en segundo plano; con `succeeded`, la versión principal
+    (`import`) o el modelo de datos (`photo`)."""
+    return await run_in_threadpool(service.database_copy, identity.user.id, copy_id)
+
+
+def inline_schema() -> dict[str, object]:
+    """Esquema de RelatedFilesRequest con RelatedFile dentro (sin referencias): el cuerpo se lee
+    con límite de tamaño, así que la ruta no declara el modelo como parámetro."""
+    schema = RelatedFilesRequest.model_json_schema()
+    definitions = schema.pop("$defs")
+    schema["properties"]["files"]["items"] = definitions["RelatedFile"]
+    return schema
+
+
+RELATED_BODY = {
+    "requestBody": {
+        "required": True,
+        "content": {"application/json": {"schema": inline_schema()}},
+    }
+}
+
+
+async def related_body(request: Request) -> RelatedFilesRequest:
+    """Cuerpo JSON de un conjunto relacionado, leído con límite de tamaño."""
+    if request.headers.get("content-type", "").split(";")[0].strip() != "application/json":
+        raise ApplicationError(
+            "RELATED_CONTENT_TYPE", "Envía los archivos con Content-Type application/json.", 415
+        )
+    maximum = get_settings().max_upload_bytes * 3 + 65536  # base64 de dos veces el límite
+    chunks: list[bytes] = []
+    size = 0
+    async for chunk in request.stream():
+        size += len(chunk)
+        if size > maximum:
+            raise ApplicationError(
+                "RELATED_TOO_LARGE", "Los archivos juntos superan el límite permitido.", 413
+            )
+        chunks.append(chunk)
+    try:
+        return RelatedFilesRequest.model_validate_json(b"".join(chunks))
+    except ValidationError as exc:
+        raise ApplicationError(
+            "RELATED_INVALID", "Elige entre 2 y 5 archivos CSV o .xlsx.", 422
+        ) from exc
+
+
+@router.post(
+    "/projects/{project_id}/imports/related",
+    status_code=202,
+    response_model=VersionResponse,
+    operation_id="uploadRelatedFiles",
+    openapi_extra=RELATED_BODY,
+)
+async def upload_related(
+    project_id: UUID,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
     request_key: Annotated[UUID, Header(alias="Idempotency-Key")],
 ) -> VersionResponse:
-    """Fase 18B: copia de un solo uso de las tablas de una base de SQL Server
-    (`sqlserver-selection-v1`); cada tabla es una versión con su CSV original. La contraseña se
-    usa para la copia y se descarta. Sólo servidores de `DATAFLOW_SQLSERVER_ALLOWED_HOSTS`."""
+    """Fase 31: de 2 a 5 archivos CSV o .xlsx relacionados (en base64). Cada uno se analiza como
+    versión propia y, con el modelo de datos de `relations-v1`, cada vista (la de cada tabla de
+    hechos y la vista general por entidad) también; se devuelve la vista principal, con el modelo
+    en `source_origin`. Sin relaciones, la tabla con más registros."""
+    body = await related_body(request)
     version = await run_in_threadpool(
-        service.submit_sqlserver,
+        service.submit_related,
         identity.user.id,
         project_id,
         body,
-        get_settings().sqlserver_allowed_hosts,
         request_key,
         request.state.correlation_id,
     )
     return VersionResponse.model_validate(version)
+
+
+@router.post(
+    "/projects/{project_id}/imports/related/inspect",
+    response_model=DataModel,
+    operation_id="inspectRelatedFiles",
+    openapi_extra=RELATED_BODY,
+)
+async def inspect_related(
+    project_id: UUID,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+) -> DataModel:
+    """Fase 31: «foto» del modelo de datos de los archivos (tablas, claves, relaciones y vistas
+    que se analizarían) sin guardar nada."""
+    body = await related_body(request)
+    return await run_in_threadpool(service.inspect_related, identity.user.id, project_id, body)
+
+
+@router.post(
+    "/projects/{project_id}/imports/sqlserver/inspect",
+    status_code=202,
+    response_model=DatabaseCopy,
+    operation_id="inspectSqlServer",
+)
+async def inspect_sqlserver(
+    project_id: UUID,
+    body: SqlServerConnection,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    runner: CopyRunnerDep,
+    objects: Objects,
+) -> DatabaseCopy:
+    """Fase 31: «foto» del esquema de SQL Server sin guardar nada (Fase 33: en segundo plano;
+    el modelo queda en la copia al terminar). La contraseña se usa para leer y se descarta."""
+    return await start_copy(
+        request,
+        identity,
+        service,
+        runner,
+        objects,
+        project_id,
+        "sqlserver",
+        "photo",
+        body,
+        uuid4(),
+    )
+
+
+@router.post(
+    "/projects/{project_id}/imports/postgresql/inspect",
+    status_code=202,
+    response_model=DatabaseCopy,
+    operation_id="inspectPostgresql",
+)
+async def inspect_postgresql(
+    project_id: UUID,
+    body: PostgresConnection,
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+    runner: CopyRunnerDep,
+    objects: Objects,
+) -> DatabaseCopy:
+    """Fase 31: «foto» del esquema de PostgreSQL sin guardar nada (Fase 33: en segundo plano)."""
+    return await start_copy(
+        request,
+        identity,
+        service,
+        runner,
+        objects,
+        project_id,
+        "postgresql",
+        "photo",
+        body,
+        uuid4(),
+    )
 
 
 @router.get(

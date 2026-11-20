@@ -78,7 +78,8 @@ test("PDF con tablas: cada tabla se analiza sola", async ({ page }) => {
   });
 });
 
-// Fase 18B: sin servidores permitidos, la conexión a SQL Server explica que está desactivada.
+// Fase 18B: sin servidores permitidos, la conexión a SQL Server explica que está desactivada
+// (desde la Fase 31, en la opción «Conectar base de datos» de la pantalla de carga).
 test("SQL Server desactivado: se explica sin guardar nada", async ({
   page,
 }) => {
@@ -92,15 +93,19 @@ test("SQL Server desactivado: se explica sin guardar nada", async ({
   });
   expect(registration.status()).toBe(201);
   await page.goto("/new");
-  const panel = page.getByRole("region", { name: "Conectar SQL Server" });
-  await panel.getByRole("button", { name: "Conectar" }).click();
-  await panel.getByLabel("Servidor").fill("sql.example.com");
-  await panel.getByLabel("Base de datos").fill("ventas");
-  await panel.getByLabel("Usuario").fill("lector");
-  await panel.getByLabel("Contraseña").fill("no-se-guarda");
-  await panel.getByRole("button", { name: "Copiar tablas y analizar" }).click();
-  await expect(panel.getByRole("alert")).toContainText(
-    "no está activada en este entorno",
-  );
-  await expect(panel.getByLabel("Contraseña")).toHaveValue("");
+  // Fase 31: la conexión es una de las tres opciones de la pantalla de carga.
+  await page
+    .getByRole("radiogroup", { name: "Cómo traer los datos" })
+    .getByRole("radio", { name: /Conectar base de datos/ })
+    .click();
+  await page.getByLabel("Nombre del proyecto").fill("Ventas desde SQL");
+  await page.getByLabel("Servidor").fill("sql.example.com");
+  await page.getByLabel("Base de datos").fill("ventas");
+  await page.getByLabel("Usuario").fill("lector");
+  await page.getByLabel("Contraseña").fill("no-se-guarda");
+  await page.getByRole("button", { name: "Continuar al análisis" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "SQL Server" }),
+  ).toContainText("no está activada en este entorno");
+  await expect(page.getByLabel("Contraseña")).toHaveValue("");
 });
