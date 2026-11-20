@@ -1,6 +1,7 @@
 # Fase 32 — Conexión a bases de datos públicas
 
-Estado: **diseño aceptado** (pendiente de implementar). Decisión:
+Estado: **32A implementada** (API 0.40.0, migración 0029); **32B pendiente** (sin ella el
+modo público no arranca salvo en desarrollo). Decisión:
 [ADR-050](../adr/050-public-database-connections.md). Amplía la [Fase 31](phase-31.md)
 ([ADR-049](../adr/049-related-sources-and-postgresql.md) §7) y la Fase 18B
 ([ADR-035](../adr/035-regional-sources-tables-and-structure.md) §8).
@@ -44,14 +45,19 @@ SQL Server no pueda verificar certificados ni impedir redirecciones (ver «Decis
 
 ## Regla `database-destination-v1`
 
-Función pura en `integrations/sources/destination.py`: recibe el servidor, el puerto, las
-direcciones resueltas y la política (modo, lista, denegados), y devuelve `Permitido(ip)` o
-`Denegado(código)`. No resuelve nombres ni lee la configuración: quien llama le pasa todo.
+`decide` en `platform/destinations.py` es pura: recibe el servidor, las direcciones resueltas
+y la política (lista, modo público, redes denegadas) y devuelve `Allowed(ip, acceso)` o
+`Denied(motivo)`. No lee la configuración: quien llama le pasa la política. `resolve` (A y
+AAAA con la resolución del sistema; una IP escrita tal cual no consulta el DNS) es la única
+parte con red. Vive en `platform` y no en `integrations/sources` porque la usan la API y el
+subproceso de ingesta, y sólo el subproceso puede importar los lectores de fuentes (prueba de
+arquitectura de la Fase 12).
 
-1. Servidor en la lista (coincidencia exacta, sin distinguir mayúsculas) → permitido, fijado a
-   su primera dirección resuelta. No se mira el tipo de dirección.
+1. Servidor en la lista (coincidencia exacta, sin distinguir mayúsculas) → permitido. No se
+   mira el tipo de dirección. PostgreSQL se fija a su primera dirección; SQL Server sigue
+   conectando por el nombre (Azure SQL lo necesita para enrutar la sesión).
 2. Fuera de la lista y modo público desactivado → `*_HOST_NOT_ALLOWED` (como hoy).
-3. Sin direcciones (A y AAAA, plazo de 5 s) → `DATABASE_HOST_UNKNOWN`.
+3. Sin direcciones → `DATABASE_HOST_UNKNOWN`.
 4. **Alguna** dirección no global → `DATABASE_HOST_PRIVATE`. Se rechaza el nombre entero aunque
    otras direcciones sean públicas. No global: `ipaddress.ip_address(x).is_global` falso
    (privadas, `127/8`, `0/8`, `169.254/16`, `100.64/10`, multidifusión, reservadas, `::1`,
@@ -63,17 +69,18 @@ direcciones resueltas y la política (modo, lista, denegados), y devuelve `Permi
    (nombres o rangos CIDR de otra infraestructura propia).
 6. Permitido → se conecta **a esa IP**, nunca al nombre.
 
-La regla se aplica dos veces: en la API, para responder rápido sin lanzar el subproceso, y en el
-subproceso, justo antes de conectar, que es la que cuenta (la resolución de la API puede haber
-cambiado). La validación actual del campo servidor (`^[A-Za-z0-9.\-]+$`) se mantiene: impide
+La regla se aplica dos veces: en la API, para responder rápido sin lanzar el subproceso (un
+servidor de la lista no se resuelve ahí), y en el subproceso, justo antes de conectar, que es
+la que cuenta (la resolución de la API puede haber cambiado). La política viaja al subproceso
+en sus parámetros; sin ella (llamadas internas), el servidor se trata como de la lista. La validación actual del campo servidor (`^[A-Za-z0-9.\-]+$`) se mantiene: impide
 listas de hosts de libpq (`a,b`), instancias de SQL Server (`host\instancia`) y rutas de socket.
 
 ## Conexión fijada y cifrada
 
-| Motor      | Modo lista (como hoy)             | Modo público                                                                                                         |
-| ---------- | --------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
-| PostgreSQL | `host=<nombre>`, `sslmode=prefer` | `host=<nombre>` + `hostaddr=<ip fijada>`, `sslmode=verify-full`, `sslrootcert=system` o el certificado de la persona |
-| SQL Server | `encryption=require`              | No disponible en esta fase                                                                                           |
+| Motor      | Modo lista (como hoy)                                      | Modo público                                                                                                         |
+| ---------- | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| PostgreSQL | `host=<nombre>` + `hostaddr=<ip fijada>`, `sslmode=prefer` | `host=<nombre>` + `hostaddr=<ip fijada>`, `sslmode=verify-full`, `sslrootcert=system` o el certificado de la persona |
+| SQL Server | `server=<nombre>`, `encryption=require`                    | No disponible en esta fase                                                                                           |
 
 - `hostaddr` hace que libpq conecte a la IP comprobada y use el nombre sólo para verificar el
   certificado (libpq 18.0 incluido en `psycopg[binary]`; `sslrootcert=system` exige libpq ≥ 16).
@@ -81,17 +88,23 @@ listas de hosts de libpq (`a,b`), instancias de SQL Server (`host\instancia`) y 
   Campo opcional **«Certificado del servidor»** (PEM, hasta 16 KB) dentro de «Opciones
   avanzadas»; se usa en esa conexión y se descarta, como la contraseña.
 - Sin cifrado verificable → `DATABASE_TLS_UNVERIFIED` con un mensaje que explica qué falta.
+- La copia guarda cómo se cifró la conexión: `verified`, `encrypted` (SSL sin verificar, sólo
+  en la lista) o `none`.
 
 ## Límites frente a un servidor hostil
 
 El servidor remoto lo controla la persona que conecta, así que todo lo que devuelve se trata
 como entrada no confiable:
 
-- Consultas al catálogo con `LIMIT` (500 tablas, 5000 columnas).
-- Copia con `fetchmany(1000)` y cuenta de bytes: una celda de más de 64 KB omite la tabla con su
-  motivo; al pasar de `DATAFLOW_DATABASE_MAX_BYTES` (50 MB) se detiene la copia
-  (`DATABASE_TOO_LARGE`). Nunca se trunca, igual que hoy con las filas.
-- Límite de memoria del subproceso (`RLIMIT_AS`, 1 GiB, en Linux; en Windows sólo el plazo).
+- Catálogo de PostgreSQL acotado (500 tablas, 5000 columnas): si el esquema tiene más,
+  `DATABASE_TOO_LARGE`. El de SQL Server (sólo servidores de la lista) no cambia.
+- Copia por lotes de 1000 filas y cuenta de bytes, en los dos motores: una celda de más de
+  `DATAFLOW_DATABASE_MAX_CELL_BYTES` (64 KB) omite la tabla con su motivo; al pasar de
+  `DATAFLOW_DATABASE_MAX_BYTES` (50 MB) se detiene la copia (`DATABASE_TOO_LARGE`). Nunca se
+  trunca, igual que con las filas. En PostgreSQL con un cursor del servidor: con el cursor
+  normal de psycopg la consulta entera llega a memoria antes del primer lote.
+- Límite de memoria del subproceso de copia (`RLIMIT_AS`): la memoria virtual que ya reservó al
+  arrancar (Python y sus bibliotecas) más 1 GiB. Sólo en Linux; en Windows queda el plazo.
 - Los mensajes del servidor nunca llegan a la persona ni al registro: sólo los códigos propios.
 
 ## Intentos
@@ -111,10 +124,13 @@ DataFlow se use para probar contraseñas contra su servidor.
 
 ## Aislamiento
 
-**32A — en la aplicación.** `run_isolated` deja de heredar `os.environ`: pasa sólo `PATH`,
-`SYSTEMROOT`, `TEMP`/`TMP`, `HOME`, `PYTHONPATH` si existe y `POLARS_MAX_THREADS`. Sin
-`DATAFLOW_*`, `PG*`, `FREETDS*`, `SSL*` ni variables de proxy. Vale para todos los pasos
-aislados, no sólo para las bases.
+**32A — en la aplicación** (implementada). `run_isolated` deja de heredar `os.environ`: pasa
+sólo lo necesario para arrancar Python (`PATH`, `SYSTEMROOT`, `TEMP`/`TMP`, `HOME`,
+`PYTHONPATH`…) y `SSL_CERT_FILE`/`SSL_CERT_DIR` (los fija quien administra el servidor y
+`sslrootcert=system` los usa). Sin `DATAFLOW_*`, `PG*`, `FREETDS*` ni variables de proxy. El
+subproceso trabaja dentro de su directorio temporal (no ve el `.env` de la API) y arranca con
+`python -P` (ese directorio no entra en `sys.path`). Vale para todos los pasos aislados, no sólo
+para las bases.
 
 **32B — en el despliegue.** Nuevo servicio `connector` (misma imagen,
 `python -m dataflow.bootstrap.connector`) que hace las copias y fotos de bases. La API lo llama
@@ -135,7 +151,9 @@ red egress            : connector ──▶ internet   (cortafuegos: sin RFC 191
   (redirecciones del controlador, errores de libpq o FreeTDS).
 - Con `DATAFLOW_DATABASE_PUBLIC_ACCESS=true` y sin `DATAFLOW_CONNECTOR_URL`, la API **no
   arranca**, salvo con `DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true` (sólo para desarrollo local),
-  igual que `bootstrap/operations.py` falla al arrancar cuando falta una pieza.
+  igual que `bootstrap/operations.py` falla al arrancar cuando falta una pieza. Desde la 32A
+  la comprobación ya existe (`Settings.require_database_isolation`): como aún no hay
+  `connector`, el modo público sólo arranca con `DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true`.
 
 ## Experiencia
 
@@ -156,13 +174,15 @@ Sin pasos nuevos para la persona. En «Conectar base de datos», con el modo pú
 
 ## API
 
-- `GET /api/v1/database-access` (`getDatabaseAccess`): `{"mode": "disabled" | "allowlist" |
-"public", "engines": ["postgresql", "sqlserver"], "egress_ips": [...]}`. La web decide con
-  esto qué mostrar en lugar de descubrirlo por el error 503.
-- `PostgresConnection` añade `ca_certificate: str | None` (PEM, hasta 16 KB). No entra en el
-  plan, en la huella de idempotencia ni en el registro.
+- `GET /api/v1/database-access` (`getDatabaseAccess`, con sesión): `{"postgresql":
+"disabled" | "allowlist" | "public", "sqlserver": "disabled" | "allowlist", "egress_ips":
+[...]}` (las direcciones, sólo en el modo público). La web decide con esto qué mostrar en
+  lugar de descubrirlo por el error 503.
+- `PostgresConnection` añade `ca_certificate` (secreto, PEM, hasta 16 KB; vacío = ninguno).
+  No entra en el plan, en la huella de idempotencia ni en el registro.
 - Errores nuevos: 422 `DATABASE_HOST_PRIVATE`, `DATABASE_HOST_UNKNOWN`,
-  `DATABASE_TLS_UNVERIFIED`; 413 `DATABASE_TOO_LARGE`; 429 `DATABASE_RATE_LIMITED`.
+  `DATABASE_TLS_UNVERIFIED` y `DATABASE_TOO_LARGE` (los que detecta el subproceso salen, como
+  todos los suyos, con 422); 429 `DATABASE_RATE_LIMITED`.
 - `source_origin` añade `access` (`allowlist` | `public`) y `tls` (`verified` | `encrypted` |
   `none`). Es JSON del plan: sin migración.
 
@@ -174,6 +194,7 @@ Sin pasos nuevos para la persona. En «Conectar base de datos», con el modo pú
 | `DATAFLOW_DATABASE_DENIED_HOSTS`        | `[]`        | Nombres o CIDR propios que nunca se conectan              |
 | `DATAFLOW_DATABASE_EGRESS_IPS`          | `[]`        | Direcciones de salida que se muestran a la persona        |
 | `DATAFLOW_DATABASE_MAX_BYTES`           | `52428800`  | Tamaño máximo de una copia                                |
+| `DATAFLOW_DATABASE_MAX_CELL_BYTES`      | `65536`     | Tamaño máximo de una celda                                |
 | `DATAFLOW_DATABASE_ATTEMPTS_PER_USER`   | `10`        | Intentos por usuario en 15 min                            |
 | `DATAFLOW_DATABASE_FAILURES_PER_DAY`    | `30`        | Intentos fallidos por usuario y día                       |
 | `DATAFLOW_DATABASE_ATTEMPTS_PER_TARGET` | `20`        | Intentos hacia un destino en 15 min                       |
@@ -183,43 +204,50 @@ Sin pasos nuevos para la persona. En «Conectar base de datos», con el modo pú
 
 ## Piezas
 
-| Pieza                                         | Dónde                                                 |
-| --------------------------------------------- | ----------------------------------------------------- |
-| Regla `database-destination-v1` (pura)        | `integrations/sources/destination.py`                 |
-| Resolución y fijación antes de conectar       | `integrations/sources/postgresql_reader.py`           |
-| Límites de bytes y `fetchmany`                | `postgresql_reader.py`, `sqlserver_reader.py`         |
-| Entorno mínimo del subproceso                 | `platform/isolation.py`                               |
-| Intentos (`database_attempts`, 0029)          | `modules/ingestion/infrastructure.py`                 |
-| Comprobación previa, intentos y modo          | `modules/ingestion/application.py`                    |
-| Ruta `database-access` y campo de certificado | `modules/ingestion/presentation.py`, `contracts.py`   |
-| Servicio `connector` (32B)                    | `bootstrap/connector.py`, `infrastructure/compose/`   |
-| Nota, opciones avanzadas y mensajes           | `apps/web/src/features/ingestion/database-fields.tsx` |
+| Pieza                                         | Dónde                                                      |
+| --------------------------------------------- | ---------------------------------------------------------- |
+| Regla `database-destination-v1` y `resolve`   | `platform/destinations.py`                                 |
+| Comprobación en el subproceso y memoria       | `modules/ingestion/processor.py`                           |
+| Conexión fijada y `verify-full`               | `integrations/sources/postgresql_reader.py`                |
+| Límites de bytes y lotes (`fetch_rows`)       | `sqlserver_reader.py` (compartido), `postgresql_reader.py` |
+| Entorno mínimo del subproceso                 | `platform/isolation.py`                                    |
+| Intentos (`database_attempts`, 0029)          | `modules/ingestion/infrastructure.py`                      |
+| Comprobación previa, intentos y modo          | `modules/ingestion/application.py`                         |
+| Ruta `database-access` y campo de certificado | `modules/ingestion/presentation.py`, `contracts.py`        |
+| Arranque condicionado                         | `platform/config.py`, `bootstrap/app.py`                   |
+| Servicio `connector` (32B)                    | `bootstrap/connector.py`, `infrastructure/compose/`        |
+| Nota, opciones avanzadas y mensajes           | `apps/web/src/features/ingestion/database-fields.tsx`      |
 
 ## Pruebas
 
-- `destination.py`: tabla de casos con cada rango no global en IPv4 e IPv6, IPv4 incrustada,
-  nombres con mezcla de direcciones públicas y privadas, lista, denegados por nombre y por CIDR,
-  la IP de `DATAFLOW_DATABASE_URL`.
-- Fijación: un resolvedor falso que devuelve una IP pública en la API y `127.0.0.1` en el
+32A, en `test_phase32_public_databases.py`, `test_migration_0029.py` y `test_architecture.py`:
+
+- `decide`: cada rango no global en IPv4 e IPv6 (incluidas las IPv4 mapeadas, NAT64 y 6to4),
+  nombres con mezcla de direcciones públicas y privadas, lista, redes denegadas.
+- Subproceso: un resolvedor que devuelve una IP pública en la API y `127.0.0.1` en el
   subproceso → rechazado (rebinding).
-- PostgreSQL real de pruebas: modo público rechaza `127.0.0.1` y `localhost`; modo lista sigue
-  aceptándolos; `verify-full` contra un servidor con certificado autofirmado falla sin el campo
-  y funciona con él.
-- Servidor hostil simulado: celdas de 1 MB, catálogo de 10 000 tablas, copia que pasa de
-  `MAX_BYTES` → omitida o `DATABASE_TOO_LARGE`, sin agotar memoria.
-- `isolation.py`: el subproceso no ve `DATAFLOW_DATABASE_URL`, `DATAFLOW_AI_API_KEY` ni `PG*`.
-- Intentos: los tres límites con peticiones concurrentes (mismo bloqueo consultivo que el
-  inicio de sesión).
-- `test_architecture.py`: `destination.py` no importa la configuración ni redes; los lectores
-  sólo conectan con una IP que salió de la regla.
-- 32B: prueba de Compose donde `connector` no alcanza `postgres:5432` ni `169.254.169.254`.
+- API en modo público: `127.0.0.1`, `localhost` y `169.254.169.254` → `DATABASE_HOST_PRIVATE`;
+  un nombre inexistente → `DATABASE_HOST_UNKNOWN`; la base de DataFlow se deniega aunque tenga
+  IP pública; los servidores de la lista siguen funcionando; SQL Server sigue con la lista.
+- PostgreSQL real de pruebas (sin SSL): `verify-full` → `DATABASE_TLS_UNVERIFIED`; una celda de
+  70 KB omite la tabla; un total pequeño → `DATABASE_TOO_LARGE`; la copia guarda `access` y
+  `tls`.
+- Lotes y catálogo con cursores simulados (501 tablas → `DATABASE_TOO_LARGE`).
+- Intentos: límite por cuenta en la API (429) y, en la migración, los tres límites, las huellas y
+  la purga a las 24 h.
+- `isolation.py`: el subproceso no ve `DATAFLOW_*`, `PG*`, `FREETDS*` ni proxies; trabaja en su
+  directorio temporal y arranca con `-P`.
+- `test_architecture.py`: `platform/destinations.py` sólo usa la biblioteca estándar.
+- Pendiente: `verify-full` con éxito contra un servidor con certificado propio (la base de
+  pruebas no tiene SSL) y, en la 32B, la prueba de Compose donde `connector` no alcanza
+  `postgres:5432` ni `169.254.169.254`.
 
 ## Etapas y criterios de aceptación
 
-| Etapa | Contenido                                                                    | Se puede activar en producción |
-| ----- | ---------------------------------------------------------------------------- | ------------------------------ |
-| 32A   | Regla, fijación, TLS verificado, límites, intentos, entorno mínimo, interfaz | No                             |
-| 32B   | Servicio `connector`, redes, cortafuegos de salida, arranque condicionado    | Sí                             |
+| Etapa | Contenido                                                                                   | Se puede activar en producción |
+| ----- | ------------------------------------------------------------------------------------------- | ------------------------------ |
+| 32A   | Regla, fijación, TLS verificado, límites, intentos, entorno mínimo, interfaz (implementada) | No                             |
+| 32B   | Servicio `connector`, redes, cortafuegos de salida (pendiente)                              | Sí                             |
 
 La fase está terminada cuando una persona puede conectar una base PostgreSQL pública (por
 ejemplo, Pagila en un servicio gestionado) y analizarla, y las pruebas demuestran que ninguno
@@ -232,6 +260,8 @@ de los riesgos de la tabla inicial sigue abierto.
 - Bases detrás de una VPN o sin IP pública siguen necesitando la lista (o un túnel que la
   persona exponga).
 - El límite de memoria del subproceso sólo existe en Linux.
+- La copia por lotes no evita que una sola celda enorme llegue a memoria antes de medirla; lo
+  frena el límite de memoria del subproceso (y el plazo de cada consulta).
 - Un servidor público legítimo que comparte IP con algo denegado no se puede conectar.
 
 ## Decisiones del usuario

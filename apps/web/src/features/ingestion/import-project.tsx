@@ -187,7 +187,12 @@ export function ImportProject() {
         } as const)
       : ({
           engine: "postgresql",
-          connection: { ...common, schema_name: database.schema.trim() },
+          connection: {
+            ...common,
+            schema_name: database.schema.trim(),
+            // Fase 32: sólo se usa en el modo público; vacío, ninguno.
+            ca_certificate: database.certificate.trim() || null,
+          },
         } as const);
   }
   async function ensureProject(data: FormData) {

@@ -6,6 +6,7 @@ import csv
 import hashlib
 import io
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -16,7 +17,7 @@ from dataflow.integrations.sources.pdf_reader import read_table as pdf_read_tabl
 from dataflow.integrations.sources.pdf_reader import select as pdf_select
 from dataflow.integrations.sources.postgresql_reader import connect as pg_connect
 from dataflow.integrations.sources.postgresql_reader import read_database as pg_read_database
-from dataflow.integrations.sources.sqlserver_reader import connect, read_database
+from dataflow.integrations.sources.sqlserver_reader import Budget, connect, read_database
 from dataflow.integrations.sources.xlsx_reader import (
     SELECTION_RULE_V2,
     Workbook,
@@ -61,6 +62,7 @@ from dataflow.modules.understanding.public import (
     interpret,
     profile_rows,
 )
+from dataflow.platform import destinations
 from dataflow.platform.csv_export import write_csv
 from dataflow.platform.data_types import DataType
 from dataflow.platform.errors import ApplicationError
@@ -286,10 +288,74 @@ def read_xlsx_table(
     )
 
 
+def budget(params: dict[str, Any]) -> Budget:
+    """Fase 32: límites de la copia que llegan con los parámetros (o los de por defecto)."""
+    default = Budget()
+    return Budget(
+        int(params.get("max_bytes", default.max_bytes)),
+        int(params.get("max_cell_bytes", default.max_cell_bytes)),
+    )
+
+
+def limit_memory(extra: int = 1024 * 1024 * 1024) -> None:
+    """Fase 32: un servidor que no controlamos no puede agotar la memoria. El límite es la
+    memoria virtual que el proceso ya tiene reservada (Python y sus bibliotecas) más `extra`.
+    Sólo en Linux; en Windows queda el plazo del proceso."""
+    if sys.platform != "linux":
+        return
+    import resource
+
+    try:
+        status = Path("/proc/self/status").read_text(encoding="utf-8")
+    except OSError:
+        return
+    size = next((line.split()[1] for line in status.splitlines() if line.startswith("VmSize:")), "")
+    if not size.isdigit():
+        return
+    limit = int(size) * 1024 + extra
+    resource.setrlimit(resource.RLIMIT_AS, (limit, limit))
+
+
+REFUSALS = {
+    "DISABLED": (
+        "POSTGRESQL_DISABLED",
+        "La conexión a PostgreSQL no está activada en este entorno.",
+    ),
+    "HOST_NOT_ALLOWED": (
+        "POSTGRESQL_HOST_NOT_ALLOWED",
+        "Ese servidor no está en la lista de servidores permitidos.",
+    ),
+    "HOST_UNKNOWN": ("DATABASE_HOST_UNKNOWN", "No se encontró ese servidor. Revisa el nombre."),
+    "HOST_PRIVATE": (
+        "DATABASE_HOST_PRIVATE",
+        "Esa dirección pertenece a una red privada. DataFlow sólo se conecta a servidores "
+        "accesibles desde internet.",
+    ),
+}
+
+
+def postgresql_destination(params: dict[str, Any]) -> destinations.Allowed:
+    """Fase 32 (`database-destination-v1`): la comprobación que cuenta, justo antes de conectar
+    y con la resolución de este proceso. Sin política (llamadas internas y pruebas), el servidor
+    se trata como de la lista."""
+    server, port = str(params["server"]), int(params["port"])
+    policy = (
+        destinations.DestinationPolicy.from_json(params["policy"])
+        if params.get("policy") is not None
+        else destinations.DestinationPolicy((server,))
+    )
+    decision = destinations.decide(server, destinations.resolve(server, port), policy)
+    if isinstance(decision, destinations.Denied):
+        code, message = REFUSALS[decision.reason]
+        raise ApplicationError(code, message, 422)
+    return decision
+
+
 def snapshot_sqlserver(source: Path, output: Path, max_rows: int, max_columns: int) -> None:
     """Fase 18B: copia las tablas elegidas por `sqlserver-selection-v1` como CSV estándar. La
     contraseña sólo existe en el directorio temporal de este proceso."""
     params = json.loads(source.read_text(encoding="utf-8"))
+    limit_memory()
     result = read_database(
         lambda: connect(
             str(params["server"]),
@@ -302,8 +368,9 @@ def snapshot_sqlserver(source: Path, output: Path, max_rows: int, max_columns: i
         max_rows,
         max_columns,
         params.get("schema"),
+        budget(params),
     )
-    write_snapshot(output, result)
+    write_snapshot(output, result, "allowlist")
 
 
 def related_table(
@@ -428,6 +495,16 @@ def snapshot_postgresql(source: Path, output: Path, max_rows: int, max_columns: 
     """Fase 31: copia las tablas de un esquema elegidas por `postgresql-selection-v1` como CSV
     estándar. La contraseña sólo existe en el directorio temporal de este proceso."""
     params = json.loads(source.read_text(encoding="utf-8"))
+    limit_memory()
+    destination = postgresql_destination(params)
+    # Fase 32: en el modo público el certificado se verifica siempre; el de la persona (si lo
+    # pegó) sólo existe en el directorio temporal de este proceso, como la contraseña.
+    verify = destination.access == "public"
+    ca_file: str | None = None
+    if verify and params.get("ca_certificate"):
+        path = source.parent / "server-ca.pem"
+        path.write_text(str(params["ca_certificate"]), encoding="utf-8")
+        ca_file = str(path)
     result = pg_read_database(
         lambda: pg_connect(
             str(params["server"]),
@@ -436,16 +513,23 @@ def snapshot_postgresql(source: Path, output: Path, max_rows: int, max_columns: 
             str(params["user"]),
             str(params["password"]),
             int(params["timeout"]),
+            destination.address,
+            verify,
+            ca_file,
         ),
         str(params["schema"]),
         max_rows,
         max_columns,
+        budget(params),
+        verify,
     )
-    write_snapshot(output, result)
+    write_snapshot(output, result, destination.access)
 
 
-def write_snapshot(output: Path, result: Any) -> None:
+def write_snapshot(output: Path, result: Any, access: str | None = None) -> None:
     snapshot = SqlSnapshot(
+        access=access,
+        tls=getattr(result, "tls", None),
         tables=[
             SnapshotTable(
                 label=table.label,

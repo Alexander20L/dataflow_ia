@@ -199,6 +199,10 @@ def test_sqlserver_reader_keeps_declared_foreign_keys() -> None:
         def fetchall(self) -> list[tuple[object, ...]]:
             return self.result
 
+        def fetchmany(self, size: int) -> list[tuple[object, ...]]:
+            batch, self.result = self.result[:size], self.result[size:]
+            return batch
+
     class Connection:
         def cursor(self) -> Cursor:
             return Cursor()

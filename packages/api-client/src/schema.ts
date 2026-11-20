@@ -68,6 +68,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/database-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Database Access
+         * @description Fase 32: a qué bases se puede conectar en este entorno y, en el modo público, desde qué
+         *     direcciones sale DataFlow (la persona debe permitirlas en su base).
+         */
+        get: operations["getDatabaseAccess"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datasets/summary": {
         parameters: {
             query?: never;
@@ -330,7 +351,8 @@ export interface paths {
          * @description Fase 31: copia de un solo uso de las tablas de un esquema de PostgreSQL
          *     (`postgresql-selection-v1`); cada tabla es una versión con su CSV original y, si se
          *     relacionan (`relations-v1`), la tabla unida es la versión que se devuelve. La contraseña se
-         *     usa para la copia y se descarta. Sólo servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS`.
+         *     usa para la copia y se descarta. Servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS` o, con el
+         *     modo público (Fase 32), cualquiera con direcciones públicas (`database-destination-v1`).
          */
         post: operations["importPostgresql"];
         delete?: never;
@@ -2630,6 +2652,26 @@ export interface components {
             /** Views */
             views: components["schemas"]["RelatedView"][];
         };
+        /**
+         * DatabaseAccess
+         * @description Fase 32 (ADR-050): a qué bases se puede conectar en este entorno, para que la pantalla
+         *     de carga muestre lo que corresponde. `public`: cualquier servidor accesible desde internet
+         *     (sólo PostgreSQL); `allowlist`: sólo los de la lista; `disabled`: ninguno.
+         */
+        DatabaseAccess: {
+            /** Egress Ips */
+            egress_ips?: string[];
+            /**
+             * Postgresql
+             * @enum {string}
+             */
+            postgresql: "disabled" | "allowlist" | "public";
+            /**
+             * Sqlserver
+             * @enum {string}
+             */
+            sqlserver: "disabled" | "allowlist";
+        };
         /** DatasetProfile */
         DatasetProfile: {
             /** Column Count */
@@ -4828,6 +4870,8 @@ export interface components {
          *     se usa para copiar las tablas de un esquema y se descarta.
          */
         PostgresConnection: {
+            /** Ca Certificate */
+            ca_certificate?: string | null;
             /** Database */
             database: string;
             /**
@@ -5661,6 +5705,8 @@ export interface components {
          *     tablas o una vista (`joined`), con el modelo de datos que decidió `relations-v1`.
          */
         SourceOrigin: {
+            /** Access */
+            access?: ("allowlist" | "public") | null;
             /** Analyzed Together */
             analyzed_together?: string[];
             /** Captured At */
@@ -5698,6 +5744,8 @@ export interface components {
             table: string;
             /** Tables */
             tables?: components["schemas"]["RelatedTable"][];
+            /** Tls */
+            tls?: ("verified" | "encrypted" | "none") | null;
             /** View Kind */
             view_kind?: ("fact" | "entity") | null;
             /** Views */
@@ -6631,6 +6679,127 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SessionResponse"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDatabaseAccess: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatabaseAccess"];
                 };
             };
             /** @description Bad Request */

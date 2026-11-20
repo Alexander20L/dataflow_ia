@@ -105,7 +105,12 @@ from dataflow.modules.executions.contracts import (
 from dataflow.modules.executions.infrastructure import SQLExecutionRepository
 from dataflow.modules.exploration.infrastructure import SQLInvestigationControls
 from dataflow.modules.ingestion.analytical import IsolatedAnalyzer, PolarsPreview
-from dataflow.modules.ingestion.application import AnalysisService, Analyzer, IngestionService
+from dataflow.modules.ingestion.application import (
+    AnalysisService,
+    Analyzer,
+    AttemptLimits,
+    IngestionService,
+)
 from dataflow.modules.ingestion.contracts import SourceReview
 from dataflow.modules.ingestion.executor import (
     ProfileStep,
@@ -119,6 +124,7 @@ from dataflow.modules.ingestion.executor import (
     SourceInputResolver,
     TableInputResolver,
 )
+from dataflow.modules.ingestion.infrastructure import SQLConnectionAttempts
 from dataflow.modules.ingestion.plans import analysis_fingerprint, build_plan
 from dataflow.modules.inspection.public import SQLColumnAnnotations
 from dataflow.modules.planning.application import PlanningService
@@ -169,6 +175,14 @@ def make_ingestion(db: Session, objects: LocalObjects) -> IngestionService:
             settings.processing_timeout_seconds,
             settings.max_csv_rows,
             settings.max_csv_columns,
+            settings.database_max_bytes,
+            settings.database_max_cell_bytes,
+        ),
+        SQLConnectionAttempts(db),
+        AttemptLimits(
+            settings.database_attempts_per_user,
+            settings.database_failures_per_day,
+            settings.database_attempts_per_target,
         ),
     )
 

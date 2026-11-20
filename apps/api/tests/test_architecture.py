@@ -250,6 +250,21 @@ def test_source_readers_run_only_in_the_isolated_ingestion_process() -> None:
                 ), name
 
 
+def test_the_destination_rule_only_uses_the_standard_library() -> None:
+    """Fase 32 (ADR-050): `database-destination-v1` es pura salvo `resolve`; la usan la API y
+    el subproceso de ingesta, así que no puede leer la configuración ni módulos de negocio: quien
+    llama le pasa la política."""
+    path = Path(__file__).resolve().parents[1] / "src" / "dataflow" / "platform" / "destinations.py"
+    for module in imports(ast.parse(path.read_text(encoding="utf-8"))):
+        assert module.split(".")[0] in {
+            "ipaddress",
+            "socket",
+            "collections",
+            "dataclasses",
+            "typing",
+        }, module
+
+
 def test_delivery_only_reorders_published_results() -> None:
     """Fase 17 (ADR-034): la entrega lee contratos publicados; no calcula, no accede a la base
     de datos ni a la IA, y ReportLab sólo se usa en su renderizador."""

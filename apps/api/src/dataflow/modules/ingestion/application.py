@@ -52,8 +52,10 @@ from dataflow.modules.ingestion.structure import compare
 from dataflow.modules.quality.contracts import QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
 from dataflow.modules.understanding.public import SemanticReference, SemanticService, TableReference
+from dataflow.platform import destinations
 from dataflow.platform.canonical import digest
 from dataflow.platform.csv_export import CsvProfile, table_csv
+from dataflow.platform.destinations import DestinationPolicy
 from dataflow.platform.errors import ApplicationError
 from dataflow.platform.transactions import UnitOfWork
 
@@ -136,7 +138,10 @@ class XlsxInspector(Protocol):
 
     def select_pdf(self, content: bytes, config: ProcessingConfig) -> PdfSelection: ...
     def snapshot_postgresql(
-        self, connection: PostgresConnection, config: ProcessingConfig
+        self,
+        connection: PostgresConnection,
+        config: ProcessingConfig,
+        policy: DestinationPolicy | None = None,
     ) -> SqlSnapshot: ...
     def relate(self, payload: bytes, config: ProcessingConfig) -> RelatedSet: ...
     def snapshot_sqlserver(
@@ -152,6 +157,48 @@ class XlsxInspector(Protocol):
         config: ProcessingConfig,
     ) -> XlsxInspection: ...
 
+
+@dataclass(frozen=True)
+class AttemptLimits:
+    """Fase 32 (ADR-050): intentos de conexión a bases de datos. Por usuario en 15 min, fallidos
+    por usuario y día, y hacia un mismo destino en 15 min (todas las cuentas: protege a terceros
+    de que DataFlow sirva para probar contraseñas contra su servidor)."""
+
+    per_user: int = 10
+    failures_per_day: int = 30
+    per_target: int = 20
+
+
+class ConnectionAttempts(Protocol):
+    def admit(self, user: UUID, client: str, target: str, limits: AttemptLimits) -> UUID | None:
+        """Registra el intento y devuelve su id, o None si supera algún límite."""
+        ...
+
+    def succeeded(self, attempt: UUID) -> None: ...
+
+
+@dataclass(frozen=True)
+class ConnectionAccess:
+    """Fase 32: a qué servidores se puede conectar (`database-destination-v1`) y desde qué IP
+    llega la petición (para el límite de intentos)."""
+
+    policy: DestinationPolicy
+    client: str = ""
+
+
+DESTINATION_REFUSALS = {
+    "HOST_UNKNOWN": (
+        "DATABASE_HOST_UNKNOWN",
+        "No se encontró ese servidor. Revisa el nombre.",
+        422,
+    ),
+    "HOST_PRIVATE": (
+        "DATABASE_HOST_PRIVATE",
+        "Esa dirección pertenece a una red privada. DataFlow sólo se conecta a servidores "
+        "accesibles desde internet.",
+        422,
+    ),
+}
 
 XLSX_REJECTED = (".xls", ".xlsm", ".xlsb", ".xltm", ".xlt")
 UNSAFE_NAME = "/\\\x00\r\n"
@@ -244,11 +291,14 @@ class IngestionService:
         quota: int,
         maximum_upload: int = 5 * 1024 * 1024,
         inspector: XlsxInspector | None = None,
+        attempts: ConnectionAttempts | None = None,
+        attempt_limits: AttemptLimits | None = None,
     ) -> None:
         self.datasets, self.executions, self.objects = datasets, executions, objects
         self.projects, self.preview_reader, self.uow = projects, preview, uow
         self.config, self.quota, self.maximum_upload = config, quota, maximum_upload
         self.inspector = inspector
+        self.attempts, self.attempt_limits = attempts, attempt_limits or AttemptLimits()
 
     def submit(
         self,
@@ -439,7 +489,7 @@ class IngestionService:
         owner: UUID,
         project: UUID,
         connection: SqlServerConnection,
-        allowed_hosts: Sequence[str],
+        access: ConnectionAccess,
         key: UUID,
         correlation: str,
     ) -> Version:
@@ -449,7 +499,7 @@ class IngestionService:
         propia; la contraseña no se guarda. Fase 31 (`sqlserver-selection-v2`): un esquema
         opcional y hasta 10 tablas; con el modelo de datos de `relations-v1` (claves foráneas
         declaradas) cada vista es otra versión y la que se devuelve es la principal."""
-        snapshot = self._sqlserver_snapshot(owner, project, connection, allowed_hosts)
+        snapshot = self._sqlserver_snapshot(owner, project, connection, access)
         return self._submit_snapshot(
             owner,
             project,
@@ -466,13 +516,13 @@ class IngestionService:
         owner: UUID,
         project: UUID,
         connection: PostgresConnection,
-        allowed_hosts: Sequence[str],
+        access: ConnectionAccess,
         key: UUID,
         correlation: str,
     ) -> Version:
         """Fase 31: igual que SQL Server, con las tablas de un esquema de PostgreSQL
         (`postgresql-selection-v1`)."""
-        snapshot = self._postgresql_snapshot(owner, project, connection, allowed_hosts)
+        snapshot = self._postgresql_snapshot(owner, project, connection, access)
         return self._submit_snapshot(
             owner,
             project,
@@ -489,11 +539,11 @@ class IngestionService:
         owner: UUID,
         project: UUID,
         connection: SqlServerConnection,
-        allowed_hosts: Sequence[str],
+        access: ConnectionAccess,
     ) -> DataModel:
         """Fase 31: «foto» del esquema de SQL Server (tablas, claves y relaciones) sin guardar
         nada; la contraseña se usa para leer y se descarta."""
-        snapshot = self._sqlserver_snapshot(owner, project, connection, allowed_hosts)
+        snapshot = self._sqlserver_snapshot(owner, project, connection, access)
         return self._snapshot_model(snapshot)
 
     def inspect_postgresql(
@@ -501,10 +551,10 @@ class IngestionService:
         owner: UUID,
         project: UUID,
         connection: PostgresConnection,
-        allowed_hosts: Sequence[str],
+        access: ConnectionAccess,
     ) -> DataModel:
         """Fase 31: «foto» del esquema de PostgreSQL sin guardar nada."""
-        snapshot = self._postgresql_snapshot(owner, project, connection, allowed_hosts)
+        snapshot = self._postgresql_snapshot(owner, project, connection, access)
         return self._snapshot_model(snapshot)
 
     def _sqlserver_snapshot(
@@ -512,51 +562,104 @@ class IngestionService:
         owner: UUID,
         project: UUID,
         connection: SqlServerConnection,
-        allowed_hosts: Sequence[str],
+        access: ConnectionAccess,
     ) -> SqlSnapshot:
-        self._allowed(owner, project, connection.server, allowed_hosts, "SQLSERVER", "SQL Server")
+        # SQL Server sigue sólo con la lista (Fase 32): sin verificar certificados ni impedir
+        # redirecciones no se abre al modo público.
+        sqlserver = ConnectionAccess(
+            DestinationPolicy(access.policy.allowed_hosts, False, access.policy.denied),
+            access.client,
+        )
+        attempt = self._gate(
+            owner, project, connection.server, connection.port, sqlserver, "SQLSERVER", "SQL Server"
+        )
         if self.inspector is None:
             raise ApplicationError("SQLSERVER_UNAVAILABLE", "SQL Server no está activo.", 503)
-        return self.inspector.snapshot_sqlserver(connection, self.config)
+        snapshot = self.inspector.snapshot_sqlserver(connection, self.config)
+        self._succeeded(attempt)
+        return snapshot
 
     def _postgresql_snapshot(
         self,
         owner: UUID,
         project: UUID,
         connection: PostgresConnection,
-        allowed_hosts: Sequence[str],
+        access: ConnectionAccess,
     ) -> SqlSnapshot:
-        self._allowed(owner, project, connection.server, allowed_hosts, "POSTGRESQL", "PostgreSQL")
+        attempt = self._gate(
+            owner, project, connection.server, connection.port, access, "POSTGRESQL", "PostgreSQL"
+        )
         if self.inspector is None:
             raise ApplicationError("POSTGRESQL_UNAVAILABLE", "PostgreSQL no está activo.", 503)
-        return self.inspector.snapshot_postgresql(connection, self.config)
+        snapshot = self.inspector.snapshot_postgresql(connection, self.config, access.policy)
+        self._succeeded(attempt)
+        return snapshot
 
-    def _allowed(
+    def _gate(
         self,
         owner: UUID,
         project: UUID,
         server: str,
-        allowed_hosts: Sequence[str],
+        port: int,
+        access: ConnectionAccess,
         prefix: str,
         engine: str,
-    ) -> None:
+    ) -> UUID | None:
+        """Fase 32 (`database-destination-v1`, ADR-050): comprobación previa en la API, para
+        responder sin lanzar el subproceso (que la repite justo antes de conectar), y límite
+        de intentos. Un servidor de la lista no se resuelve aquí."""
         try:
             self.projects.require(owner, project, writable=True)
         finally:
             self.uow.rollback()
-        allowed = {host.strip().lower() for host in allowed_hosts if host.strip()}
-        if not allowed:
+        policy = access.policy
+        if not policy.enabled:
             raise ApplicationError(
                 f"{prefix}_DISABLED",
                 f"La conexión a {engine} no está activada en este entorno.",
                 503,
             )
-        if server.lower() not in allowed:
+        target = server.strip().lower()
+        if not policy.listed(server):
+            if not policy.public:
+                raise ApplicationError(
+                    f"{prefix}_HOST_NOT_ALLOWED",
+                    "Ese servidor no está en la lista de servidores permitidos.",
+                    422,
+                )
+            decision = destinations.decide(server, destinations.resolve(server, port), policy)
+            if isinstance(decision, destinations.Denied):
+                code, message, status = DESTINATION_REFUSALS[decision.reason]
+                raise ApplicationError(code, message, status)
+            target = decision.address
+        return self._admit(owner, access.client, target)
+
+    def _admit(self, owner: UUID, client: str, target: str) -> UUID | None:
+        if self.attempts is None:
+            return None
+        try:
+            attempt = self.attempts.admit(owner, client, target, self.attempt_limits)
+            self.uow.commit()
+        except Exception:
+            self.uow.rollback()
+            raise
+        if attempt is None:
             raise ApplicationError(
-                f"{prefix}_HOST_NOT_ALLOWED",
-                "Ese servidor no está en la lista de servidores permitidos.",
-                422,
+                "DATABASE_RATE_LIMITED",
+                "Demasiados intentos de conexión. Espera unos minutos.",
+                429,
             )
+        return attempt
+
+    def _succeeded(self, attempt: UUID | None) -> None:
+        if attempt is None or self.attempts is None:
+            return
+        try:
+            self.attempts.succeeded(attempt)
+            self.uow.commit()
+        except Exception:
+            self.uow.rollback()
+            raise
 
     def _relate(
         self, tables: list[tuple[str, str, bytes]], declared: list[dict[str, str]], data: bool
@@ -647,6 +750,8 @@ class IngestionService:
                 tables=related.tables if related else [],
                 relations=related.relations if related else [],
                 views=related.views if related else [],
+                access=snapshot.access,
+                tls=snapshot.tls,
             )
             file_name = table_file_name(table.label)
             fingerprint = digest(
@@ -671,6 +776,8 @@ class IngestionService:
             "database": database,
             "captured_at": captured,
             "omitted": snapshot.omitted,
+            "access": snapshot.access,
+            "tls": snapshot.tls,
         }
         return self._register_set(owner, project, related, members, origin, key, correlation)
 

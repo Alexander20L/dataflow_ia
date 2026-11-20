@@ -5038,6 +5038,53 @@ tbody tr:hover {
   font-size: 11px !important;
   margin: 4px 0 0;
 }
+/* Fase 32: modo público (nota con las direcciones de salida y certificado plegado). */
+.database-note {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-secondary);
+  font-size: 12px;
+}
+.database-note p {
+  margin: 0;
+}
+.database-note p + p {
+  margin-top: 4px;
+}
+.database-note svg {
+  flex: none;
+  margin-top: 2px;
+  color: var(--primary);
+}
+.database-note code {
+  overflow-wrap: anywhere;
+}
+.database-advanced {
+  font-size: 12px;
+}
+.database-advanced summary {
+  cursor: pointer;
+  color: var(--muted);
+}
+.database-advanced label {
+  display: block;
+  margin: 8px 0 4px;
+}
+.database-advanced textarea {
+  width: 100%;
+  min-width: 0;
+  font-family: ui-monospace, monospace;
+  font-size: 11px;
+}
+.database-hint {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+}
 .related-sources {
   margin: 12px 0;
   padding: 16px;

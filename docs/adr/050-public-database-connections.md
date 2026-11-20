@@ -1,6 +1,6 @@
 # ADR-050 — Conexión a bases de datos públicas
 
-Estado: diseño aceptado para guiar la Fase 32; implementación pendiente. Documentación:
+Estado: aceptado; 32A implementada (API 0.40.0, migración 0029), 32B pendiente. Documentación:
 [Fase 32](../architecture/phase-32.md). Modifica [ADR-049](049-related-sources-and-postgresql.md)
 §7 («sólo servidores permitidos», SSL `prefer`) y [ADR-035](035-regional-sources-tables-and-structure.md)
 §8 (SQL Server sólo a servidores de la lista).
@@ -22,7 +22,7 @@ la copia confía en el tamaño de lo que devuelve el servidor remoto.
 
 1. **Modo público opcional** (`DATAFLOW_DATABASE_PUBLIC_ACCESS`, desactivado por defecto) que se
    suma a la lista: la lista sigue valiendo para bases privadas de confianza.
-2. **Regla pura `database-destination-v1`**: se permite un servidor fuera de la lista sólo si
+2. **Regla pura `database-destination-v1`** (`platform/destinations.py`): se permite un servidor fuera de la lista sólo si
    **todas** sus direcciones son globales y ninguna está denegada (las de la base de DataFlow y
    `DATAFLOW_DATABASE_DENIED_HOSTS`). Se aplica en la API y otra vez en el subproceso justo
    antes de conectar.

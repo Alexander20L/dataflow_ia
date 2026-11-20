@@ -9,6 +9,42 @@ from tempfile import TemporaryDirectory
 
 from dataflow.platform.errors import ApplicationError
 
+# Fase 32 (ADR-050): el subproceso sólo hereda lo que necesita para arrancar Python y encontrar
+# certificados del sistema. Nunca `DATAFLOW_*` (URL de la base, clave de IA), `PG*` ni
+# `FREETDS*` (cambiarían a dónde conecta un controlador) ni variables de proxy.
+INHERITED = (
+    "PATH",
+    "PATHEXT",
+    "SYSTEMROOT",
+    "SYSTEMDRIVE",
+    "WINDIR",
+    "COMSPEC",
+    "TEMP",
+    "TMP",
+    "TMPDIR",
+    "HOME",
+    "USERPROFILE",
+    "LOCALAPPDATA",
+    "APPDATA",
+    "LANG",
+    "LC_ALL",
+    "LC_CTYPE",
+    "PYTHONPATH",
+    "PYTHONHOME",
+    "VIRTUAL_ENV",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "SSL_CERT_FILE",
+    "SSL_CERT_DIR",
+)
+
+
+def isolated_environment() -> dict[str, str]:
+    environment = {name: os.environ[name] for name in INHERITED if name in os.environ}
+    environment["POLARS_MAX_THREADS"] = "2"
+    environment["PYTHONIOENCODING"] = "utf-8"
+    return environment
+
 
 def run_isolated(
     scratch_root: Path,
@@ -25,17 +61,21 @@ def run_isolated(
     scratch = scratch_root / ".work"
     scratch.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=scratch) as temporary:
-        directory = Path(temporary)
+        # Ruta absoluta: el subproceso trabaja dentro del directorio temporal, así no lee el
+        # `.env` de la API ni nada de su carpeta.
+        directory = Path(temporary).resolve()
         for name, content in inputs.items():
             (directory / name).write_bytes(content)
         resolved = [argument.replace("{dir}", str(directory)) for argument in arguments]
         try:
             result = subprocess.run(
-                [sys.executable, "-m", module, "--output", str(directory), *resolved],
+                # `-P`: el directorio de trabajo (los archivos de entrada) no entra en sys.path.
+                [sys.executable, "-P", "-m", module, "--output", str(directory), *resolved],
                 timeout=timeout,
                 stdout=subprocess.DEVNULL,
                 stderr=subprocess.DEVNULL,
-                env={**os.environ, "POLARS_MAX_THREADS": "2"},
+                env=isolated_environment(),
+                cwd=directory,
                 check=False,
             )
         except subprocess.TimeoutExpired as exc:
