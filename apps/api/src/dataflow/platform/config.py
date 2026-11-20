@@ -26,7 +26,8 @@ class Settings(BaseSettings):
     registration_enabled: bool = True
     storage_path: Path = Path(".data/objects")
     max_upload_bytes: int = Field(default=5 * 1024 * 1024, ge=1, le=5 * 1024 * 1024)
-    max_owner_storage_bytes: int = Field(default=100 * 1024 * 1024, ge=1)
+    # Fase 33: 1 GB, para que quepan todas las tablas de una base.
+    max_owner_storage_bytes: int = Field(default=1024 * 1024 * 1024, ge=1)
     max_csv_rows: int = Field(default=100_000, ge=1, le=100_000)
     max_csv_columns: int = Field(default=128, ge=1, le=128)
     processing_timeout_seconds: int = Field(default=45, ge=5, le=60)
@@ -76,8 +77,10 @@ class Settings(BaseSettings):
     ai_timeout_seconds: int = Field(default=60, ge=5, le=120)
     ai_job_timeout_seconds: int = Field(default=100, ge=30, le=100)
     ai_max_output_tokens: int = Field(default=4000, ge=500, le=16000)
-    ai_user_daily_tokens: int = Field(default=200_000, ge=1)
-    ai_project_monthly_cost_usd: Decimal = Field(default=Decimal("5"), ge=0)
+    # Fase 33: 1 000 000 (antes 200 000), unas 30 versiones analizadas al día.
+    ai_user_daily_tokens: int = Field(default=1_000_000, ge=1)
+    # Fase 33: 50 USD (antes 5), para analizar una base entera sin esperar al mes siguiente.
+    ai_project_monthly_cost_usd: Decimal = Field(default=Decimal("50"), ge=0)
     # Fase 29 (ADR-047): en producción la IA debe estar activa. Con `true`, la API y el worker no
     # arrancan sin un proveedor activo (clave configurada); por defecto, `false` (sin IA todo
     # sigue funcionando y la interfaz avisa de que el análisis se hizo sin IA).
