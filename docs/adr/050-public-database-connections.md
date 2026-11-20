@@ -1,6 +1,6 @@
 # ADR-050 — Conexión a bases de datos públicas
 
-Estado: aceptado; 32A implementada (API 0.40.0, migración 0029), 32B pendiente. Documentación:
+Estado: aceptado e implementado: 32A (API 0.40.0, migración 0029) y 32B (API 0.41.0, servicio `connector`). Documentación:
 [Fase 32](../architecture/phase-32.md). Modifica [ADR-049](049-related-sources-and-postgresql.md)
 §7 («sólo servidores permitidos», SSL `prefer`) y [ADR-035](035-regional-sources-tables-and-structure.md)
 §8 (SQL Server sólo a servidores de la lista).

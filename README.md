@@ -131,6 +131,8 @@ Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación d
 
 ## Contenedor y CI
 
+**Actualizar desde 0.40:** sin migración. Servicio nuevo `connector` (Fase 32B) que copia en una red de salida aislada, sin credenciales de DataFlow, las bases PostgreSQL públicas que no están en la lista; la API lo llama con un token compartido (`DATAFLOW_CONNECTOR_URL`, `DATAFLOW_CONNECTOR_TOKEN` o `_FILE`, al menos 32 caracteres). Con `DATAFLOW_DATABASE_PUBLIC_ACCESS=true` la API ya no arranca sin conector y token (salvo `DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true`, sólo desarrollo). Compose separa las redes (`backend`, `connector` interna y `egress`) y el conector va en el perfil `public-databases`; en producción, aplicar `infrastructure/compose/egress-firewall.sh` en el anfitrión Linux. Next.js 16.4.5 (corrige avisos de seguridad que hacían fallar `npm run build`). Detalles en [Fase 32](docs/architecture/phase-32.md).
+
 **Actualizar desde 0.39:** migración 0029 (`database_attempts`, aditiva). Modo público de bases de datos opcional (`DATAFLOW_DATABASE_PUBLIC_ACCESS`, desactivado por defecto; sólo PostgreSQL): además de la lista, cualquier servidor con todas sus direcciones públicas y no denegadas (regla `database-destination-v1`; la base de DataFlow siempre se deniega, `DATAFLOW_DATABASE_DENIED_HOSTS` añade otras), con la conexión fijada a la dirección comprobada y el certificado verificado (`ca_certificate` opcional en `PostgresConnection`). Hasta la Fase 32B el modo público sólo arranca con `DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true` (sólo desarrollo). Para todas las conexiones: copia por lotes con límites (`DATAFLOW_DATABASE_MAX_BYTES`, `DATAFLOW_DATABASE_MAX_CELL_BYTES`), intentos limitados por cuenta, por día y por destino (429 `DATABASE_RATE_LIMITED`) y subprocesos con un entorno mínimo (ya no heredan `DATAFLOW_*`). Ruta nueva `GET /database-access`; `source_origin` añade `access` y `tls`. Desplegar API y web juntos. Detalles en [Fase 32](docs/architecture/phase-32.md).
 
 **Actualizar desde 0.38:** sin migración ni dependencias nuevas. Rutas nuevas `POST /projects/{id}/imports/related` (de 2 a 5 archivos CSV o .xlsx en base64; regla `relations-v1`: cada tabla y cada vista del modelo de datos es una versión y se devuelve la principal), `POST /projects/{id}/imports/postgresql` (copia de un solo uso de un esquema; sólo servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS`, vacío = desactivado) y la foto del esquema sin guardar nada (`…/imports/related/inspect`, `…/imports/sqlserver/inspect`, `…/imports/postgresql/inspect`). SQL Server admite `schema_name` y pasa a `sqlserver-selection-v2` (hasta 10 tablas). `source_origin` admite `postgresql` y `related` con `joined`, `view_kind`, `tables`, `relations` y `views`. Desplegar API, worker y web juntos (el proxy web admite el envío de varios archivos). Detalles en [Fase 31](docs/architecture/phase-31.md).
@@ -203,6 +205,15 @@ Contratos objetivo: [Fase 1](docs/architecture/phase-1/README.md). Separación d
 
 ```powershell
 docker compose -f infrastructure/compose/compose.yaml --profile full up --build -d
+```
+
+Bases PostgreSQL públicas (Fase 32B, opcional): crear el token y arrancar también el conector. En un anfitrión Linux de producción, aplicar después el cortafuegos de salida (`sudo sh infrastructure/compose/egress-firewall.sh`) y usar una contraseña de PostgreSQL propia (`POSTGRES_PASSWORD`).
+
+```powershell
+python -c "import secrets; print(secrets.token_urlsafe(48), end='')" > infrastructure/compose/secrets/connector_token
+$env:DATAFLOW_CONNECTOR_TOKEN_SECRET_FILE = "./secrets/connector_token"
+$env:DATAFLOW_DATABASE_PUBLIC_ACCESS = "true"
+docker compose -f infrastructure/compose/compose.yaml --profile full --profile public-databases up --build -d
 ```
 
 Frontend en http://localhost:3002 y API en http://127.0.0.1:8000. No iniciar simultáneamente otro servidor en esos puertos. PostgreSQL usa `postgres_data`; API y worker comparten los archivos en `objects_data`. Para detener: `docker compose -f infrastructure/compose/compose.yaml --profile full down`. No añadir `-v` si se quieren conservar los datos. Respaldar ambos volúmenes juntos.

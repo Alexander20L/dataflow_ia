@@ -141,9 +141,13 @@ descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
   con `hostaddr` y `verify-full` (certificado opcional de la persona). Lotes con límite de bytes
   (`fetch_rows`), catálogo acotado, memoria del subproceso limitada en Linux. Intentos en
   `database_attempts` (0029, `ingestion/infrastructure.py`). `run_isolated` pasa un entorno
-  mínimo (nunca `DATAFLOW_*`), trabaja en su directorio temporal y usa `python -P`. Sin el
-  servicio `connector` (32B) el modo público sólo arranca con
-  `DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true`.
+  mínimo (nunca `DATAFLOW_*`), trabaja en su directorio temporal y usa `python -P`.
+- Conector (Fase 32B): `bootstrap/connector.py` (servicio aparte, token compartido ≥ 32
+  caracteres, sin credenciales de DataFlow) copia los destinos **fuera de la lista**; la API lo
+  llama con `bootstrap/connector_client.py` (puerto `SnapshotConnector` en `application.py`;
+  caído → 503 `DATABASE_CONNECTOR_UNAVAILABLE`). Compose: perfil `public-databases`, redes
+  `backend` / `connector` (interna) / `egress`; `egress-firewall.sh` en el anfitrión Linux. Sin
+  conector ni token el modo público sólo arranca con `DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true`.
 - delivery (Fase 17): informe automático (`delivery.report@1`, sólo reordena lo publicado; ReportLab
   sólo en `delivery/pdf.py`) y progreso por etapas; `bootstrap/delivery_job.py` lo une a la cola.
 - No volver a crear `automation`, `templates` ni `analysis_sessions` (prueba AST). La detección pura de

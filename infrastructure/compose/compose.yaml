@@ -8,6 +8,8 @@ services:
       POSTGRES_DB: dataflow
     ports:
       - "127.0.0.1:55432:5432"
+    networks:
+      - backend
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -29,8 +31,20 @@ services:
       DATAFLOW_AI_REQUIRED: ${DATAFLOW_AI_REQUIRED:-false}
       DATAFLOW_AI_MODEL: ${DATAFLOW_AI_MODEL:-claude-opus-5-5}
       DATAFLOW_AI_API_KEY_FILE: /run/secrets/ai_api_key
+      # Fase 32 (ADR-050): bases de datos. El modo público copia los servidores que no están en
+      # la lista en el servicio `connector` (perfil `public-databases`), nunca en la API.
+      DATAFLOW_POSTGRESQL_ALLOWED_HOSTS: ${DATAFLOW_POSTGRESQL_ALLOWED_HOSTS:-[]}
+      DATAFLOW_SQLSERVER_ALLOWED_HOSTS: ${DATAFLOW_SQLSERVER_ALLOWED_HOSTS:-[]}
+      DATAFLOW_DATABASE_PUBLIC_ACCESS: ${DATAFLOW_DATABASE_PUBLIC_ACCESS:-false}
+      DATAFLOW_DATABASE_EGRESS_IPS: ${DATAFLOW_DATABASE_EGRESS_IPS:-[]}
+      DATAFLOW_CONNECTOR_URL: http://connector:8100
+      DATAFLOW_CONNECTOR_TOKEN_FILE: /run/secrets/connector_token
     secrets:
       - ai_api_key
+      - connector_token
+    networks:
+      - backend
+      - connector
     volumes:
       - objects_data:/app/.data/objects
     healthcheck:
@@ -68,6 +82,8 @@ services:
       DATAFLOW_AI_API_KEY_FILE: /run/secrets/ai_api_key
     secrets:
       - ai_api_key
+    networks:
+      - backend
     volumes:
       - objects_data:/app/.data/objects
     depends_on:
@@ -82,9 +98,61 @@ services:
       API_INTERNAL_URL: http://api:8000
     ports:
       - "127.0.0.1:3002:3000"
+    networks:
+      - backend
     depends_on:
       api:
         condition: service_healthy
+  # Fase 32B (ADR-050): copias de bases PostgreSQL públicas. Sin credenciales de DataFlow, sin
+  # clave de IA, sin volúmenes y sin puertos publicados: sólo la API le habla (red `connector`,
+  # interna) y sólo sale a internet por la red `egress`, que no llega a `postgres` ni a la API.
+  # En el anfitrión, `egress-firewall.sh` niega además los rangos privados y de metadatos.
+  connector:
+    build:
+      context: ../../apps/api
+    profiles: ["public-databases"]
+    command: ["python", "-m", "dataflow.bootstrap.connector"]
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=256m
+    cap_drop: ["ALL"]
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 1g
+    cpus: 1
+    pids_limit: 128
+    environment:
+      DATAFLOW_CONNECTOR_TOKEN_FILE: /run/secrets/connector_token
+    secrets:
+      - connector_token
+    networks:
+      - connector
+      - egress
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8100/health', timeout=3)",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+networks:
+  # La aplicación: web, api, worker y postgres. La API sale a internet por aquí (IA).
+  backend: {}
+  # Sólo API ↔ conector; `internal`: sin salida a ninguna parte.
+  connector:
+    internal: true
+  # Única salida del conector. Subred fija para que el cortafuegos del anfitrión la reconozca.
+  egress:
+    driver_opts:
+      com.docker.network.bridge.name: df-egress
+    ipam:
+      config:
+        - subnet: ${DATAFLOW_EGRESS_SUBNET:-172.31.250.0/24}
 volumes:
   postgres_data:
   objects_data:
@@ -94,3 +162,7 @@ secrets:
   # repo o en ./secrets/, que git ignora); `auto` la detecta.
   ai_api_key:
     file: ${DATAFLOW_AI_API_KEY_SECRET_FILE:-./secrets/ai_api_key.empty}
+  # Fase 32B: token compartido API ↔ conector (al menos 32 caracteres). Sin él (el marcador
+  # vacío), el modo público no arranca y todo lo demás funciona igual.
+  connector_token:
+    file: ${DATAFLOW_CONNECTOR_TOKEN_SECRET_FILE:-./secrets/connector_token.empty}
