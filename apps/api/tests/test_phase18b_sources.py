@@ -67,6 +67,10 @@ class FakeCursor:
     def fetchall(self) -> Sequence[Sequence[Any]]:
         return self.result
 
+    def fetchmany(self, size: int) -> Sequence[Sequence[Any]]:
+        batch, self.result = self.result[:size], self.result[size:]
+        return batch
+
 
 class FakeConnection:
     def __init__(self, tables: dict[tuple[str, str], tuple[list[tuple[str, str]], list[tuple]]]):

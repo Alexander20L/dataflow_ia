@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
 from dataflow.modules.quality.contracts import QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
@@ -259,6 +259,20 @@ class PostgresConnection(BaseModel):
     schema_name: str = Field(default="public", min_length=1, max_length=63)
     user: str = Field(min_length=1, max_length=63)
     password: SecretStr = Field(min_length=1, max_length=256)
+    # Fase 32 (ADR-050): certificado de la autoridad del proveedor (PEM) para verificar la
+    # conexión en el modo público. Como la contraseña, se usa en esa conexión y se descarta.
+    ca_certificate: SecretStr | None = Field(default=None, max_length=16384)
+
+    @field_validator("ca_certificate")
+    @classmethod
+    def pem(cls, value: SecretStr | None) -> SecretStr | None:
+        if value is None or not value.get_secret_value().strip():
+            return None
+        if "-----BEGIN CERTIFICATE-----" not in value.get_secret_value():
+            raise ValueError(
+                "El certificado debe estar en formato PEM (-----BEGIN CERTIFICATE-----)."
+            )
+        return value
 
 
 class RelatedFile(BaseModel):
@@ -350,6 +364,9 @@ class SourceOrigin(BaseModel):
     tables: list[RelatedTable] = Field(default_factory=list)
     relations: list[TableRelation] = Field(default_factory=list)
     views: list[RelatedView] = Field(default_factory=list)
+    # Fase 32: cómo se llegó a la base (servidor de la lista o modo público) y cómo se cifró.
+    access: Literal["allowlist", "public"] | None = None
+    tls: Literal["verified", "encrypted", "none"] | None = None
 
 
 class DataModel(BaseModel):
@@ -390,6 +407,19 @@ class SnapshotTable(BaseModel):
 class SqlSnapshot(BaseModel):
     tables: list[SnapshotTable]
     omitted: list[OmittedSource]
+    # Fase 32: lo decide el subproceso, que es quien conecta.
+    access: Literal["allowlist", "public"] | None = None
+    tls: Literal["verified", "encrypted", "none"] | None = None
+
+
+class DatabaseAccess(BaseModel):
+    """Fase 32 (ADR-050): a qué bases se puede conectar en este entorno, para que la pantalla
+    de carga muestre lo que corresponde. `public`: cualquier servidor accesible desde internet
+    (sólo PostgreSQL); `allowlist`: sólo los de la lista; `disabled`: ninguno."""
+
+    postgresql: Literal["disabled", "allowlist", "public"]
+    sqlserver: Literal["disabled", "allowlist"]
+    egress_ips: list[str] = Field(default_factory=list)
 
 
 class PdfChoice(BaseModel):

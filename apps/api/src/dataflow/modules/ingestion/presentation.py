@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Annotated, Literal
-from urllib.parse import quote
+from urllib.parse import quote, urlsplit
 from uuid import UUID
 
 from fastapi import APIRouter, Header, Path, Query, Request, Response
@@ -9,7 +9,9 @@ from starlette.concurrency import run_in_threadpool
 
 from dataflow.bootstrap.dependencies import Analysis, CurrentIdentity, Ingestion
 from dataflow.modules.analytics.contracts import AutomaticAnalysis, AutomaticEvidence
+from dataflow.modules.ingestion.application import ConnectionAccess
 from dataflow.modules.ingestion.contracts import (
+    DatabaseAccess,
     DataModel,
     Diagnostic,
     IngestionSummary,
@@ -26,11 +28,46 @@ from dataflow.modules.ingestion.contracts import (
 from dataflow.modules.ingestion.domain import ImportState
 from dataflow.modules.quality.contracts import QualityReport
 from dataflow.modules.understanding.contracts import DatasetProfile
+from dataflow.platform import destinations
 from dataflow.platform.config import get_settings
 from dataflow.platform.csv_export import CsvProfile
 from dataflow.platform.errors import ApplicationError
 
 router = APIRouter(prefix="/api/v1", tags=["Datasets"])
+
+
+def connection_access(request: Request, allowed_hosts: list[str]) -> ConnectionAccess:
+    """Fase 32 (ADR-050): la política de destinos de este entorno. En el modo público se
+    deniegan siempre la base de DataFlow y `DATAFLOW_DATABASE_DENIED_HOSTS`, ya resueltas."""
+    settings = get_settings()
+    denied: tuple[str, ...] = ()
+    if settings.database_public_access:
+        own = urlsplit(settings.database_url).hostname or ""
+        denied = destinations.denied_networks([own, *settings.database_denied_hosts])
+    policy = destinations.DestinationPolicy(
+        tuple(allowed_hosts), settings.database_public_access, denied
+    )
+    return ConnectionAccess(policy, request.client.host if request.client else "")
+
+
+@router.get("/database-access", response_model=DatabaseAccess, operation_id="getDatabaseAccess")
+def database_access(identity: CurrentIdentity) -> DatabaseAccess:
+    """Fase 32: a qué bases se puede conectar en este entorno y, en el modo público, desde qué
+    direcciones sale DataFlow (la persona debe permitirlas en su base)."""
+    del identity  # sólo para personas con sesión
+    settings = get_settings()
+    listed = any(h.strip() for h in settings.postgresql_allowed_hosts)
+    postgresql: Literal["disabled", "allowlist", "public"] = (
+        "public" if settings.database_public_access else "allowlist" if listed else "disabled"
+    )
+    sqlserver: Literal["disabled", "allowlist"] = (
+        "allowlist" if any(h.strip() for h in settings.sqlserver_allowed_hosts) else "disabled"
+    )
+    return DatabaseAccess(
+        postgresql=postgresql,
+        sqlserver=sqlserver,
+        egress_ips=settings.database_egress_ips if postgresql == "public" else [],
+    )
 
 
 class VersionResponse(BaseModel):
@@ -281,7 +318,7 @@ async def import_sqlserver(
         identity.user.id,
         project_id,
         body,
-        get_settings().sqlserver_allowed_hosts,
+        connection_access(request, get_settings().sqlserver_allowed_hosts),
         request_key,
         request.state.correlation_id,
     )
@@ -305,13 +342,14 @@ async def import_postgresql(
     """Fase 31: copia de un solo uso de las tablas de un esquema de PostgreSQL
     (`postgresql-selection-v1`); cada tabla es una versión con su CSV original y, si se
     relacionan (`relations-v1`), la tabla unida es la versión que se devuelve. La contraseña se
-    usa para la copia y se descarta. Sólo servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS`."""
+    usa para la copia y se descarta. Servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS` o, con el
+    modo público (Fase 32), cualquiera con direcciones públicas (`database-destination-v1`)."""
     version = await run_in_threadpool(
         service.submit_postgresql,
         identity.user.id,
         project_id,
         body,
-        get_settings().postgresql_allowed_hosts,
+        connection_access(request, get_settings().postgresql_allowed_hosts),
         request_key,
         request.state.correlation_id,
     )
@@ -415,6 +453,7 @@ async def inspect_related(
 async def inspect_sqlserver(
     project_id: UUID,
     body: SqlServerConnection,
+    request: Request,
     identity: CurrentIdentity,
     service: Ingestion,
 ) -> DataModel:
@@ -425,7 +464,7 @@ async def inspect_sqlserver(
         identity.user.id,
         project_id,
         body,
-        get_settings().sqlserver_allowed_hosts,
+        connection_access(request, get_settings().sqlserver_allowed_hosts),
     )
 
 
@@ -437,6 +476,7 @@ async def inspect_sqlserver(
 async def inspect_postgresql(
     project_id: UUID,
     body: PostgresConnection,
+    request: Request,
     identity: CurrentIdentity,
     service: Ingestion,
 ) -> DataModel:
@@ -446,7 +486,7 @@ async def inspect_postgresql(
         identity.user.id,
         project_id,
         body,
-        get_settings().postgresql_allowed_hosts,
+        connection_access(request, get_settings().postgresql_allowed_hosts),
     )
 
 

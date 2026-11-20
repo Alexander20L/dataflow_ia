@@ -62,6 +62,7 @@ ORDER BY TABLE_SCHEMA, TABLE_NAME, ORDINAL_POSITION
 class Cursor(Protocol):
     def execute(self, operation: str) -> object: ...
     def fetchall(self) -> Sequence[Sequence[Any]]: ...
+    def fetchmany(self, size: int) -> Sequence[Sequence[Any]]: ...
 
 
 class Connection(Protocol):
@@ -110,6 +111,60 @@ class TableCopy:
 class Snapshot:
     tables: list[TableCopy]
     omitted: list[tuple[str, str]]  # (esquema.tabla, motivo)
+    # Fase 32: cómo se cifró la conexión (`verified`, `encrypted` o `none`), si se sabe.
+    tls: str | None = None
+
+
+# Fase 32 (ADR-050): lo que devuelve el servidor es entrada no confiable. La copia se lee por
+# lotes y se cuentan sus bytes: una celda demasiado grande omite la tabla y pasar del total
+# detiene la copia. Nunca se trunca.
+BATCH = 1000
+
+
+@dataclass
+class Budget:
+    max_bytes: int = 50 * 1024 * 1024
+    max_cell_bytes: int = 64 * 1024
+    used: int = 0
+
+
+def cell_size(value: object) -> int:
+    if isinstance(value, str | bytes | bytearray | memoryview):
+        return len(value)
+    return 16
+
+
+def too_large(budget: Budget) -> ApplicationError:
+    return fail(
+        "DATABASE_TOO_LARGE",
+        f"La base supera el tamaño que se puede copiar ({budget.max_bytes // (1024 * 1024)} MB). "
+        "Elige un esquema con menos datos.",
+    )
+
+
+def fetch_rows(cursor: Any, max_rows: int, budget: Budget) -> list[Sequence[Any]] | str:
+    """Filas de la consulta ya ejecutada, o el motivo por el que la tabla se omite."""
+    rows: list[Sequence[Any]] = []
+    while True:
+        batch = cursor.fetchmany(BATCH)
+        if not batch:
+            return rows
+        for record in batch:
+            size = 0
+            for value in record:
+                length = cell_size(value)
+                if length > budget.max_cell_bytes:
+                    return (
+                        f"Tiene celdas de más de {budget.max_cell_bytes // 1024} KB: "
+                        "no se copia en parte."
+                    )
+                size += length
+            budget.used += size
+            if budget.used > budget.max_bytes:
+                raise too_large(budget)
+            rows.append(record)
+            if len(rows) > max_rows:
+                return f"Más de {max_rows} registros: no se copia en parte."
 
 
 def fail(code: str, message: str) -> ApplicationError:
@@ -195,16 +250,18 @@ def dates_only(rows: list[list[str | None]], index: int, values: list[object]) -
                 row[index] = value.date().isoformat()
 
 
-def copy(cursor: Cursor, table: Candidate, max_rows: int) -> TableCopy | str:
+def copy(
+    cursor: Cursor, table: Candidate, max_rows: int, budget: Budget | None = None
+) -> TableCopy | str:
     """Copia completa de la tabla o el motivo por el que se omite."""
     columns = table.supported
     names = ", ".join(quote(c.name) for c in columns)
     cursor.execute(
         f"SELECT TOP ({max_rows + 1}) {names} FROM {quote(table.schema)}.{quote(table.name)}"
     )
-    raw = cursor.fetchall()
-    if len(raw) > max_rows:
-        return f"Más de {max_rows} registros: no se copia en parte."
+    raw = fetch_rows(cursor, max_rows, budget or Budget())
+    if isinstance(raw, str):
+        return raw
     if len(raw) < 2:
         return "Menos de dos registros."
     rows = [[canonical(v) for v in record] for record in raw]
@@ -234,7 +291,11 @@ def foreign_keys(cursor: Cursor) -> dict[tuple[str, str], list[tuple[str, str]]]
 
 
 def snapshot(
-    connection: Connection, max_rows: int, max_columns: int, schema: str | None = None
+    connection: Connection,
+    max_rows: int,
+    max_columns: int,
+    schema: str | None = None,
+    budget: Budget | None = None,
 ) -> Snapshot:
     """`sqlserver-selection-v2`: las tablas del esquema pedido (o de todos), hasta 10."""
     cursor = connection.cursor()
@@ -247,9 +308,10 @@ def snapshot(
         )
     chosen, omitted = choose(candidates, max_rows, max_columns, MAX_TABLES_V2)
     declared = foreign_keys(cursor)
+    budget = budget or Budget()
     tables: list[TableCopy] = []
     for table in chosen:
-        result = copy(cursor, table, max_rows)
+        result = copy(cursor, table, max_rows, budget)
         if isinstance(result, str):
             omitted.append((table.label, result))
         else:
@@ -299,11 +361,15 @@ def connect(
 
 
 def read_database(
-    opener: Callable[[], Connection], max_rows: int, max_columns: int, schema: str | None = None
+    opener: Callable[[], Connection],
+    max_rows: int,
+    max_columns: int,
+    schema: str | None = None,
+    budget: Budget | None = None,
 ) -> Snapshot:
     connection = opener()
     try:
-        return snapshot(connection, max_rows, max_columns, schema)
+        return snapshot(connection, max_rows, max_columns, schema, budget)
     except ApplicationError:
         raise
     except Exception as exc:

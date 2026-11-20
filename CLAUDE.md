@@ -37,7 +37,8 @@ quality, planning, executions, cleaning, analytics, copilot, investigation, deli
 de tabla (Fase 13). Adaptador de IA en `integrations/ai` (puerto `AIProvider`, proveedor falso; sólo
 `anthropic_provider.py` importa el SDK); lectores de fuentes en `integrations/sources` (sólo desde el
 subproceso de ingesta; `pymssql` y `pdfplumber` sólo allí). SQL Server y PostgreSQL sin credenciales guardadas y
-sólo a servidores de `DATAFLOW_SQLSERVER_ALLOWED_HOSTS` / `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS`.
+sólo a servidores de `DATAFLOW_SQLSERVER_ALLOWED_HOSTS` / `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS` o, con
+el modo público de la Fase 32 (sólo PostgreSQL), a servidores con todas sus direcciones públicas.
 Composición en `bootstrap/` (`bootstrap/operations.py` une
 descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
 
@@ -133,6 +134,16 @@ descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
   `source_origin`, sin migración). SQL Server `sqlserver-selection-v2` (esquema, 10 tablas);
   PostgreSQL `postgresql-selection-v1`, `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS`; `psycopg` sólo en
   `connect()`.
+- Bases públicas (Fase 32A, ADR-050): `DATAFLOW_DATABASE_PUBLIC_ACCESS` (sólo PostgreSQL; SQL
+  Server sigue con la lista). Regla pura `database-destination-v1` en `platform/destinations.py`
+  (sólo biblioteca estándar; la usan la API y el subproceso, que la repite antes de conectar):
+  todas las direcciones públicas y no denegadas (siempre la base de DataFlow); conexión fijada
+  con `hostaddr` y `verify-full` (certificado opcional de la persona). Lotes con límite de bytes
+  (`fetch_rows`), catálogo acotado, memoria del subproceso limitada en Linux. Intentos en
+  `database_attempts` (0029, `ingestion/infrastructure.py`). `run_isolated` pasa un entorno
+  mínimo (nunca `DATAFLOW_*`), trabaja en su directorio temporal y usa `python -P`. Sin el
+  servicio `connector` (32B) el modo público sólo arranca con
+  `DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true`.
 - delivery (Fase 17): informe automático (`delivery.report@1`, sólo reordena lo publicado; ReportLab
   sólo en `delivery/pdf.py`) y progreso por etapas; `bootstrap/delivery_job.py` lo une a la cola.
 - No volver a crear `automation`, `templates` ni `analysis_sessions` (prueba AST). La detección pura de
@@ -241,7 +252,7 @@ resultados de las tablas de texto y `tests/test_analytics_query_v1_golden.py` lo
 no regenerar sus referencias para hacer pasar una prueba.
 Integración: `develop` contiene las Fases 4 a 14 y A–C (merge `--no-ff` o PR; desde 2026-11-09, siempre PR). Fase 13: ADR-026 sustituye
 al principio híbrido y a ADR-023; las pruebas de los servicios conservados sin rutas públicas usan
-`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 18: ADR-035. Fase 19: ADR-036 (valoración opcional del usuario). Fase 20: ADR-037. Fase 21: ADR-038. Fase 22: ADR-039. Fase 23: ADR-040 (modifica el punto 7 de ADR-039). Fase 24: ADR-041 (modifica ADR-036). Fase 24B: ADR-042 (las cifras se muestran con 3 decimales como mucho: `delivery/numbers.py` y `apps/web/src/lib/numbers.ts`; nunca se redondean los cálculos). Fase 25: ADR-043 (la exploración pasa a ser la investigación). Fase 26: ADR-044 (dashboard con indicadores, filtros, origen y versión personalizada). Fase 27: ADR-045 (informe v2, revisión humana, historial; el seguimiento de la Fase 16 se retira de las cargas nuevas). Fase 28: ADR-046 (papel de las fechas, mínimo por grupo, tasas y cohortes). Fase 29: ADR-047 (objetivo, factores con significancia, control e IA obligatoria). Fase 30: ADR-048 (interfaz sin leer y nombres de negocio). Fase 31: ADR-049 (modelo de datos de tablas relacionadas, foto del esquema y PostgreSQL). Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
+`apps/api/tests/service_routes.py` (router sólo de pruebas). Fase 13B: ADR-027. Fase 13C: ADR-028. Fase 15: ADR-032. Fase 16: ADR-033 (modifica el principio 6 de ADR-026). Fase 17: ADR-034. Fase 18: ADR-035. Fase 19: ADR-036 (valoración opcional del usuario). Fase 20: ADR-037. Fase 21: ADR-038. Fase 22: ADR-039. Fase 23: ADR-040 (modifica el punto 7 de ADR-039). Fase 24: ADR-041 (modifica ADR-036). Fase 24B: ADR-042 (las cifras se muestran con 3 decimales como mucho: `delivery/numbers.py` y `apps/web/src/lib/numbers.ts`; nunca se redondean los cálculos). Fase 25: ADR-043 (la exploración pasa a ser la investigación). Fase 26: ADR-044 (dashboard con indicadores, filtros, origen y versión personalizada). Fase 27: ADR-045 (informe v2, revisión humana, historial; el seguimiento de la Fase 16 se retira de las cargas nuevas). Fase 28: ADR-046 (papel de las fechas, mínimo por grupo, tasas y cohortes). Fase 29: ADR-047 (objetivo, factores con significancia, control e IA obligatoria). Fase 30: ADR-048 (interfaz sin leer y nombres de negocio). Fase 31: ADR-049 (modelo de datos de tablas relacionadas, foto del esquema y PostgreSQL). Fase 32: ADR-050 (bases de datos públicas; 32A implementada, 32B pendiente). Fase 14: ADR-031 y plan de las Fases 15–18 en `phase-14.md` (D1: la IA podrá proponer desde la Fase 16; D2: módulo `investigation`). Dataset de aceptación sintético en `tests/reference_sales.py`. ADR retroactivos: C2 (ADR-029) y 12A (ADR-030); los ADR-013 a 022 llevan una nota de vigencia. Antes de la Fase 14
 (limpieza, calidad y análisis automáticos sobre los motores conservados) se sigue retirando lo que
 contradiga el enfoque automático. Fase 7 completa (7A y 7B): ADR-018 y
 ADR-019; `analytics.query@1` no cambia y la interfaz usa `@2`. Fase 8: ADR-020; `dashboards` no importa

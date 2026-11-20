@@ -34,6 +34,24 @@ class Settings(BaseSettings):
     sqlserver_allowed_hosts: list[str] = []
     # Fase 31: servidores PostgreSQL a los que se permite conectar (vacío: desactivado).
     postgresql_allowed_hosts: list[str] = []
+    # Fase 32 (ADR-050): modo público. Además de la lista, cualquier servidor PostgreSQL cuyas
+    # direcciones sean todas públicas y no estén denegadas (`database-destination-v1`). La base
+    # de DataFlow siempre se deniega; `database_denied_hosts` añade nombres o CIDR propios.
+    database_public_access: bool = False
+    database_denied_hosts: list[str] = []
+    # Direcciones de salida de DataFlow que la persona debe permitir en su base (sólo se muestran).
+    database_egress_ips: list[str] = []
+    # Límites frente a un servidor que no controlamos: bytes de una copia y celdas.
+    database_max_bytes: int = Field(default=50 * 1024 * 1024, ge=1024 * 1024, le=200 * 1024 * 1024)
+    database_max_cell_bytes: int = Field(default=64 * 1024, ge=1024, le=1024 * 1024)
+    # Intentos de conexión («Ver esquema» y «Analizar»): por usuario en 15 min, fallidos por
+    # usuario y día, y hacia un mismo destino en 15 min (todas las cuentas).
+    database_attempts_per_user: int = Field(default=10, ge=1, le=1000)
+    database_failures_per_day: int = Field(default=30, ge=1, le=10000)
+    database_attempts_per_target: int = Field(default=20, ge=1, le=10000)
+    # Hasta la Fase 32B (servicio `connector` con red de salida aislada) el modo público sólo
+    # arranca si se reconoce explícitamente que no está aislado: sólo para desarrollo local.
+    database_public_unisolated: bool = False
 
     # Explicación IA (Fase 10, ADR-022; Fase 13B). `auto` (por defecto): Anthropic si hay clave
     # configurada; si no, desactivada (sin IA todo lo demás funciona). La clave nunca se registra
@@ -79,6 +97,16 @@ class Settings(BaseSettings):
             raise RuntimeError(
                 "DATAFLOW_AI_REQUIRED=true pero la IA no está activa: configura la clave "
                 "(DATAFLOW_AI_API_KEY o DATAFLOW_AI_API_KEY_FILE) o desactiva el requisito."
+            )
+
+    def require_database_isolation(self) -> None:
+        """Fase 32: el modo público de bases de datos no arranca sin aislamiento de red (32B) salvo
+        que se reconozca que es un entorno de desarrollo."""
+        if self.database_public_access and not self.database_public_unisolated:
+            raise RuntimeError(
+                "DATAFLOW_DATABASE_PUBLIC_ACCESS=true necesita el servicio connector con la red de "
+                "salida aislada (Fase 32B). Para probar en local, añade "
+                "DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true."
             )
 
     def ai_key(self) -> str | None:

@@ -48,6 +48,7 @@ from dataflow.modules.executions.infrastructure import (
 )
 from dataflow.modules.exploration.infrastructure import InvestigationControlRecord
 from dataflow.modules.identity.infrastructure import AttemptRecord, SessionRecord, UserRecord
+from dataflow.modules.ingestion.infrastructure import ConnectionAttemptRecord
 from dataflow.modules.ingestion.legacy_records import (
     LegacyArtifactRecord,
     LegacyExecutionRecord,
@@ -85,6 +86,7 @@ __all__ = [
     "CleaningApprovalRecord",
     "VersionLineageRecord",
     "AttemptRecord",
+    "ConnectionAttemptRecord",
     "SessionRecord",
     "UserRecord",
     "ProjectRecord",

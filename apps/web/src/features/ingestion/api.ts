@@ -256,6 +256,18 @@ export function useSourceReview(version?: DatasetVersion) {
 export type SqlServerConnection = components["schemas"]["SqlServerConnection"];
 export type PostgresConnection = components["schemas"]["PostgresConnection"];
 export type DatabaseEngine = "sqlserver" | "postgresql";
+export type DatabaseAccess = components["schemas"]["DatabaseAccess"];
+
+/** Fase 32: a qué bases se puede conectar en este entorno (lista, modo público o ninguna) y,
+ * en el modo público, desde qué direcciones sale DataFlow. */
+export function useDatabaseAccess() {
+  return useQuery({
+    queryKey: ["database-access"],
+    queryFn: async ({ signal }) =>
+      requireData(await api.GET("/api/v1/database-access", { signal })),
+    staleTime: 5 * 60 * 1000,
+  });
+}
 
 /** Fase 18B y 31: copia de un solo uso de las tablas de una base (SQL Server o PostgreSQL).
  * Si las tablas se relacionan, la versión devuelta es la tabla unida. */

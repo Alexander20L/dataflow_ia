@@ -3795,6 +3795,41 @@
         "title": "DataModel",
         "type": "object"
       },
+      "DatabaseAccess": {
+        "description": "Fase 32 (ADR-050): a qué bases se puede conectar en este entorno, para que la pantalla\nde carga muestre lo que corresponde. `public`: cualquier servidor accesible desde internet\n(sólo PostgreSQL); `allowlist`: sólo los de la lista; `disabled`: ninguno.",
+        "properties": {
+          "egress_ips": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Egress Ips",
+            "type": "array"
+          },
+          "postgresql": {
+            "enum": [
+              "disabled",
+              "allowlist",
+              "public"
+            ],
+            "title": "Postgresql",
+            "type": "string"
+          },
+          "sqlserver": {
+            "enum": [
+              "disabled",
+              "allowlist"
+            ],
+            "title": "Sqlserver",
+            "type": "string"
+          }
+        },
+        "required": [
+          "postgresql",
+          "sqlserver"
+        ],
+        "title": "DatabaseAccess",
+        "type": "object"
+      },
       "DatasetProfile": {
         "additionalProperties": false,
         "properties": {
@@ -9972,6 +10007,20 @@
         "additionalProperties": false,
         "description": "Fase 31: datos de conexión de un solo uso a PostgreSQL. Como en SQL Server, la contraseña\nse usa para copiar las tablas de un esquema y se descarta.",
         "properties": {
+          "ca_certificate": {
+            "anyOf": [
+              {
+                "format": "password",
+                "maxLength": 16384,
+                "type": "string",
+                "writeOnly": true
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ca Certificate"
+          },
           "database": {
             "maxLength": 63,
             "minLength": 1,
@@ -12213,6 +12262,21 @@
       "SourceOrigin": {
         "description": "De dónde sale una versión que no es un archivo tabular (Fase 18B): una tabla copiada de\nSQL Server o una tabla de un PDF. Decisión del sistema; no hay nada que elegir. Fase 31: una\ntabla copiada de PostgreSQL, o una versión de un conjunto relacionado (`related`): una de sus\ntablas o una vista (`joined`), con el modelo de datos que decidió `relations-v1`.",
         "properties": {
+          "access": {
+            "anyOf": [
+              {
+                "enum": [
+                  "allowlist",
+                  "public"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Access"
+          },
           "analyzed_together": {
             "items": {
               "type": "string"
@@ -12324,6 +12388,22 @@
             },
             "title": "Tables",
             "type": "array"
+          },
+          "tls": {
+            "anyOf": [
+              {
+                "enum": [
+                  "verified",
+                  "encrypted",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tls"
           },
           "view_kind": {
             "anyOf": [
@@ -13866,7 +13946,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.39.0"
+    "version": "0.40.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -14450,6 +14530,161 @@
         "summary": "Register",
         "tags": [
           "Identity"
+        ]
+      }
+    },
+    "/api/v1/database-access": {
+      "get": {
+        "description": "Fase 32: a qué bases se puede conectar en este entorno y, en el modo público, desde qué\ndirecciones sale DataFlow (la persona debe permitirlas en su base).",
+        "operationId": "getDatabaseAccess",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseAccess"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Database Access",
+        "tags": [
+          "Datasets"
         ]
       }
     },
@@ -17258,7 +17493,7 @@
     },
     "/api/v1/projects/{project_id}/imports/postgresql": {
       "post": {
-        "description": "Fase 31: copia de un solo uso de las tablas de un esquema de PostgreSQL\n(`postgresql-selection-v1`); cada tabla es una versión con su CSV original y, si se\nrelacionan (`relations-v1`), la tabla unida es la versión que se devuelve. La contraseña se\nusa para la copia y se descarta. Sólo servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS`.",
+        "description": "Fase 31: copia de un solo uso de las tablas de un esquema de PostgreSQL\n(`postgresql-selection-v1`); cada tabla es una versión con su CSV original y, si se\nrelacionan (`relations-v1`), la tabla unida es la versión que se devuelve. La contraseña se\nusa para la copia y se descarta. Servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS` o, con el\nmodo público (Fase 32), cualquiera con direcciones públicas (`database-destination-v1`).",
         "operationId": "importPostgresql",
         "parameters": [
           {
