@@ -125,7 +125,7 @@ from dataflow.modules.ingestion.executor import (
     SourceInputResolver,
     TableInputResolver,
 )
-from dataflow.modules.ingestion.infrastructure import SQLConnectionAttempts
+from dataflow.modules.ingestion.infrastructure import SQLConnectionAttempts, SQLDatabaseCopies
 from dataflow.modules.ingestion.plans import analysis_fingerprint, build_plan
 from dataflow.modules.inspection.public import SQLColumnAnnotations
 from dataflow.modules.planning.application import PlanningService
@@ -186,6 +186,8 @@ def make_ingestion(db: Session, objects: LocalObjects) -> IngestionService:
             settings.database_attempts_per_target,
         ),
         database_connector(settings),
+        SQLDatabaseCopies(db),
+        settings.database_copy_timeout_seconds,
     )
 
 

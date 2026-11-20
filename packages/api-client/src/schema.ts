@@ -89,6 +89,27 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/database-copies/{copy_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Database Copy
+         * @description Fase 33: estado de una copia en segundo plano; con `succeeded`, la versión principal
+         *     (`import`) o el modelo de datos (`photo`).
+         */
+        get: operations["getDatabaseCopy"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/datasets/summary": {
         parameters: {
             query?: never;
@@ -348,11 +369,11 @@ export interface paths {
         put?: never;
         /**
          * Import Postgresql
-         * @description Fase 31: copia de un solo uso de las tablas de un esquema de PostgreSQL
-         *     (`postgresql-selection-v1`); cada tabla es una versión con su CSV original y, si se
-         *     relacionan (`relations-v1`), la tabla unida es la versión que se devuelve. La contraseña se
-         *     usa para la copia y se descarta. Servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS` o, con el
-         *     modo público (Fase 32), cualquiera con direcciones públicas (`database-destination-v1`).
+         * @description Fase 31: copia de un solo uso de las tablas de un esquema de PostgreSQL. Fase 33
+         *     (`postgresql-selection-v2`): todas las tablas que caben, en segundo plano; la versión
+         *     principal queda en la copia al terminar. La contraseña se usa para la copia y se descarta.
+         *     Servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS` o, con el modo público (Fase 32),
+         *     cualquiera con direcciones públicas (`database-destination-v1`).
          */
         post: operations["importPostgresql"];
         delete?: never;
@@ -372,7 +393,7 @@ export interface paths {
         put?: never;
         /**
          * Inspect Postgresql
-         * @description Fase 31: «foto» del esquema de PostgreSQL sin guardar nada.
+         * @description Fase 31: «foto» del esquema de PostgreSQL sin guardar nada (Fase 33: en segundo plano).
          */
         post: operations["inspectPostgresql"];
         delete?: never;
@@ -436,9 +457,10 @@ export interface paths {
         put?: never;
         /**
          * Import Sqlserver
-         * @description Fase 18B: copia de un solo uso de las tablas de una base de SQL Server
-         *     (`sqlserver-selection-v1`); cada tabla es una versión con su CSV original. La contraseña se
-         *     usa para la copia y se descarta. Sólo servidores de `DATAFLOW_SQLSERVER_ALLOWED_HOSTS`.
+         * @description Fase 18B: copia de un solo uso de las tablas de una base de SQL Server. Fase 33
+         *     (`sqlserver-selection-v3`): todas las tablas que caben, en segundo plano; cada tabla y cada
+         *     vista es una versión. La contraseña se usa para la copia y se descarta. Sólo servidores de
+         *     `DATAFLOW_SQLSERVER_ALLOWED_HOSTS`.
          */
         post: operations["importSqlServer"];
         delete?: never;
@@ -458,8 +480,8 @@ export interface paths {
         put?: never;
         /**
          * Inspect Sqlserver
-         * @description Fase 31: «foto» del esquema de SQL Server sin guardar nada; la contraseña se usa para
-         *     leer y se descarta.
+         * @description Fase 31: «foto» del esquema de SQL Server sin guardar nada (Fase 33: en segundo plano;
+         *     el modelo queda en la copia al terminar). La contraseña se usa para leer y se descarta.
          */
         post: operations["inspectSqlServer"];
         delete?: never;
@@ -2671,6 +2693,63 @@ export interface components {
              * @enum {string}
              */
             sqlserver: "disabled" | "allowlist";
+        };
+        /**
+         * DatabaseCopy
+         * @description Fase 33 (ADR-051): una copia de base en segundo plano. `photo` («Ver esquema»): al terminar
+         *     trae `model`; `import` («Analizar»): trae la versión principal (`version_id`). Nunca la
+         *     contraseña ni el certificado.
+         */
+        DatabaseCopy: {
+            /**
+             * Created At
+             * Format: date-time
+             */
+            created_at: string;
+            /** Database */
+            database: string;
+            /**
+             * Engine
+             * @enum {string}
+             */
+            engine: "postgresql" | "sqlserver";
+            /** Error Code */
+            error_code?: string | null;
+            /** Error Message */
+            error_message?: string | null;
+            /** Finished At */
+            finished_at?: string | null;
+            /**
+             * Id
+             * Format: uuid
+             */
+            id: string;
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "photo" | "import";
+            model?: components["schemas"]["DataModel"] | null;
+            /** Omitted */
+            omitted?: number | null;
+            /**
+             * Project Id
+             * Format: uuid
+             */
+            project_id: string;
+            /** Schema Name */
+            schema_name?: string | null;
+            /** Server */
+            server: string;
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "queued" | "running" | "succeeded" | "failed";
+            /** Tables */
+            tables?: number | null;
+            /** Version Id */
+            version_id?: string | null;
         };
         /** DatasetProfile */
         DatasetProfile: {
@@ -5737,7 +5816,7 @@ export interface components {
              * Rule
              * @enum {string}
              */
-            rule: "sqlserver-selection-v1" | "sqlserver-selection-v2" | "pdf-selection-v1" | "postgresql-selection-v1" | "relations-v1";
+            rule: "sqlserver-selection-v1" | "sqlserver-selection-v2" | "sqlserver-selection-v3" | "pdf-selection-v1" | "postgresql-selection-v1" | "postgresql-selection-v2" | "relations-v1";
             /** Server */
             server?: string | null;
             /** Table */
@@ -6800,6 +6879,129 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["DatabaseAccess"];
+                };
+            };
+            /** @description Bad Request */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unauthorized */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Forbidden */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Not Found */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Conflict */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Request Entity Too Large */
+            413: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unsupported Media Type */
+            415: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Unprocessable Entity */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Too Many Requests */
+            429: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Internal Server Error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Service Unavailable */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    getDatabaseCopy: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CSRF-Token"?: string | null;
+            };
+            path: {
+                copy_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DatabaseCopy"];
                 };
             };
             /** @description Bad Request */
@@ -8924,7 +9126,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VersionResponse"];
+                    "application/json": components["schemas"]["DatabaseCopy"];
                 };
             };
             /** @description Bad Request */
@@ -9046,12 +9248,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DataModel"];
+                    "application/json": components["schemas"]["DatabaseCopy"];
                 };
             };
             /** @description Bad Request */
@@ -9450,7 +9652,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["VersionResponse"];
+                    "application/json": components["schemas"]["DatabaseCopy"];
                 };
             };
             /** @description Bad Request */
@@ -9572,12 +9774,12 @@ export interface operations {
         };
         responses: {
             /** @description Successful Response */
-            200: {
+            202: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["DataModel"];
+                    "application/json": components["schemas"]["DatabaseCopy"];
                 };
             };
             /** @description Bad Request */

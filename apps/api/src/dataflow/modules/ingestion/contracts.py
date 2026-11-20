@@ -1,4 +1,6 @@
+from datetime import datetime
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, SecretStr, field_validator
 
@@ -345,8 +347,10 @@ class SourceOrigin(BaseModel):
     rule: Literal[
         "sqlserver-selection-v1",
         "sqlserver-selection-v2",
+        "sqlserver-selection-v3",
         "pdf-selection-v1",
         "postgresql-selection-v1",
+        "postgresql-selection-v2",
         "relations-v1",
     ]
     table: str
@@ -431,8 +435,9 @@ class ConnectorSnapshotRequest(BaseModel):
     policy: ConnectorPolicy
     max_rows: int = Field(ge=1, le=100_000)
     max_columns: int = Field(ge=1, le=128)
-    timeout_seconds: int = Field(ge=5, le=60)
-    max_bytes: int = Field(ge=1, le=200 * 1024 * 1024)
+    # Fase 33: la copia de una base entera, en segundo plano, puede tardar hasta una hora.
+    timeout_seconds: int = Field(ge=5, le=3600)
+    max_bytes: int = Field(ge=1, le=2 * 1024 * 1024 * 1024)
     max_cell_bytes: int = Field(ge=1, le=1024 * 1024)
 
 
@@ -503,3 +508,26 @@ class XlsxInspection(BaseModel):
     selection: XlsxSelection | None = None
     # Fase 18: otras tablas que se analizan como versiones propias de la misma carga.
     additional: list[XlsxChoice] = Field(default_factory=list)
+
+
+class DatabaseCopy(BaseModel):
+    """Fase 33 (ADR-051): una copia de base en segundo plano. `photo` («Ver esquema»): al terminar
+    trae `model`; `import` («Analizar»): trae la versión principal (`version_id`). Nunca la
+    contraseña ni el certificado."""
+
+    id: UUID
+    project_id: UUID
+    engine: Literal["postgresql", "sqlserver"]
+    kind: Literal["photo", "import"]
+    state: Literal["queued", "running", "succeeded", "failed"]
+    server: str
+    database: str
+    schema_name: str | None = None
+    tables: int | None = None
+    omitted: int | None = None
+    version_id: UUID | None = None
+    model: DataModel | None = None
+    error_code: str | None = None
+    error_message: str | None = None
+    created_at: datetime
+    finished_at: datetime | None = None

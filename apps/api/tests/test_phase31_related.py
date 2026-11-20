@@ -21,7 +21,7 @@ from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, make_url, text
 from sqlalchemy.orm import Session
 from test_csv_ingestion import account, process, project
-from test_phase18b_sources import SECRET, FakeConnection, database, fake_snapshot
+from test_phase18b_sources import SECRET, FakeConnection, copied, database, fake_snapshot
 from xlsx_support import Sheet, make_xlsx
 
 from dataflow.integrations.sources import sqlserver_reader
@@ -425,7 +425,9 @@ def sqlserver_with_keys(monkeypatch: pytest.MonkeyPatch) -> list[SqlServerConnec
     base.tables[0].foreign_keys = [ForeignKey(column="Comprador", references="dbo.Clientes.Codigo")]
     seen: list[SqlServerConnection] = []
 
-    def snapshot(self: IsolatedAnalyzer, c: SqlServerConnection, cfg: Any) -> SqlSnapshot:
+    def snapshot(
+        self: IsolatedAnalyzer, c: SqlServerConnection, cfg: Any, timeout: int | None = None
+    ) -> SqlSnapshot:
         seen.append(c)
         return base
 
@@ -451,8 +453,7 @@ def test_sqlserver_schema_photo_shows_declared_keys_and_saves_nothing(
     response = client.post(
         f"/api/v1/projects/{pid}/imports/sqlserver/inspect", json=SQL_BODY, headers=headers
     )
-    assert response.status_code == 200, response.text
-    model = response.json()
+    model = copied(client, response)
     assert seen[0].schema_name == "dbo"
     assert model["relations"][0]["origin"] == "declared"
     assert model["omitted"] == [{"table": "dbo.Notas", "reason": "Menos de dos columnas."}]
@@ -471,8 +472,7 @@ def test_sqlserver_tables_with_declared_keys_open_the_joined_view(
         json=SQL_BODY,
         headers={**headers, "Idempotency-Key": str(uuid4())},
     )
-    assert created.status_code == 202, created.text
-    main = created.json()
+    main = copied(client, created)
     assert main["file_name"] == "Ventas (tablas unidas).csv"
     origin = main["source_origin"]
     assert origin["kind"] == "related" and origin["database"] == "ventas/dbo"
@@ -487,7 +487,7 @@ def test_sqlserver_tables_with_declared_keys_open_the_joined_view(
         "dbo.Clientes.csv",
     }
     table = next(v for v in versions if v["file_name"] == "dbo.Ventas.csv")
-    assert table["source_origin"]["rule"] == "sqlserver-selection-v2"
+    assert table["source_origin"]["rule"] == "sqlserver-selection-v3"
 
 
 # --- PostgreSQL ---------------------------------------------------------------------------------
@@ -610,8 +610,7 @@ def test_postgresql_schema_photo_and_import_use_the_declared_key(
         json=pg_body(connection),
         headers=headers,
     )
-    assert photo.status_code == 200, photo.text
-    model = photo.json()
+    model = copied(client, photo)
     (joined,) = [r for r in model["relations"] if r["status"] == "joined"]
     assert joined["origin"] == "declared" and joined["column"] == "carrera"
     # La relación por el nombre («carrera» → «carreras.carrera») se descarta con su motivo.
@@ -622,8 +621,7 @@ def test_postgresql_schema_photo_and_import_use_the_declared_key(
         json=pg_body(connection),
         headers={**headers, "Idempotency-Key": str(uuid4())},
     )
-    assert created.status_code == 202, created.text
-    main = created.json()
+    main = copied(client, created)
     origin = main["source_origin"]
     assert main["file_name"] == "alumnos (tablas unidas).csv"
     assert origin["kind"] == "related" and origin["database"].endswith(f"/{schema}")

@@ -120,13 +120,14 @@ def test_sqlserver_snapshot_copies_whole_tables_with_canonical_cells() -> None:
     connection = FakeConnection(database())
     result = sqlserver_reader.read_database(lambda: connection, 20, 128)
     assert connection.closed
-    assert [t.label for t in result.tables] == ["dbo.Ventas", "dbo.Clientes"]
-    ventas = result.tables[0]
+    # Fase 33 (`sqlserver-selection-v3`): todas las tablas, de menor a mayor.
+    assert [t.label for t in result.tables] == ["dbo.Clientes", "dbo.Ventas"]
+    ventas = result.tables[1]
     assert ventas.headers == ["Id", "Fecha", "Región", "Importe", "Activo"]
     # Fechas a medianoche → fecha; decimales sin exponente; bit → true/false.
     assert ventas.rows[0] == ["1", "2024-01-01", "Norte", "10.50", "false"]
     assert [c.name for c in ventas.excluded] == ["Foto"]
-    clientes = result.tables[1]
+    clientes = result.tables[0]
     assert clientes.rows == [["C1", "2024-01-05", "1.5"], ["C2", "2024-02-05", "0.00001"]]
     reasons = dict(result.omitted)
     assert reasons["dbo.Notas"] == "Menos de dos columnas con tipos admitidos."
@@ -212,6 +213,17 @@ VENTAS = (
 CLIENTES = ("dbo.Clientes", ["Codigo", "Puntos"], [["C1", "1.5"], ["C2", "2"]])
 
 
+def copied(client: TestClient, response: Any) -> dict[str, Any]:
+    """Fase 33: «Analizar» y «Ver esquema» responden 202 con la copia en segundo plano (en las
+    pruebas corre en línea); devuelve el modelo (foto) o la versión principal (copia)."""
+    assert response.status_code == 202, response.text
+    copy = response.json()
+    assert copy["state"] == "succeeded", copy
+    if copy["kind"] == "photo":
+        return dict(copy["model"])
+    return dict(client.get(f"/api/v1/versions/{copy['version_id']}").json())
+
+
 def sqlserver(client: TestClient, headers: dict[str, str], pid: str, key: str | None = None):
     return client.post(
         f"/api/v1/projects/{pid}/imports/sqlserver",
@@ -252,7 +264,12 @@ def test_sqlserver_tables_become_versions_and_the_password_is_not_kept(
     monkeypatch.setattr(get_settings(), "sqlserver_allowed_hosts", ["SQL.example.com"])
     seen: list[SqlServerConnection] = []
 
-    def snapshot(self: IsolatedAnalyzer, connection: SqlServerConnection, config: Any):
+    def snapshot(
+        self: IsolatedAnalyzer,
+        connection: SqlServerConnection,
+        config: Any,
+        timeout: int | None = None,
+    ) -> SqlSnapshot:
         seen.append(connection)
         return fake_snapshot([VENTAS, CLIENTES])
 
@@ -260,9 +277,7 @@ def test_sqlserver_tables_become_versions_and_the_password_is_not_kept(
     headers = account(client)
     pid = project(client, headers)
     key = str(uuid4())
-    created = sqlserver(client, headers, pid, key)
-    assert created.status_code == 202, created.text
-    main = created.json()
+    main = copied(client, sqlserver(client, headers, pid, key))
     assert seen[0].password.get_secret_value() == SECRET
     assert main["file_name"] == "dbo.Ventas.csv"
     origin = main["source_origin"]
@@ -271,8 +286,8 @@ def test_sqlserver_tables_become_versions_and_the_password_is_not_kept(
     assert origin["analyzed_together"] == ["dbo.Clientes"]
     assert origin["excluded_columns"][0]["column"] == "Foto"
     assert origin["omitted"] == [{"table": "dbo.Notas", "reason": "Menos de dos columnas."}]
-    # Repetir con la misma clave no copia otra vez.
-    assert sqlserver(client, headers, pid, key).json()["id"] == main["id"]
+    # Repetir con la misma clave no registra otra versión.
+    assert copied(client, sqlserver(client, headers, pid, key))["id"] == main["id"]
     versions = client.get(f"/api/v1/projects/{pid}/versions").json()["items"]
     assert sorted(v["file_name"] for v in versions) == ["dbo.Clientes.csv", "dbo.Ventas.csv"]
     # La contraseña no está en el plan ni en el original.
@@ -297,11 +312,11 @@ def test_sqlserver_tables_become_versions_and_the_password_is_not_kept(
     monkeypatch.setattr(
         IsolatedAnalyzer,
         "snapshot_sqlserver",
-        lambda self, c, cfg: fake_snapshot(
+        lambda self, c, cfg, timeout=None: fake_snapshot(
             [("dbo.Ventas", ["Id", "Importe"], [["1", "2"], ["2", "3"]])]
         ),
     )
-    again = sqlserver(client, headers, pid).json()
+    again = copied(client, sqlserver(client, headers, pid))
     assert again["source_origin"]["analyzed_together"] == []
     assert process(db, objects)
     structure = client.get(f"/api/v1/versions/{again['id']}/reading").json()["structure"]

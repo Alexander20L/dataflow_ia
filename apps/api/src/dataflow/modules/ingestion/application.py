@@ -18,9 +18,11 @@ from dataflow.modules.executions.public import (
     legacy_state,
 )
 from dataflow.modules.ingestion.contracts import (
+    DatabaseCopy,
     DataModel,
     Diagnostic,
     IngestionSummary,
+    OmittedSource,
     PdfChoice,
     PdfSelection,
     PostgresConnection,
@@ -30,6 +32,8 @@ from dataflow.modules.ingestion.contracts import (
     RecordsPage,
     RelatedFilesRequest,
     RelatedSet,
+    RelatedView,
+    SnapshotTable,
     SourceOrigin,
     SourceReading,
     SourceReview,
@@ -142,10 +146,13 @@ class XlsxInspector(Protocol):
         connection: PostgresConnection,
         config: ProcessingConfig,
         policy: DestinationPolicy | None = None,
+        timeout: int | None = None,
     ) -> SqlSnapshot: ...
-    def relate(self, payload: bytes, config: ProcessingConfig) -> RelatedSet: ...
+    def relate(
+        self, payload: bytes, config: ProcessingConfig, timeout: int | None = None
+    ) -> RelatedSet: ...
     def snapshot_sqlserver(
-        self, connection: SqlServerConnection, config: ProcessingConfig
+        self, connection: SqlServerConnection, config: ProcessingConfig, timeout: int | None = None
     ) -> SqlSnapshot: ...
 
     def inspect_xlsx(
@@ -177,13 +184,58 @@ class ConnectionAttempts(Protocol):
     def succeeded(self, attempt: UUID) -> None: ...
 
 
+DatabaseEngine = Literal["postgresql", "sqlserver"]
+CopyKind = Literal["photo", "import"]
+
+
+class DatabaseCopies(Protocol):
+    """Fase 33 (ADR-051): estado de las copias de bases en segundo plano (sin credenciales)."""
+
+    def create(
+        self,
+        owner: UUID,
+        project: UUID,
+        engine: DatabaseEngine,
+        kind: CopyKind,
+        server: str,
+        database: str,
+        schema: str | None,
+    ) -> DatabaseCopy: ...
+    def get(self, owner: UUID, copy: UUID) -> DatabaseCopy | None: ...
+    def running(self, copy: UUID) -> None: ...
+    def succeeded(
+        self,
+        copy: UUID,
+        version: UUID | None,
+        model: DataModel | None,
+        tables: int,
+        omitted: int,
+    ) -> None: ...
+    def failed(self, copy: UUID, code: str, message: str) -> None: ...
+
+
+@dataclass(frozen=True)
+class CopyTicket:
+    """Fase 33: lo que la comprobación previa decidió en la petición y la copia necesita después,
+    en segundo plano (el intento y si el servidor es de la lista)."""
+
+    copy: UUID
+    attempt: UUID | None
+    listed: bool
+    access: "ConnectionAccess"
+
+
 class SnapshotConnector(Protocol):
     """Fase 32B (ADR-050): copia de una base fuera del proceso de la API, en el servicio
     `connector` (red de salida aislada, sin credenciales de DataFlow). Sólo para destinos que no
     están en la lista: los de la lista son de confianza y se copian como antes."""
 
     def snapshot_postgresql(
-        self, connection: PostgresConnection, config: ProcessingConfig, policy: DestinationPolicy
+        self,
+        connection: PostgresConnection,
+        config: ProcessingConfig,
+        policy: DestinationPolicy,
+        timeout: int | None = None,
     ) -> SqlSnapshot: ...
 
 
@@ -304,6 +356,8 @@ class IngestionService:
         attempts: ConnectionAttempts | None = None,
         attempt_limits: AttemptLimits | None = None,
         connector: SnapshotConnector | None = None,
+        copies: DatabaseCopies | None = None,
+        copy_timeout: int = 1800,
     ) -> None:
         self.datasets, self.executions, self.objects = datasets, executions, objects
         self.projects, self.preview_reader, self.uow = projects, preview, uow
@@ -311,6 +365,8 @@ class IngestionService:
         self.inspector = inspector
         self.attempts, self.attempt_limits = attempts, attempt_limits or AttemptLimits()
         self.connector = connector
+        # Fase 33: copias en segundo plano y su plazo (el de la copia, la lectura y las relaciones).
+        self.copies, self.copy_timeout = copies, copy_timeout
 
     def submit(
         self,
@@ -496,122 +552,135 @@ class IngestionService:
             ],
         )
 
-    def submit_sqlserver(
+    def start_database_copy(
         self,
         owner: UUID,
         project: UUID,
-        connection: SqlServerConnection,
+        engine: DatabaseEngine,
+        kind: CopyKind,
+        connection: PostgresConnection | SqlServerConnection,
         access: ConnectionAccess,
-        key: UUID,
-        correlation: str,
-    ) -> Version:
-        """Fase 18B: copia de un solo uso de las tablas de una base de SQL Server. Sólo hosts de
-        la lista permitida (evita usar el servidor para llegar a equipos internos). Cada tabla
-        elegida se guarda como CSV estándar inmutable (su original) y se analiza como versión
-        propia; la contraseña no se guarda. Fase 31 (`sqlserver-selection-v2`): un esquema
-        opcional y hasta 10 tablas; con el modelo de datos de `relations-v1` (claves foráneas
-        declaradas) cada vista es otra versión y la que se devuelve es la principal."""
-        snapshot = self._sqlserver_snapshot(owner, project, connection, access)
-        return self._submit_snapshot(
-            owner,
-            project,
-            snapshot,
-            "sqlserver",
-            f"{connection.server}:{connection.port}",
-            connection.database + (f"/{connection.schema_name}" if connection.schema_name else ""),
-            key,
-            correlation,
-        )
-
-    def submit_postgresql(
-        self,
-        owner: UUID,
-        project: UUID,
-        connection: PostgresConnection,
-        access: ConnectionAccess,
-        key: UUID,
-        correlation: str,
-    ) -> Version:
-        """Fase 31: igual que SQL Server, con las tablas de un esquema de PostgreSQL
-        (`postgresql-selection-v1`)."""
-        snapshot = self._postgresql_snapshot(owner, project, connection, access)
-        return self._submit_snapshot(
-            owner,
-            project,
-            snapshot,
-            "postgresql",
-            f"{connection.server}:{connection.port}",
-            f"{connection.database}/{connection.schema_name}",
-            key,
-            correlation,
-        )
-
-    def inspect_sqlserver(
-        self,
-        owner: UUID,
-        project: UUID,
-        connection: SqlServerConnection,
-        access: ConnectionAccess,
-    ) -> DataModel:
-        """Fase 31: «foto» del esquema de SQL Server (tablas, claves y relaciones) sin guardar
-        nada; la contraseña se usa para leer y se descarta."""
-        snapshot = self._sqlserver_snapshot(owner, project, connection, access)
-        return self._snapshot_model(snapshot)
-
-    def inspect_postgresql(
-        self,
-        owner: UUID,
-        project: UUID,
-        connection: PostgresConnection,
-        access: ConnectionAccess,
-    ) -> DataModel:
-        """Fase 31: «foto» del esquema de PostgreSQL sin guardar nada."""
-        snapshot = self._postgresql_snapshot(owner, project, connection, access)
-        return self._snapshot_model(snapshot)
-
-    def _sqlserver_snapshot(
-        self,
-        owner: UUID,
-        project: UUID,
-        connection: SqlServerConnection,
-        access: ConnectionAccess,
-    ) -> SqlSnapshot:
-        # SQL Server sigue sólo con la lista (Fase 32): sin verificar certificados ni impedir
-        # redirecciones no se abre al modo público.
-        sqlserver = ConnectionAccess(
-            DestinationPolicy(access.policy.allowed_hosts, False, access.policy.denied),
-            access.client,
-        )
-        attempt, _ = self._gate(
-            owner, project, connection.server, connection.port, sqlserver, "SQLSERVER", "SQL Server"
-        )
-        if self.inspector is None:
-            raise ApplicationError("SQLSERVER_UNAVAILABLE", "SQL Server no está activo.", 503)
-        snapshot = self.inspector.snapshot_sqlserver(connection, self.config)
-        self._succeeded(attempt)
-        return snapshot
-
-    def _postgresql_snapshot(
-        self,
-        owner: UUID,
-        project: UUID,
-        connection: PostgresConnection,
-        access: ConnectionAccess,
-    ) -> SqlSnapshot:
+    ) -> tuple[DatabaseCopy, CopyTicket]:
+        """Fase 33 (ADR-051): en la petición, la comprobación previa del destino y el intento
+        (Fase 32) y el registro de la copia, que se hace después en segundo plano. Responde al
+        momento; la contraseña no se guarda (sólo vive en memoria hasta que termine la copia)."""
+        if self.copies is None:
+            raise ApplicationError(
+                "DATABASE_COPY_UNAVAILABLE", "Las copias de bases no están activas.", 503
+            )
+        if engine == "sqlserver":
+            # SQL Server sigue sólo con la lista (Fase 32): sin verificar certificados ni impedir
+            # redirecciones no se abre al modo público.
+            access = ConnectionAccess(
+                DestinationPolicy(access.policy.allowed_hosts, False, access.policy.denied),
+                access.client,
+            )
+            prefix, label = "SQLSERVER", "SQL Server"
+        else:
+            prefix, label = "POSTGRESQL", "PostgreSQL"
         attempt, listed = self._gate(
-            owner, project, connection.server, connection.port, access, "POSTGRESQL", "PostgreSQL"
+            owner, project, connection.server, connection.port, access, prefix, label
         )
-        # Fase 32B: un destino fuera de la lista se copia en el servicio `connector` si existe
-        # (sin él sólo se llega aquí en desarrollo, con DATAFLOW_DATABASE_PUBLIC_UNISOLATED).
-        if not listed and self.connector is not None:
-            snapshot = self.connector.snapshot_postgresql(connection, self.config, access.policy)
-            self._succeeded(attempt)
-            return snapshot
+        try:
+            copy = self.copies.create(
+                owner,
+                project,
+                engine,
+                kind,
+                f"{connection.server}:{connection.port}",
+                connection.database,
+                connection.schema_name,
+            )
+            self.uow.commit()
+        except Exception:
+            self.uow.rollback()
+            raise
+        return copy, CopyTicket(copy.id, attempt, listed, access)
+
+    def database_copy(self, owner: UUID, copy: UUID) -> DatabaseCopy:
+        if self.copies is None:
+            raise ApplicationError("NOT_FOUND", "Copia no encontrada.", 404)
+        try:
+            found = self.copies.get(owner, copy)
+            self.uow.commit()  # `get` puede marcar como interrumpida una copia sin latido
+        except Exception:
+            self.uow.rollback()
+            raise
+        if found is None:
+            raise ApplicationError("NOT_FOUND", "Copia no encontrada.", 404)
+        return found
+
+    def run_database_copy(
+        self,
+        owner: UUID,
+        project: UUID,
+        engine: DatabaseEngine,
+        kind: CopyKind,
+        connection: PostgresConnection | SqlServerConnection,
+        ticket: CopyTicket,
+        key: UUID,
+        correlation: str,
+    ) -> None:
+        """Fase 33: la copia en segundo plano. Nunca lanza: el resultado (la versión principal,
+        el modelo o el error) queda en el registro de la copia."""
+        assert self.copies is not None
+        try:
+            self.copies.running(ticket.copy)
+            self.uow.commit()
+            snapshot = self._database_snapshot(engine, connection, ticket)
+            self._succeeded(ticket.attempt)
+            if kind == "photo":
+                model = self._snapshot_model(snapshot, self.copy_timeout)
+                self.copies.succeeded(
+                    ticket.copy, None, model, len(snapshot.tables), len(model.omitted)
+                )
+            else:
+                schema = connection.schema_name
+                version, copied, omitted = self._submit_snapshot(
+                    owner,
+                    project,
+                    snapshot,
+                    engine,
+                    f"{connection.server}:{connection.port}",
+                    connection.database + (f"/{schema}" if schema else ""),
+                    key,
+                    correlation,
+                )
+                self.copies.succeeded(ticket.copy, version.id, None, copied, omitted)
+            self.uow.commit()
+        except Exception as exc:
+            self.uow.rollback()
+            code, message = (
+                (exc.code, exc.message)
+                if isinstance(exc, ApplicationError)
+                else ("DATABASE_COPY_FAILED", "No se pudo completar la copia de la base.")
+            )
+            self.copies.failed(ticket.copy, code, message)
+            self.uow.commit()
+
+    def _database_snapshot(
+        self,
+        engine: DatabaseEngine,
+        connection: PostgresConnection | SqlServerConnection,
+        ticket: CopyTicket,
+    ) -> SqlSnapshot:
+        """La copia en sí, con el plazo largo de las copias en segundo plano. Fase 32B: un
+        destino fuera de la lista se copia en el servicio `connector` si existe."""
+        if isinstance(connection, SqlServerConnection):
+            if self.inspector is None:
+                raise ApplicationError("SQLSERVER_UNAVAILABLE", "SQL Server no está activo.", 503)
+            return self.inspector.snapshot_sqlserver(
+                connection, self.config, timeout=self.copy_timeout
+            )
+        if not ticket.listed and self.connector is not None:
+            return self.connector.snapshot_postgresql(
+                connection, self.config, ticket.access.policy, timeout=self.copy_timeout
+            )
         if self.inspector is None:
             raise ApplicationError("POSTGRESQL_UNAVAILABLE", "PostgreSQL no está activo.", 503)
-        snapshot = self.inspector.snapshot_postgresql(connection, self.config, access.policy)
-        self._succeeded(attempt)
-        return snapshot
+        return self.inspector.snapshot_postgresql(
+            connection, self.config, ticket.access.policy, timeout=self.copy_timeout
+        )
 
     def _gate(
         self,
@@ -681,7 +750,11 @@ class IngestionService:
             raise
 
     def _relate(
-        self, tables: list[tuple[str, str, bytes]], declared: list[dict[str, str]], data: bool
+        self,
+        tables: list[tuple[str, str, bytes]],
+        declared: list[dict[str, str]],
+        data: bool,
+        timeout: int | None = None,
     ) -> RelatedSet:
         """`relations-v1` en el subproceso de ingesta. `data`: con las vistas en CSV (para
         registrarlas) o sólo el modelo (la «foto» del esquema)."""
@@ -698,9 +771,11 @@ class IngestionService:
             "declared": declared,
             "with_data": data,
         }
-        return self.inspector.relate(json.dumps(payload).encode(), self.config)
+        return self.inspector.relate(json.dumps(payload).encode(), self.config, timeout)
 
-    def _snapshot_relations(self, snapshot: SqlSnapshot, data: bool) -> RelatedSet:
+    def _snapshot_relations(
+        self, snapshot: SqlSnapshot, data: bool, timeout: int | None = None
+    ) -> RelatedSet:
         return self._relate(
             [(t.label, "standard", t.csv.encode("utf-8")) for t in snapshot.tables],
             [
@@ -714,16 +789,73 @@ class IngestionService:
                 for fk in t.foreign_keys
             ],
             data,
+            timeout,
         )
 
-    def _snapshot_model(self, snapshot: SqlSnapshot) -> DataModel:
-        related = self._snapshot_relations(snapshot, data=False)
+    def _snapshot_model(self, snapshot: SqlSnapshot, timeout: int | None = None) -> DataModel:
+        related = self._snapshot_relations(snapshot, data=False, timeout=timeout)
         return DataModel(
             main=related.main,
             tables=related.tables,
             relations=related.relations,
             views=related.views,
             omitted=snapshot.omitted,
+        )
+
+    def _fit_tables(self, owner: UUID, snapshot: SqlSnapshot) -> tuple[SqlSnapshot, int]:
+        """Fase 33: las tablas (ya de menor a mayor) que caben como originales y en la cuota de
+        la cuenta; las demás se omiten con su motivo. Devuelve también el espacio que queda."""
+        try:
+            room = self.quota - self.datasets.used_bytes(owner)
+        finally:
+            self.uow.rollback()
+        megabytes = self.maximum_upload // (1024 * 1024)
+        kept: list[SnapshotTable] = []
+        omitted = list(snapshot.omitted)
+        for table in snapshot.tables:
+            size = len(table.csv.encode("utf-8"))
+            if size > self.maximum_upload:
+                reason = f"Supera el tamaño máximo de un original ({megabytes} MB)."
+                omitted.append(OmittedSource(table=table.label, reason=reason))
+            elif size > room:
+                reason = "No cabe en la cuota de archivos originales de la cuenta."
+                omitted.append(OmittedSource(table=table.label, reason=reason))
+            else:
+                kept.append(table)
+                room -= size
+        if not kept:
+            raise ApplicationError(
+                "STORAGE_QUOTA",
+                "Ninguna tabla de la base cabe en la cuota de archivos originales de la cuenta.",
+                413,
+            )
+        return snapshot.model_copy(update={"tables": kept, "omitted": omitted}), room
+
+    def _fit_views(
+        self, related: RelatedSet, room: int, omitted: list[OmittedSource]
+    ) -> RelatedSet:
+        """Fase 33: las vistas que no caben (tamaño de un original o cuota) se omiten con su
+        motivo en vez de impedir la carga; si cae la principal, se abre la tabla mayor."""
+        kept: list[RelatedView] = []
+        for view in related.views:
+            size = len(related.csv.get(view.name, "").encode("utf-8"))
+            if size > self.maximum_upload or size > room:
+                reason = (
+                    "La vista supera el tamaño máximo de un original."
+                    if size > self.maximum_upload
+                    else "La vista no cabe en la cuota de archivos originales de la cuenta."
+                )
+                omitted.append(OmittedSource(table=view.name, reason=reason))
+            else:
+                kept.append(view)
+                room -= size
+        names = {v.name for v in kept}
+        return related.model_copy(
+            update={
+                "views": kept,
+                "csv": {k: v for k, v in related.csv.items() if k in names},
+                "main": related.main if related.main in names else None,
+            }
         )
 
     def _submit_snapshot(
@@ -736,25 +868,28 @@ class IngestionService:
         database: str,
         key: UUID,
         correlation: str,
-    ) -> Version:
+    ) -> tuple[Version, int, int]:
+        """Cada tabla (y cada vista del modelo) como versión. Fase 33: lo que no cabe se omite
+        con su motivo. Devuelve la versión principal, las tablas copiadas y las omitidas."""
         captured = datetime.now(UTC).replace(microsecond=0).isoformat()
+        snapshot, room = self._fit_tables(owner, snapshot)
         labels = [t.label for t in snapshot.tables]
-        prefix = kind.upper()
+        omitted = list(snapshot.omitted)
         related = (
-            self._snapshot_relations(snapshot, data=True) if len(snapshot.tables) > 1 else None
+            self._fit_views(
+                self._snapshot_relations(snapshot, data=True, timeout=self.copy_timeout),
+                room,
+                omitted,
+            )
+            if len(snapshot.tables) > 1
+            else None
         )
-        rule: Literal["sqlserver-selection-v2", "postgresql-selection-v1"] = (
-            "sqlserver-selection-v2" if kind == "sqlserver" else "postgresql-selection-v1"
+        rule: Literal["sqlserver-selection-v3", "postgresql-selection-v2"] = (
+            "sqlserver-selection-v3" if kind == "sqlserver" else "postgresql-selection-v2"
         )
         members: list[Sibling] = []
         for table in snapshot.tables:
             data = table.csv.encode("utf-8")
-            if len(data) > self.maximum_upload:
-                raise ApplicationError(
-                    f"{prefix}_TABLE_TOO_LARGE",
-                    f"La tabla {table.label} supera el tamaño máximo de un original.",
-                    413,
-                )
             decision = SourceOrigin(
                 kind=kind,
                 rule=rule,
@@ -765,7 +900,7 @@ class IngestionService:
                 excluded_columns=table.excluded_columns,
                 foreign_keys=table.foreign_keys,
                 analyzed_together=[label for label in labels if label != table.label],
-                omitted=snapshot.omitted,
+                omitted=omitted,
                 tables=related.tables if related else [],
                 relations=related.relations if related else [],
                 views=related.views if related else [],
@@ -790,15 +925,18 @@ class IngestionService:
                     file_name,
                 )
             )
+        # Sin vista principal, se abre la tabla con más registros (como en la Fase 31).
+        members.sort(key=lambda m: -len(m.content or b""))
         origin = {
             "server": server,
             "database": database,
             "captured_at": captured,
-            "omitted": snapshot.omitted,
+            "omitted": omitted,
             "access": snapshot.access,
             "tls": snapshot.tls,
         }
-        return self._register_set(owner, project, related, members, origin, key, correlation)
+        version = self._register_set(owner, project, related, members, origin, key, correlation)
+        return version, len(snapshot.tables), len(omitted)
 
     def _related_files(self, request: RelatedFilesRequest) -> list[tuple[str, str, bytes]]:
         """Archivos de un conjunto relacionado ya comprobados (nombre, formato y tamaño)."""
@@ -1144,6 +1282,8 @@ class IngestionService:
             self.datasets.bind_import(version_id, run.id)
             for item, sibling in registered:
                 sibling_id = sibling.id
+                # Fase 33: las versiones de una misma carga (todas las tablas de una base) entran
+                # juntas; la cola ya admitió la carga arriba.
                 sibling_run = self.executions.enqueue(
                     owner,
                     project,
@@ -1153,6 +1293,7 @@ class IngestionService:
                     item.fingerprint,
                     item.plan(sibling),
                     correlation,
+                    admitted=True,
                 )
                 self.datasets.bind_import(sibling_id, sibling_run.id)
             self.uow.commit()

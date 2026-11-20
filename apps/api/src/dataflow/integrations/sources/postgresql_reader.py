@@ -14,10 +14,10 @@ acotado y copia por lotes con un cursor del servidor y cuenta de bytes.
 """
 
 from collections.abc import Callable
+from itertools import count
 from typing import Any
 
 from dataflow.integrations.sources.sqlserver_reader import (
-    MAX_TABLES_V2,
     Budget,
     Candidate,
     Column,
@@ -25,7 +25,8 @@ from dataflow.integrations.sources.sqlserver_reader import (
     Snapshot,
     TableCopy,
     canonical,
-    choose,
+    choose_all,
+    copy_all,
     dates_only,
     fail,
     fetch_rows,
@@ -33,6 +34,8 @@ from dataflow.integrations.sources.sqlserver_reader import (
 from dataflow.platform.errors import ApplicationError
 
 SELECTION_RULE = "postgresql-selection-v1"
+# Fase 33 (ADR-051): todas las tablas que caben, de menor a mayor.
+SELECTION_RULE_V2 = "postgresql-selection-v2"
 # Fase 32: el catálogo de un servidor que no controlamos también se acota.
 MAX_CATALOG_TABLES = 500
 MAX_CATALOG_COLUMNS = 5000
@@ -176,26 +179,28 @@ def snapshot(
     candidates = catalog(cursor, schema)
     # La regla de elección es la de SQL Server sobre las columnas que PostgreSQL admite.
     eligible = [Candidate(c.schema, c.name, c.rows, supported(c)) for c in candidates]
-    chosen, omitted = choose(eligible, max_rows, max_columns, MAX_TABLES_V2)
+    chosen, omitted = choose_all(eligible, max_rows, max_columns)
     originals = {(c.schema, c.name): c for c in candidates}
     declared = foreign_keys(cursor, schema)
-    tables: list[TableCopy] = []
-    for index, table in enumerate(chosen):
-        streaming: Any = connection.cursor(name=f"dataflow_copy_{index}")  # type: ignore[call-arg]
+
+    names = count()
+
+    def copier(table: Candidate) -> TableCopy | str:
+        streaming: Any = connection.cursor(name=f"dataflow_copy_{next(names)}")  # type: ignore[call-arg]
         try:
-            result = copy(streaming, originals[(table.schema, table.name)], max_rows, budget)
+            return copy(streaming, originals[(table.schema, table.name)], max_rows, budget)
         finally:
             streaming.close()
-        if isinstance(result, str):
-            omitted.append((table.label, result))
-        else:
-            copied = set(result.headers)
-            result.foreign_keys = [
-                (column, reference)
-                for column, reference in declared.get(table.name, [])
-                if column in copied
-            ]
-            tables.append(result)
+
+    tables, skipped = copy_all(chosen, copier, budget)
+    omitted.extend(skipped)
+    for result in tables:
+        copied = set(result.headers)
+        result.foreign_keys = [
+            (column, reference)
+            for column, reference in declared.get(result.name, [])
+            if column in copied
+        ]
     if not tables:
         raise ApplicationError(
             "POSTGRESQL_NO_TABLES",

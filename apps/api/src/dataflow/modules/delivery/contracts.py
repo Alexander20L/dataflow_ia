@@ -195,6 +195,8 @@ class RunSummary(DeliveryModel):
     state: Literal["queued", "running", "succeeded", "failed", "cancelled"]
     error_code: str | None = None
     finished_at: datetime | None = None
+    # Fase 33: un trabajo aplazado (presupuesto de IA agotado) dice hasta cuándo espera.
+    error_message: str | None = None
 
 
 class DeliveryAccess(Protocol):

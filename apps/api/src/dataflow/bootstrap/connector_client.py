@@ -56,8 +56,13 @@ class HttpConnector:
         self.opener = opener or default_opener()
 
     def snapshot_postgresql(
-        self, connection: PostgresConnection, config: ProcessingConfig, policy: DestinationPolicy
+        self,
+        connection: PostgresConnection,
+        config: ProcessingConfig,
+        policy: DestinationPolicy,
+        timeout: int | None = None,
     ) -> SqlSnapshot:
+        seconds = timeout or config.timeout_seconds
         certificate = connection.ca_certificate
         body = {
             "connection": {
@@ -72,7 +77,7 @@ class HttpConnector:
             },
             "max_rows": config.max_rows,
             "max_columns": config.max_columns,
-            "timeout_seconds": config.timeout_seconds,
+            "timeout_seconds": seconds,
             "max_bytes": self.max_bytes,
             "max_cell_bytes": self.max_cell_bytes,
         }
@@ -85,7 +90,7 @@ class HttpConnector:
         # El CSV de una copia en JSON ocupa como mucho unas tres veces su tamaño (escapes).
         limit = self.max_bytes * 3 + 1024 * 1024
         try:
-            with self.opener(request, timeout=config.timeout_seconds + MARGIN_SECONDS) as response:
+            with self.opener(request, timeout=seconds + MARGIN_SECONDS) as response:
                 content = response.read(limit + 1)
         except urllib.error.HTTPError as exc:
             raise self.refused(exc) from exc

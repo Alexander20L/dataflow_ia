@@ -163,7 +163,7 @@ class IsolatedAnalyzer:
         return PdfSelection.model_validate_json(files["selection.json"])
 
     def snapshot_sqlserver(
-        self, connection: SqlServerConnection, config: ProcessingConfig
+        self, connection: SqlServerConnection, config: ProcessingConfig, timeout: int | None = None
     ) -> SqlSnapshot:
         """La contraseña sólo viaja al directorio temporal privado del subproceso, que se borra
         al terminar; nunca a argumentos de línea de órdenes ni a registros."""
@@ -175,13 +175,17 @@ class IsolatedAnalyzer:
                 "schema": connection.schema_name,
                 "user": connection.user,
                 "password": connection.password.get_secret_value(),
-                "timeout": config.timeout_seconds,
+                "timeout": timeout or config.timeout_seconds,
                 "max_bytes": self.database_max_bytes,
                 "max_cell_bytes": self.database_max_cell_bytes,
             }
         ).encode()
         files = self.run(
-            "snapshot_sqlserver", payload, config, config.timeout_seconds, ["snapshot.json"]
+            "snapshot_sqlserver",
+            payload,
+            config,
+            timeout or config.timeout_seconds,
+            ["snapshot.json"],
         )
         return SqlSnapshot.model_validate_json(files["snapshot.json"])
 
@@ -190,6 +194,7 @@ class IsolatedAnalyzer:
         connection: PostgresConnection,
         config: ProcessingConfig,
         policy: DestinationPolicy | None = None,
+        timeout: int | None = None,
     ) -> SqlSnapshot:
         """Fase 31: como SQL Server; la contraseña sólo viaja al directorio temporal privado.
         Fase 32: con la política de destinos, que el subproceso vuelve a aplicar antes de
@@ -204,7 +209,7 @@ class IsolatedAnalyzer:
                 "schema": connection.schema_name,
                 "user": connection.user,
                 "password": connection.password.get_secret_value(),
-                "timeout": config.timeout_seconds,
+                "timeout": timeout or config.timeout_seconds,
                 "policy": policy.as_json() if policy is not None else None,
                 "ca_certificate": certificate.get_secret_value() if certificate else None,
                 "max_bytes": self.database_max_bytes,
@@ -212,13 +217,21 @@ class IsolatedAnalyzer:
             }
         ).encode()
         files = self.run(
-            "snapshot_postgresql", payload, config, config.timeout_seconds, ["snapshot.json"]
+            "snapshot_postgresql",
+            payload,
+            config,
+            timeout or config.timeout_seconds,
+            ["snapshot.json"],
         )
         return SqlSnapshot.model_validate_json(files["snapshot.json"])
 
-    def relate(self, payload: bytes, config: ProcessingConfig) -> RelatedSet:
+    def relate(
+        self, payload: bytes, config: ProcessingConfig, timeout: int | None = None
+    ) -> RelatedSet:
         """Fase 31: lee las tablas del conjunto y aplica `relations-v1`."""
-        files = self.run("relate", payload, config, config.timeout_seconds, ["relate.json"])
+        files = self.run(
+            "relate", payload, config, timeout or config.timeout_seconds, ["relate.json"]
+        )
         return RelatedSet.model_validate_json(files["relate.json"])
 
     def inspect_xlsx(

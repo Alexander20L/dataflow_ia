@@ -3830,6 +3830,161 @@
         "title": "DatabaseAccess",
         "type": "object"
       },
+      "DatabaseCopy": {
+        "description": "Fase 33 (ADR-051): una copia de base en segundo plano. `photo` («Ver esquema»): al terminar\ntrae `model`; `import` («Analizar»): trae la versión principal (`version_id`). Nunca la\ncontraseña ni el certificado.",
+        "properties": {
+          "created_at": {
+            "format": "date-time",
+            "title": "Created At",
+            "type": "string"
+          },
+          "database": {
+            "title": "Database",
+            "type": "string"
+          },
+          "engine": {
+            "enum": [
+              "postgresql",
+              "sqlserver"
+            ],
+            "title": "Engine",
+            "type": "string"
+          },
+          "error_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Code"
+          },
+          "error_message": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error Message"
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At"
+          },
+          "id": {
+            "format": "uuid",
+            "title": "Id",
+            "type": "string"
+          },
+          "kind": {
+            "enum": [
+              "photo",
+              "import"
+            ],
+            "title": "Kind",
+            "type": "string"
+          },
+          "model": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/DataModel"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "omitted": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Omitted"
+          },
+          "project_id": {
+            "format": "uuid",
+            "title": "Project Id",
+            "type": "string"
+          },
+          "schema_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Schema Name"
+          },
+          "server": {
+            "title": "Server",
+            "type": "string"
+          },
+          "state": {
+            "enum": [
+              "queued",
+              "running",
+              "succeeded",
+              "failed"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "tables": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Tables"
+          },
+          "version_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Version Id"
+          }
+        },
+        "required": [
+          "id",
+          "project_id",
+          "engine",
+          "kind",
+          "state",
+          "server",
+          "database",
+          "created_at"
+        ],
+        "title": "DatabaseCopy",
+        "type": "object"
+      },
       "DatasetProfile": {
         "additionalProperties": false,
         "properties": {
@@ -12360,8 +12515,10 @@
             "enum": [
               "sqlserver-selection-v1",
               "sqlserver-selection-v2",
+              "sqlserver-selection-v3",
               "pdf-selection-v1",
               "postgresql-selection-v1",
+              "postgresql-selection-v2",
               "relations-v1"
             ],
             "title": "Rule",
@@ -13946,7 +14103,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.41.0"
+    "version": "0.42.0"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -14683,6 +14840,171 @@
           }
         ],
         "summary": "Database Access",
+        "tags": [
+          "Datasets"
+        ]
+      }
+    },
+    "/api/v1/database-copies/{copy_id}": {
+      "get": {
+        "description": "Fase 33: estado de una copia en segundo plano; con `succeeded`, la versión principal\n(`import`) o el modelo de datos (`photo`).",
+        "operationId": "getDatabaseCopy",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "copy_id",
+            "required": true,
+            "schema": {
+              "format": "uuid",
+              "title": "Copy Id",
+              "type": "string"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DatabaseCopy"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Database Copy",
         "tags": [
           "Datasets"
         ]
@@ -17493,7 +17815,7 @@
     },
     "/api/v1/projects/{project_id}/imports/postgresql": {
       "post": {
-        "description": "Fase 31: copia de un solo uso de las tablas de un esquema de PostgreSQL\n(`postgresql-selection-v1`); cada tabla es una versión con su CSV original y, si se\nrelacionan (`relations-v1`), la tabla unida es la versión que se devuelve. La contraseña se\nusa para la copia y se descarta. Servidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS` o, con el\nmodo público (Fase 32), cualquiera con direcciones públicas (`database-destination-v1`).",
+        "description": "Fase 31: copia de un solo uso de las tablas de un esquema de PostgreSQL. Fase 33\n(`postgresql-selection-v2`): todas las tablas que caben, en segundo plano; la versión\nprincipal queda en la copia al terminar. La contraseña se usa para la copia y se descarta.\nServidores de `DATAFLOW_POSTGRESQL_ALLOWED_HOSTS` o, con el modo público (Fase 32),\ncualquiera con direcciones públicas (`database-destination-v1`).",
         "operationId": "importPostgresql",
         "parameters": [
           {
@@ -17548,7 +17870,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VersionResponse"
+                  "$ref": "#/components/schemas/DatabaseCopy"
                 }
               }
             },
@@ -17678,7 +18000,7 @@
     },
     "/api/v1/projects/{project_id}/imports/postgresql/inspect": {
       "post": {
-        "description": "Fase 31: «foto» del esquema de PostgreSQL sin guardar nada.",
+        "description": "Fase 31: «foto» del esquema de PostgreSQL sin guardar nada (Fase 33: en segundo plano).",
         "operationId": "inspectPostgresql",
         "parameters": [
           {
@@ -17719,11 +18041,11 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DataModel"
+                  "$ref": "#/components/schemas/DatabaseCopy"
                 }
               }
             },
@@ -18287,7 +18609,7 @@
     },
     "/api/v1/projects/{project_id}/imports/sqlserver": {
       "post": {
-        "description": "Fase 18B: copia de un solo uso de las tablas de una base de SQL Server\n(`sqlserver-selection-v1`); cada tabla es una versión con su CSV original. La contraseña se\nusa para la copia y se descarta. Sólo servidores de `DATAFLOW_SQLSERVER_ALLOWED_HOSTS`.",
+        "description": "Fase 18B: copia de un solo uso de las tablas de una base de SQL Server. Fase 33\n(`sqlserver-selection-v3`): todas las tablas que caben, en segundo plano; cada tabla y cada\nvista es una versión. La contraseña se usa para la copia y se descarta. Sólo servidores de\n`DATAFLOW_SQLSERVER_ALLOWED_HOSTS`.",
         "operationId": "importSqlServer",
         "parameters": [
           {
@@ -18342,7 +18664,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/VersionResponse"
+                  "$ref": "#/components/schemas/DatabaseCopy"
                 }
               }
             },
@@ -18472,7 +18794,7 @@
     },
     "/api/v1/projects/{project_id}/imports/sqlserver/inspect": {
       "post": {
-        "description": "Fase 31: «foto» del esquema de SQL Server sin guardar nada; la contraseña se usa para\nleer y se descarta.",
+        "description": "Fase 31: «foto» del esquema de SQL Server sin guardar nada (Fase 33: en segundo plano;\nel modelo queda en la copia al terminar). La contraseña se usa para leer y se descarta.",
         "operationId": "inspectSqlServer",
         "parameters": [
           {
@@ -18513,11 +18835,11 @@
           "required": true
         },
         "responses": {
-          "200": {
+          "202": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/DataModel"
+                  "$ref": "#/components/schemas/DatabaseCopy"
                 }
               }
             },

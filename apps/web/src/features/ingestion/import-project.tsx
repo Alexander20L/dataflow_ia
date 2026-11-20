@@ -269,15 +269,15 @@ export function ImportProject() {
             : "Archivos conservados. No se encontró una clave común: se analizan por separado.",
         );
       } else {
-        const version = await importDatabase.mutateAsync({
+        const copy = await importDatabase.mutateAsync({
           ...connection(),
           projectId: project.id,
         });
         setDatabase((current) => ({ ...current, password: "" }));
         notify(
-          version.source_origin?.joined
-            ? "Tablas copiadas y unidas por sus claves. Análisis encolado."
-            : "Tablas copiadas. Análisis encolado.",
+          copy.omitted
+            ? `${copy.tables} tablas copiadas; ${copy.omitted} no cupieron (verás el motivo en cada versión). Análisis encolado.`
+            : `${copy.tables} tablas copiadas. Análisis encolado.`,
         );
       }
       router.push(`/workspace/${project.id}`);
@@ -585,7 +585,7 @@ export function ImportProject() {
           {isSubmitting && (
             <p className="fine-print" role="status">
               {mode === "database"
-                ? "Copiando las tablas de la base…"
+                ? "Copiando todas las tablas de la base… Puede tardar varios minutos; si cierras la página, la copia sigue."
                 : mode === "related"
                   ? "Leyendo los archivos y buscando sus relaciones…"
                   : file
@@ -599,7 +599,7 @@ export function ImportProject() {
               {mode === "related"
                 ? "Cada archivo se conserva y se analiza por separado. Si comparten claves, también se analizan unidos, sin repetir ni perder registros."
                 : mode === "database"
-                  ? "Se copian las tablas principales; si sus claves las relacionan, también se analizan unidas. La base no se modifica."
+                  ? "Se copian todas las tablas que caben; si sus claves las relacionan, también se analizan unidas. La base no se modifica."
                   : "El original se conserva sin cambios. El sistema elige la hoja de un Excel, genera la copia analítica, el perfil, la calidad y el dashboard automáticamente."}
             </span>
           </div>

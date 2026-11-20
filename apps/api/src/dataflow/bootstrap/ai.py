@@ -5,20 +5,52 @@
 `missing_key`; el resto del producto funciona igual.
 """
 
+from datetime import UTC, datetime, timedelta
 from functools import lru_cache
 from typing import Any
 
 from dataflow.integrations.ai import AIProvider, AIRequest, FakeProvider
 from dataflow.modules.copilot import simulation
-from dataflow.modules.copilot.application import CopilotConfig
-from dataflow.modules.executions.public import ProcessingConfig
+from dataflow.modules.copilot.application import CopilotConfig, CopilotService
+from dataflow.modules.executions.public import Deferred, Lease, ProcessingConfig
 from dataflow.platform.config import Settings, get_settings
+from dataflow.platform.errors import ApplicationError
 
 
 def simulated(request: AIRequest[Any]) -> dict[str, Any]:
     return simulation.respond(
         request.task, request.context["contexto"], str(request.context["peticion"])
     )
+
+
+def budget_deferral(error: ApplicationError) -> Deferred:
+    """Fase 33 (ADR-051): con el presupuesto de IA agotado, el trabajo espera a que se renueve
+    y sigue con IA (no se hace sólo con reglas)."""
+    renews = (error.details or {}).get("renews_at")
+    try:
+        until = datetime.fromisoformat(str(renews))
+    except ValueError:
+        until = datetime.now(UTC) + timedelta(hours=1)
+    when = until.astimezone(UTC).strftime("%d/%m/%Y %H:%M")
+    return Deferred(
+        until,
+        "AI_BUDGET_WAITING",
+        f"En espera: el presupuesto de IA se renueva el {when} (UTC).",
+    )
+
+
+def ai_unavailability(copilot: CopilotService, lease: Lease) -> str | None:
+    """Por qué un trabajo seguiría sin IA (sin clave, desactivada…), o None si hay IA. Con el
+    presupuesto agotado no sigue sin IA: se aplaza (`Deferred`)."""
+    try:
+        copilot.available(lease.owner_id, lease.execution.project_id)
+    except ApplicationError as error:
+        if error.code == "AI_BUDGET_EXCEEDED":
+            raise budget_deferral(error) from error
+        if error.code == "COPILOT_UNAVAILABLE":
+            return copilot.config.unavailable or "disabled"
+        return error.code
+    return None
 
 
 def ai_job_config(config: ProcessingConfig) -> ProcessingConfig:
