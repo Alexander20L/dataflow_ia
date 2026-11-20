@@ -1,0 +1,26 @@
+curso_id,curso,carrera_id,creditos
+K001,Programación I,C01,4
+K002,Cálculo I,C01,3
+K003,Base de Datos,C01,4
+K004,Redes,C01,4
+K005,Estadística,C01,3
+K006,Marketing,C02,5
+K007,Finanzas I,C02,5
+K008,Economía,C02,4
+K009,Gestión de Personas,C02,3
+K010,Estadística,C02,5
+K011,Contabilidad I,C03,3
+K012,Tributación,C03,4
+K013,Finanzas I,C03,3
+K014,Auditoría,C03,3
+K015,Matemática Financiera,C03,4
+K016,Psicología General,C04,5
+K017,Neurociencia,C04,4
+K018,Estadística,C04,3
+K019,Desarrollo Humano,C04,5
+K020,Ética,C04,3
+K021,Derecho Civil,C05,4
+K022,Derecho Penal,C05,4
+K023,Constitucional,C05,5
+K024,Ética,C05,3
+K025,Redacción Jurídica,C05,4
