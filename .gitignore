@@ -19,3 +19,5 @@ playwright-report/
 infrastructure/compose/secrets/*
 !infrastructure/compose/secrets/ai_api_key.empty
 !infrastructure/compose/secrets/connector_token.empty
+# Túnel de Cloudflare (infrastructure/compose/tunnel.ps1)
+infrastructure/compose/.tunnel.*

@@ -9,6 +9,26 @@ internet ──443──▶ caddy ──edge──▶ web (Next) ──backend�
                                                            └─connector─▶ connector ──egress──▶ bases públicas
 ```
 
+## Sin servidor: publicar desde tu equipo con un túnel
+
+Para una demo o pruebas con otras personas, sin pagar un servidor: Cloudflare da una dirección
+pública con HTTPS (`https://<algo>.trycloudflare.com`) que llega a la aplicación de tu equipo.
+
+```powershell
+winget install --id Cloudflare.cloudflared          # una vez
+powershell -ExecutionPolicy Bypass -File infrastructure\compose\tunnel.ps1
+```
+
+`tunnel.ps1` levanta la aplicación, abre el túnel en segundo plano, guarda la dirección en
+`infrastructure/compose/.env` (`DATAFLOW_PUBLIC_URL`), reinicia la API con
+`compose.tunnel.yaml` (acepta ese origen y las cookies van sólo por HTTPS), comprueba la cadena
+entera y muestra la dirección. Opciones: `-Registration off` cierra el registro de cuentas
+nuevas (`on` lo abre) y `-Stop` cierra el túnel.
+
+Límites: el equipo debe seguir encendido con Docker abierto; la dirección cambia cada vez que se
+abre el túnel (para una fija hacen falta una cuenta de Cloudflare y un dominio propio); con el
+registro abierto, cualquiera con el enlace puede crear una cuenta y gastar el saldo de IA.
+
 ## 1. Crear el servidor (una vez)
 
 1. Crear un VPS con **Ubuntu 24.04**, al menos **4 vCPU y 8 GB** de RAM y 80 GB de disco (por

@@ -1,0 +1,15 @@
+# Publicar la instalación local por un túnel de Cloudflare (sin servidor propio).
+#
+# 1. cloudflared tunnel --url http://localhost:3002   → da https://<algo>.trycloudflare.com
+# 2. DATAFLOW_PUBLIC_URL=https://<algo>.trycloudflare.com en infrastructure/compose/.env
+# 3. docker compose -f compose.yaml -f compose.tunnel.yaml --profile full up -d
+#
+# La API acepta ese origen además de localhost y las cookies de sesión van sólo por HTTPS
+# (los navegadores las siguen enviando a http://localhost). La dirección del túnel rápido
+# cambia cada vez que se abre: repetir los pasos 2 y 3.
+services:
+  api:
+    environment:
+      DATAFLOW_ALLOWED_ORIGINS: '["${DATAFLOW_PUBLIC_URL:?falta DATAFLOW_PUBLIC_URL}","http://localhost:3002","http://127.0.0.1:3002"]'
+      DATAFLOW_COOKIE_SECURE: "true"
+      DATAFLOW_REGISTRATION_ENABLED: ${DATAFLOW_REGISTRATION_ENABLED:-true}
