@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 
 from dataflow.bootstrap.comprehension_job import ComprehensionAccess
 from dataflow.bootstrap.dashboard_job import DashboardAccess
+from dataflow.bootstrap.database_copies import CopyRunner, thread_runner
 from dataflow.bootstrap.delivery_job import DeliveryAccess
 from dataflow.bootstrap.exploration_job import ExplorationAccess
 from dataflow.bootstrap.inspection_job import InspectionAccess
@@ -160,6 +161,15 @@ def ingestion_service(db: Db, objects: Objects) -> IngestionService:
 
 
 Ingestion = Annotated[IngestionService, Depends(ingestion_service)]
+
+
+def copy_runner() -> CopyRunner:
+    """Fase 33: hilos de fondo de la API para las copias de bases (las pruebas lo sustituyen
+    por uno en línea)."""
+    return thread_runner()
+
+
+CopyRunnerDep = Annotated[CopyRunner, Depends(copy_runner)]
 
 
 def analysis_service(db: Db, objects: Objects) -> AnalysisService:

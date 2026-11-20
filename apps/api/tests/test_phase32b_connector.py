@@ -21,7 +21,7 @@ import yaml
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
 from test_csv_ingestion import account, project
-from test_phase18b_sources import SECRET, fake_snapshot
+from test_phase18b_sources import SECRET, copied, fake_snapshot
 from test_phase31_related import pg_body, pg_connection, pg_source
 
 from dataflow.bootstrap import services
@@ -180,7 +180,11 @@ class FakeConnector:
         pass
 
     def snapshot_postgresql(
-        self, connection: PostgresConnection, config: ProcessingConfig, policy: DestinationPolicy
+        self,
+        connection: PostgresConnection,
+        config: ProcessingConfig,
+        policy: DestinationPolicy,
+        timeout: int | None = None,
     ) -> SqlSnapshot:
         FakeConnector.calls.append((connection.server, policy))
         return fake_snapshot(
@@ -209,8 +213,7 @@ def test_public_destinations_are_copied_in_the_connector(
         json=body,
         headers={**headers, "Idempotency-Key": str(uuid4())},
     )
-    assert created.status_code == 202, created.text
-    origin = created.json()["source_origin"]
+    origin = copied(client, created)["source_origin"]
     assert origin["access"] == "public" and origin["tls"] == "verified"
     ((server, policy),) = FakeConnector.calls
     assert server == "db.example.com" and policy.public
@@ -231,7 +234,7 @@ def test_listed_servers_are_still_copied_by_the_api(
         json=pg_body(pg_connection(url, schema)),
         headers=headers,
     )
-    assert photo.status_code == 200, photo.text
+    assert copied(client, photo)["tables"]
     assert FakeConnector.calls == []
 
 

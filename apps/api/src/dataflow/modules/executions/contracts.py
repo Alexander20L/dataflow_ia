@@ -151,6 +151,15 @@ class Execution:
     request_key: UUID | None = None
 
 
+class Deferred(Exception):
+    """Fase 33 (ADR-051): el trabajo no puede hacerse todavía (p. ej. se agotó el presupuesto de
+    IA y debe seguir con IA): vuelve a la cola hasta `until` sin gastar uno de sus intentos."""
+
+    def __init__(self, until: datetime, code: str, message: str) -> None:
+        super().__init__(message)
+        self.until, self.code, self.message = until, code, message
+
+
 @dataclass(frozen=True)
 class Lease:
     execution: Execution
@@ -412,3 +421,4 @@ class ExecutionRepository(Protocol):
         retryable: bool,
         details: dict[str, Any] | None = None,
     ) -> None: ...
+    def defer(self, lease: Lease, until: datetime, code: str, message: str) -> None: ...

@@ -24,11 +24,17 @@ from dataflow.modules.reports.infrastructure import (
     ReportSaveRequest,
 )
 
+# Tablas creadas después de 0029 (Fase 33 en adelante).
+TABLES_AFTER_0029 = {
+    # 0030: copias de bases en segundo plano (Fase 33)
+    "database_copies",
+}
+
 # Tablas creadas después de 0028 (Fase 32 en adelante).
 TABLES_AFTER_0028 = {
     # 0029: intentos de conexión a bases de datos (Fase 32)
     "database_attempts",
-}
+} | TABLES_AFTER_0029
 
 # Tablas creadas después de 0027 (Fase 29 en adelante).
 TABLES_AFTER_0027 = {
@@ -266,3 +272,9 @@ def modelled_at_0028(
     obj: object, name: str | None, type_: str, reflected: bool, other: object
 ) -> bool:
     return table_of(obj, name, type_) not in TABLES_AFTER_0028
+
+
+def modelled_at_0029(
+    obj: object, name: str | None, type_: str, reflected: bool, other: object
+) -> bool:
+    return table_of(obj, name, type_) not in TABLES_AFTER_0029

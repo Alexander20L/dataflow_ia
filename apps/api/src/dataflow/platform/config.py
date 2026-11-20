@@ -43,7 +43,11 @@ class Settings(BaseSettings):
     # Direcciones de salida de DataFlow que la persona debe permitir en su base (sólo se muestran).
     database_egress_ips: list[str] = []
     # Límites frente a un servidor que no controlamos: bytes de una copia y celdas.
-    database_max_bytes: int = Field(default=50 * 1024 * 1024, ge=1024 * 1024, le=200 * 1024 * 1024)
+    # Fase 33: 200 MB (antes 50); al llegar se omiten las tablas restantes en vez de fallar. La
+    # copia entera vive en la memoria del subproceso hasta que termina: no subirlo sin medir.
+    database_max_bytes: int = Field(
+        default=200 * 1024 * 1024, ge=1024 * 1024, le=1024 * 1024 * 1024
+    )
     database_max_cell_bytes: int = Field(default=64 * 1024, ge=1024, le=1024 * 1024)
     # Intentos de conexión («Ver esquema» y «Analizar»): por usuario en 15 min, fallidos por
     # usuario y día, y hacia un mismo destino en 15 min (todas las cuentas).
@@ -53,6 +57,10 @@ class Settings(BaseSettings):
     # Fase 32B: el modo público necesita el servicio `connector` (red de salida aislada, sin
     # credenciales de DataFlow), salvo que se reconozca que no está aislado (sólo desarrollo).
     database_public_unisolated: bool = False
+    # Fase 33 (ADR-051): copias en segundo plano. Plazo de una copia (copia, lectura y relaciones)
+    # e hilos por proceso de API; como mucho una copia en curso por cuenta.
+    database_copy_timeout_seconds: int = Field(default=1800, ge=60, le=3600)
+    database_copy_workers: int = Field(default=2, ge=1, le=8)
     # URL interna del servicio `connector` y su token compartido (variable o secreto de Docker).
     # En el conector, `connector_token*` es el que exige a la API.
     connector_url: str | None = None

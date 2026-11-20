@@ -142,6 +142,13 @@ descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
   (`fetch_rows`), catálogo acotado, memoria del subproceso limitada en Linux. Intentos en
   `database_attempts` (0029, `ingestion/infrastructure.py`). `run_isolated` pasa un entorno
   mínimo (nunca `DATAFLOW_*`), trabaja en su directorio temporal y usa `python -P`.
+- Todas las tablas (Fase 33, ADR-051): `postgresql-selection-v2` / `sqlserver-selection-v3`
+  (todas, de menor a mayor; `BudgetExhausted` omite al llegar al tope). Copias de bases en
+  segundo plano en hilos de la API (`bootstrap/database_copies.py`, contraseña sólo en memoria,
+  latido; `database_copies`, 0030): las rutas de copia y foto responden 202 con `DatabaseCopy`
+  y se consultan con `GET /database-copies/{id}`. En las pruebas, `InlineCopyRunner`
+  (conftest). Presupuesto de IA agotado → `Deferred` (intento `deferred` con `lease_until` = renovación; sin columna nueva) hasta
+  `renews_at`, sin gastar intentos (`bootstrap/ai.py`).
 - Conector (Fase 32B): `bootstrap/connector.py` (servicio aparte, token compartido ≥ 32
   caracteres, sin credenciales de DataFlow) copia los destinos **fuera de la lista**; la API lo
   llama con `bootstrap/connector_client.py` (puerto `SnapshotConnector` en `application.py`;

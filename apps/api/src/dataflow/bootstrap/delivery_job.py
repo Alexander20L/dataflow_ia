@@ -17,7 +17,7 @@ from uuid import UUID, uuid4, uuid5
 
 from sqlalchemy.orm import Session
 
-from dataflow.bootstrap.ai import ai_job_config
+from dataflow.bootstrap.ai import ai_job_config, ai_unavailability
 from dataflow.bootstrap.dashboard_job import request_report_update
 from dataflow.modules.analytics.contracts import AutomaticAnalysis
 from dataflow.modules.comprehension.contracts import Comprehension
@@ -555,16 +555,8 @@ class ReportStepV2(ReportStep):
         self.prepared: dict[UUID, str | None] = {}
 
     def prepare(self, lease: Lease, step: PlanStepSpec) -> None:
-        reason = None
-        try:
-            self.copilot.available(lease.owner_id, lease.execution.project_id)
-        except ApplicationError as error:
-            reason = (
-                error.code
-                if error.code != "COPILOT_UNAVAILABLE"
-                else (self.copilot.config.unavailable or "disabled")
-            )
-        self.prepared[lease.attempt_id] = reason
+        # Fase 33: con el presupuesto de IA agotado, el trabajo se aplaza (no sigue sin IA).
+        self.prepared[lease.attempt_id] = ai_unavailability(self.copilot, lease)
 
     def inspection(self, lease: Lease) -> tuple[Inspection, str] | None:
         artifact = published_artifact(
@@ -760,6 +752,7 @@ class DeliveryAccess:
                 state=run.state,
                 error_code=run.error_code,
                 finished_at=run.finished_at,
+                error_message=run.error_message,
             )
             for run in self.executions.for_version(owner, version)
         ]

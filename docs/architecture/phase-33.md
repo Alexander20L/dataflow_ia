@@ -1,6 +1,6 @@
 # Fase 33 — Todas las tablas de una base, tarde lo que tarde
 
-Estado: **diseño** (pendiente de implementar). Decisión:
+Estado: **implementada** (API 0.42.0, migración 0030). Decisión:
 [ADR-051](../adr/051-all-tables-background-copy.md). Modifica la
 [Fase 31](phase-31.md) ([ADR-049](../adr/049-related-sources-and-postgresql.md) §7: hasta 10
 tablas) y la [Fase 32](phase-32.md) (copia dentro de la petición).
@@ -53,29 +53,43 @@ GET  /database-copies/{id} ─▶ estado, tablas copiadas/omitidas y la versión
   ni el certificado.
 - Hilos: `DATAFLOW_DATABASE_COPY_WORKERS` (2) por proceso de API; como mucho una copia en curso
   por cuenta (las demás esperan en `queued`).
-- Si la API se reinicia, las copias `queued` o `running` pasan a `failed` con
-  `DATABASE_COPY_INTERRUPTED` («Vuelve a conectar: por seguridad la contraseña no se guarda»).
-  Es el precio de no guardar la contraseña.
+- Mientras corre (o espera su turno), la copia **late** cada 20 s (`heartbeat_at`). Si la API se
+  reinicia, el latido se detiene y, al consultarla, una copia sin latido desde hace 90 s pasa a
+  `failed` con `DATABASE_COPY_INTERRUPTED` («Vuelve a conectar: por seguridad la contraseña no
+  se guarda»). Es el precio de no guardar la contraseña. Con el latido no hace falta nada al
+  arrancar, y funciona con varias réplicas de la API.
 - La copia usa `DATAFLOW_DATABASE_COPY_TIMEOUT_SECONDS` (1800) para el subproceso o el
   conector, y el mismo plazo para leer los archivos, relacionarlos y registrar las versiones.
 - «Ver esquema» usa el mismo mecanismo (`photo`): responde con el `copy_id` y el modelo de datos
   queda en el registro (sin datos de las tablas) cuando termina.
-- `DATAFLOW_DATABASE_MAX_BYTES` sube a 500 MB por defecto y deja de ser un error: al llegar, la
-  copia se detiene y las tablas restantes se omiten («La copia alcanzó el tamaño máximo»). Las
-  tablas se copian de menor a mayor para que entren las más posibles.
+- `DATAFLOW_DATABASE_MAX_BYTES` sube a **200 MB** por defecto (no 500 como en el diseño: la copia
+  entera vive en la memoria del subproceso hasta que termina, y con 500 MB Python necesitaría
+  varios GB) y deja de ser un error: al llegar, la copia se detiene y la tabla en curso y las
+  restantes se omiten («La copia alcanzó su tamaño máximo»). Las tablas se copian de menor a
+  mayor para que entren las más posibles.
+- Después de copiar, lo que no cabe como original (5 MB) o en la cuota de la cuenta se omite con
+  su motivo, tablas y vistas; si cae la vista principal, se abre la tabla mayor.
+- **Cola**: las versiones de una misma copia entran juntas aunque pasen del límite de 50
+  trabajos pendientes por cuenta (la cola admite la carga una vez, como un todo). Hallado en la
+  prueba real: 30 tablas son 56 versiones.
 
 ## Presupuesto de IA: esperar y seguir
 
 Hoy cada trabajo con IA (comprensión, investigación, dashboard, informe) llama a
 `copilot.available()` en `prepare` y, con `AI_BUDGET_EXCEEDED`, sigue sólo con reglas.
 
-- Nuevo resultado de `prepare`: **aplazar**. El trabajo vuelve a `queued` con `available_at`
-  (columna nueva de `executions`, migración **0030**) en el momento en que se renueva el
-  presupuesto: 00:00 UTC del día siguiente (tokens por usuario) o el día 1 del mes siguiente
-  (costo por proyecto).
-- `claim` ignora los trabajos con `available_at` en el futuro; los demás trabajos de la cuenta
-  siguen su curso (un trabajo aplazado no bloquea el límite de tres en marcha).
-- El progreso muestra la etapa como «En espera: el presupuesto de IA se renueva el …».
+- Nuevo resultado de `prepare`: **aplazar** (`Deferred`). El intento termina como `deferred` y
+  guarda en su `lease_until` el momento en que se renueva el presupuesto: 00:00 UTC del día
+  siguiente (tokens por usuario) o el día 1 del mes siguiente (costo por proyecto); el trabajo
+  vuelve a `queued`. Sin tabla ni columna nuevas: una columna nueva en `execution_runs` rompía
+  las pruebas de las migraciones antiguas, que usan el modelo actual sobre esquemas viejos.
+- `claim` ignora los trabajos con un intento aplazado hasta el futuro; los demás de la cuenta
+  siguen su curso (un trabajo aplazado no bloquea el límite de tres en marcha). El intento
+  aplazado queda como `deferred` y **no gasta** uno de los tres intentos del trabajo.
+- `budget_deferral` y `ai_unavailability` (`bootstrap/ai.py`) sustituyen la comprobación que
+  repetían los seis puntos de los trabajos con IA; el error de presupuesto lleva `renews_at`.
+- El progreso muestra la etapa en cola con «En espera: el presupuesto de IA se renueva el …
+  (UTC).» (`AI_BUDGET_WAITING`).
 - La falta de IA por otros motivos (sin clave, proveedor caído) sigue como hoy: reglas y aviso.
 
 **Cuánto se espera.** Medido en las pruebas de la Fase 31 (69 llamadas reales a Claude Opus
@@ -102,7 +116,8 @@ versiones) cuesta unos 6 USD y 670 000 tokens. Con los límites por defecto:
 - `POST …/postgresql/inspect` y `…/sqlserver/inspect`: 202 con `DatabaseCopy` (`kind: photo`).
 - `GET /database-copies/{id}` (`getDatabaseCopy`): estado; con `succeeded`, `version_id`
   (import) o `model` (photo); con `failed`, `error_code` y `error_message`.
-- Progreso de versión: estado `deferred` con `available_at`.
+- Progreso de versión: la etapa aplazada sigue en `queued` y su detalle dice hasta cuándo
+  espera (sin estado nuevo: la web no cambia).
 - Reglas nuevas: `postgresql-selection-v2` y `sqlserver-selection-v3` (sin límite de tablas, de
   menor a mayor, omitidas por tamaño). Las versiones anteriores se siguen leyendo con su regla.
 
@@ -110,7 +125,7 @@ versiones) cuesta unos 6 USD y 670 000 tokens. Con los límites por defecto:
 
 | Variable                                 | Por defecto | Uso                                     |
 | ---------------------------------------- | ----------- | --------------------------------------- |
-| `DATAFLOW_DATABASE_MAX_BYTES`            | 500 MB      | Tope de una copia (antes 50 MB y error) |
+| `DATAFLOW_DATABASE_MAX_BYTES`            | 200 MB      | Tope de una copia (antes 50 MB y error) |
 | `DATAFLOW_DATABASE_COPY_TIMEOUT_SECONDS` | `1800`      | Plazo de una copia en segundo plano     |
 | `DATAFLOW_DATABASE_COPY_WORKERS`         | `2`         | Copias a la vez por proceso de API      |
 
@@ -120,21 +135,34 @@ versiones) cuesta unos 6 USD y 670 000 tokens. Con los límites por defecto:
 | --------------------------------------------- | ------------------------------------------------------- |
 | Reglas sin límite de tablas y tope que omite  | `integrations/sources/*_reader.py`                      |
 | Copias (`database_copies`, 0030) y estados    | `modules/ingestion/infrastructure.py`, `application.py` |
-| Hilos de fondo y recuperación al arrancar     | `bootstrap/database_copies.py`, `bootstrap/app.py`      |
-| Aplazamiento (`available_at`, 0030) y `claim` | `modules/executions/`                                   |
-| Trabajos con IA que aplazan                   | `bootstrap/*_job.py` (`prepare`)                        |
+| Hilos de fondo, latido y una copia por cuenta | `bootstrap/database_copies.py`                          |
+| Rutas 202 y `GET /database-copies/{id}`       | `modules/ingestion/presentation.py`                     |
+| Aplazamiento (intento `deferred`) y `claim`   | `modules/executions/`                                   |
+| Trabajos con IA que aplazan                   | `bootstrap/ai.py`, `bootstrap/*_job.py` (`prepare`)     |
 | Pantalla de carga y progreso aplazado         | `apps/web/src/features/ingestion/`, progreso de versión |
 
 ## Pruebas
 
-- Una base de prueba con 25 tablas: se copian todas y se registran N + H + 1 versiones.
-- El tope de bytes omite las últimas tablas con su motivo; las más pequeñas entran primero.
-- La copia responde 202 al momento; `GET /database-copies/{id}` pasa por `running` y
-  `succeeded`; la contraseña no aparece en ningún registro.
-- Reinicio con copias en curso → `DATABASE_COPY_INTERRUPTED`.
-- Presupuesto agotado → el trabajo queda `deferred` con su `available_at`, `claim` no lo toma
-  antes y lo toma después; los demás trabajos de la cuenta siguen.
-- Sin clave de IA → sigue como hoy (reglas y aviso).
+En `test_phase33_all_tables.py` (y adaptadas las de las Fases 18B, 31 y 32 a la respuesta 202):
+
+- Elección de todas las tablas de menor a mayor; un esquema real con 27 tablas se copia entero
+  (`postgresql-selection-v2`).
+- El tope de la copia deja entrar las tablas pequeñas y omite las demás con su motivo; la
+  cuota de la cuenta, igual.
+- Una base que pasa del límite de pendientes entra entera en la cola.
+- Foto y copia responden 202; `GET /database-copies/{id}` trae el modelo o la versión, otra
+  cuenta no la ve y la contraseña no aparece; una copia con contraseña errónea queda `failed`
+  con su motivo; una sin latido, `DATABASE_COPY_INTERRUPTED`.
+- El ejecutor de hilos hace una copia a la vez por cuenta y en paralelo entre cuentas.
+- Presupuesto agotado: la comprensión queda en cola hasta las 00:00 UTC siguientes, el progreso
+  lo dice, aplazarla cuatro veces no gasta sus intentos y, con presupuesto, sigue con IA. Sin IA
+  configurada, sigue como antes (reglas).
+
+Prueba real contra la API en marcha (hilos de verdad, IA desactivada) con un esquema sintético
+de 30 tablas relacionadas: la foto responde en 0,2 s y el modelo (30 tablas, 77 relaciones y
+26 vistas) está en 4 s; la copia responde en 0,07 s y en 11 s registra **56 versiones** (30
+tablas, 25 vistas de hechos y la vista general, que se abre). No se pudo probar con Pagila:
+descargar y ejecutar su SQL no estaba permitido en este entorno.
 
 ## Limitaciones
 

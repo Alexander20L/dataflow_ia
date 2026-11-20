@@ -3,6 +3,7 @@ from dataflow.modules.executions.contracts import (
     Artifact,
     ArtifactKind,
     ArtifactOutput,
+    Deferred,
     Execution,
     ExecutionResponse,
     InputResolver,
@@ -22,6 +23,7 @@ from dataflow.modules.executions.domain import legacy_state
 
 __all__ = [
     "Executions",
+    "Deferred",
     "Artifact",
     "ArtifactKind",
     "ArtifactOutput",

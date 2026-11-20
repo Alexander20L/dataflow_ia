@@ -9,6 +9,7 @@ from alembic import command
 from alembic.autogenerate import compare_metadata
 from alembic.config import Config
 from alembic.migration import MigrationContext
+from migration_support import modelled_at_0029
 from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.engine import make_url
 from sqlalchemy.orm import Session
@@ -45,7 +46,9 @@ def test_0029_is_additive_and_limits_connection_attempts(
 
         with Session(engine, expire_on_commit=False) as db:
             with engine.connect() as connection:
-                context = MigrationContext.configure(connection, opts={})
+                context = MigrationContext.configure(
+                    connection, opts={"include_object": modelled_at_0029}
+                )
                 diff = compare_metadata(context, Base.metadata)
             assert diff == [], diff
 

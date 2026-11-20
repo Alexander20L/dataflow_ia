@@ -71,9 +71,10 @@ def create_app(settings: Settings | None = None, scratch: Path | None = None) ->
             payload = ConnectorSnapshotRequest.model_validate_json(body)
         except ValidationError:
             return refusal("CONNECTOR_INVALID", "Petición no válida.", 422)
+        # El plan admite como mucho 100 s; la copia (Fase 33) usa su propio plazo, aparte.
         analyzer = IsolatedAnalyzer(
             root,
-            payload.timeout_seconds,
+            min(payload.timeout_seconds, 60),
             payload.max_rows,
             payload.max_columns,
             payload.max_bytes,
@@ -90,6 +91,7 @@ def create_app(settings: Settings | None = None, scratch: Path | None = None) ->
                 payload.connection,
                 analyzer.config(None),
                 policy,
+                payload.timeout_seconds,
             )
         except ApplicationError as exc:
             return JSONResponse(

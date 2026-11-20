@@ -1,7 +1,7 @@
 import { useRef } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type { components } from "@dataflow/api-client";
-import { api, requireData } from "@/lib/api";
+import { ApiError, api, requireData } from "@/lib/api";
 
 export type DatasetVersion = components["schemas"]["VersionResponse"];
 export type Diagnostic = components["schemas"]["Diagnostic"];
@@ -257,6 +257,27 @@ export type SqlServerConnection = components["schemas"]["SqlServerConnection"];
 export type PostgresConnection = components["schemas"]["PostgresConnection"];
 export type DatabaseEngine = "sqlserver" | "postgresql";
 export type DatabaseAccess = components["schemas"]["DatabaseAccess"];
+export type DatabaseCopy = components["schemas"]["DatabaseCopy"];
+
+/** Fase 33: la copia de una base sigue en segundo plano; se consulta cada pocos segundos hasta
+ * que termina. Una copia fallida se convierte en un error con su motivo. */
+async function finishedCopy(copy: DatabaseCopy): Promise<DatabaseCopy> {
+  let current = copy;
+  while (current.state === "queued" || current.state === "running") {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
+    current = requireData(
+      await api.GET("/api/v1/database-copies/{copy_id}", {
+        params: { path: { copy_id: current.id } },
+      }),
+    );
+  }
+  if (current.state === "failed")
+    throw new ApiError(
+      current.error_message ?? "No se pudo copiar la base.",
+      422,
+    );
+  return current;
+}
 
 /** Fase 32: a qué bases se puede conectar en este entorno (lista, modo público o ninguna) y,
  * en el modo público, desde qué direcciones sale DataFlow. */
@@ -269,8 +290,9 @@ export function useDatabaseAccess() {
   });
 }
 
-/** Fase 18B y 31: copia de un solo uso de las tablas de una base (SQL Server o PostgreSQL).
- * Si las tablas se relacionan, la versión devuelta es la tabla unida. */
+/** Fase 18B, 31 y 33: copia de un solo uso de todas las tablas de una base (SQL Server o
+ * PostgreSQL), en segundo plano. Devuelve la copia terminada: su `version_id` es la versión
+ * principal (la tabla unida si las tablas se relacionan). */
 export function useImportDatabase() {
   const client = useQueryClient();
   return useMutation({
@@ -291,21 +313,26 @@ export function useImportDatabase() {
         path: { project_id: request.projectId },
         header: { "Idempotency-Key": crypto.randomUUID() },
       };
-      return requireData(
-        request.engine === "sqlserver"
-          ? await api.POST("/api/v1/projects/{project_id}/imports/sqlserver", {
-              params,
-              body: request.connection,
-            })
-          : await api.POST("/api/v1/projects/{project_id}/imports/postgresql", {
-              params,
-              body: request.connection,
-            }),
+      return finishedCopy(
+        requireData(
+          request.engine === "sqlserver"
+            ? await api.POST(
+                "/api/v1/projects/{project_id}/imports/sqlserver",
+                {
+                  params,
+                  body: request.connection,
+                },
+              )
+            : await api.POST(
+                "/api/v1/projects/{project_id}/imports/postgresql",
+                { params, body: request.connection },
+              ),
+        ),
       );
     },
-    onSuccess: async (version) => {
+    onSuccess: async (copy) => {
       await client.invalidateQueries({
-        queryKey: ["versions", version.project_id],
+        queryKey: ["versions", copy.project_id],
       });
     },
   });
@@ -331,17 +358,21 @@ export function useInspectDatabase() {
           },
     ): Promise<DataModel> => {
       const params = { path: { project_id: request.projectId } };
-      return requireData(
-        request.engine === "sqlserver"
-          ? await api.POST(
-              "/api/v1/projects/{project_id}/imports/sqlserver/inspect",
-              { params, body: request.connection },
-            )
-          : await api.POST(
-              "/api/v1/projects/{project_id}/imports/postgresql/inspect",
-              { params, body: request.connection },
-            ),
+      const copy = await finishedCopy(
+        requireData(
+          request.engine === "sqlserver"
+            ? await api.POST(
+                "/api/v1/projects/{project_id}/imports/sqlserver/inspect",
+                { params, body: request.connection },
+              )
+            : await api.POST(
+                "/api/v1/projects/{project_id}/imports/postgresql/inspect",
+                { params, body: request.connection },
+              ),
+        ),
       );
+      if (!copy.model) throw new ApiError("No se pudo leer el esquema.", 422);
+      return copy.model;
     },
   });
 }

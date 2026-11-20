@@ -19,7 +19,7 @@ import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine, text
 from test_csv_ingestion import account, project
-from test_phase18b_sources import SECRET
+from test_phase18b_sources import SECRET, copied
 from test_phase31_related import pg_body, pg_connection, pg_source, sqlserver_with_keys
 
 from dataflow.integrations.sources import postgresql_reader, sqlserver_reader
@@ -209,7 +209,7 @@ def test_listed_servers_keep_working_in_public_mode(
         json=pg_body(pg_connection(url, schema)),
         headers=headers,
     )
-    assert photo.status_code == 200, photo.text
+    assert copied(client, photo)["tables"]
 
 
 def test_sqlserver_stays_list_only_in_public_mode(
@@ -247,7 +247,7 @@ def test_connection_attempts_are_limited(
         ok = client.post(
             f"/api/v1/projects/{pid}/imports/sqlserver/inspect", json=body, headers=headers
         )
-        assert ok.status_code == 200, ok.text
+        assert copied(client, ok)["tables"]
     limited = client.post(
         f"/api/v1/projects/{pid}/imports/sqlserver/inspect", json=body, headers=headers
     )
@@ -258,7 +258,7 @@ def test_connection_attempts_are_limited(
     again = client.post(
         f"/api/v1/projects/{other_pid}/imports/sqlserver/inspect", json=body, headers=other
     )
-    assert again.status_code == 200, again.text
+    assert copied(client, again)["tables"]
 
 
 def test_database_access_tells_the_screen_what_to_show(
@@ -341,10 +341,14 @@ def test_oversized_cells_omit_the_table_and_the_total_stops_the_copy(
     snapshot = analyzer.snapshot_postgresql(pg_connection(url, schema), analyzer.config(None))
     omitted = {o.table: o.reason for o in snapshot.omitted}
     assert "64 KB" in omitted[f"{schema}.notas"]
-    tiny = IsolatedAnalyzer(objects.root, 45, 100_000, 128, database_max_bytes=40)
-    with pytest.raises(ApplicationError) as raised:
-        tiny.snapshot_postgresql(pg_connection(url, schema), tiny.config(None))
-    assert raised.value.code == "DATABASE_TOO_LARGE"
+    # Fase 33: el tope de la copia ya no la hace fallar: entran las tablas más pequeñas
+    # (carreras, 45 bytes) y las que ya no caben (alumnos, 150) se omiten con su motivo.
+    tiny = IsolatedAnalyzer(objects.root, 45, 100_000, 128, database_max_bytes=100)
+    small = tiny.snapshot_postgresql(pg_connection(url, schema), tiny.config(None))
+    assert [t.label for t in small.tables] == [f"{schema}.carreras"]
+    reasons = {o.table: o.reason for o in small.omitted}
+    assert "tamaño máximo" in reasons[f"{schema}.alumnos"]
+    assert "64 KB" in reasons[f"{schema}.notas"]
 
 
 class Batches:
@@ -362,9 +366,8 @@ def test_rows_are_read_in_batches_with_limits() -> None:
     assert "Más de 2000" in str(sqlserver_reader.fetch_rows(Batches(list(rows)), 2000, Budget()))
     wide = Budget(max_cell_bytes=5)
     assert "celdas" in str(sqlserver_reader.fetch_rows(Batches(list(rows)), 3000, wide))
-    with pytest.raises(ApplicationError) as raised:
+    with pytest.raises(sqlserver_reader.BudgetExhausted):
         sqlserver_reader.fetch_rows(Batches(list(rows)), 3000, Budget(max_bytes=1000))
-    assert raised.value.code == "DATABASE_TOO_LARGE"
 
 
 def test_a_crowded_catalog_is_refused() -> None:

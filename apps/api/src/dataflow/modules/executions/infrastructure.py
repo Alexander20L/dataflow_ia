@@ -600,7 +600,17 @@ class SQLExecutionRepository:
                 ExecutionRecord.kind.in_(kinds),
                 ExecutionRecord.plan_id.is_not(None),
                 or_(
-                    and_(ExecutionRecord.state == "queued", ~waiting),
+                    and_(
+                        ExecutionRecord.state == "queued",
+                        ~waiting,
+                        # Fase 33: un trabajo aplazado espera a su momento (el de su
+                        # intento `deferred`; sin tabla ni columna nuevas).
+                        ~exists().where(
+                            AttemptRecord.execution_id == ExecutionRecord.id,
+                            AttemptRecord.state == "deferred",
+                            AttemptRecord.lease_until > now,
+                        ),
+                    ),
                     and_(ExecutionRecord.state == "running", ExecutionRecord.id.in_(expired)),
                 ),
             )
@@ -645,7 +655,16 @@ class SQLExecutionRepository:
                 "execution.lease_expired",
                 record.correlation_id,
             )
-        if record.attempt_count >= config.max_attempts:
+        # Fase 33: los aplazamientos no gastan intentos.
+        deferred = (
+            self.db.scalar(
+                select(func.count())
+                .select_from(AttemptRecord)
+                .where(AttemptRecord.execution_id == record.id, AttemptRecord.state == "deferred")
+            )
+            or 0
+        )
+        if record.attempt_count - deferred >= config.max_attempts:
             record.state, record.active_attempt_id, record.finished_at = "failed", None, now
             record.error_code, record.error_message = (
                 "ATTEMPTS_EXHAUSTED",
@@ -761,6 +780,24 @@ class SQLExecutionRepository:
         )
         self.db.flush()
         return True
+
+    def defer(self, lease: Lease, until: datetime, code: str, message: str) -> None:
+        """Fase 33: el intento termina como `deferred` y el trabajo vuelve a la cola hasta
+        `until`, que se guarda en el `lease_until` del intento aplazado (`claim` no lo toma
+        antes), con el motivo a la vista (el progreso lo muestra)."""
+        current = self.current(lease)
+        if not current:
+            return
+        record, attempt = current
+        now = datetime.now(UTC)
+        attempt.state, attempt.finished_at, attempt.lease_until = "deferred", now, until
+        attempt.error_code, attempt.error_message = code, message[:300]
+        record.state, record.active_attempt_id, record.updated_at = "queued", None, now
+        record.error_code, record.error_message = code, message[:300]
+        record_event(
+            self.db, record.owner_id, record.id, "execution.deferred", record.correlation_id
+        )
+        self.db.flush()
 
     def fail(
         self,
