@@ -11,4 +11,6 @@ RUN useradd --create-home app
 RUN mkdir -p /app/.data/objects && chown -R app:app /app/.data
 USER app
 EXPOSE 8000
-CMD ["sh", "-c", "alembic upgrade head && python scripts/cutover.py --apply && uvicorn dataflow.bootstrap.app:app --host 0.0.0.0 --port 8000 --no-proxy-headers --limit-concurrency 32"]
+# Cabeceras de proxy: uvicorn sólo confía en FORWARDED_ALLOW_IPS (por defecto 127.0.0.1, nadie
+# más); producción fija la red interna de la web (ADR-052).
+CMD ["sh", "-c", "alembic upgrade head && python scripts/cutover.py --apply && uvicorn dataflow.bootstrap.app:app --host 0.0.0.0 --port 8000 --limit-concurrency 32"]

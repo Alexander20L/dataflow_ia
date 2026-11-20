@@ -1,0 +1,21 @@
+# Producción (ADR-052): HTTPS automático para DATAFLOW_DOMAIN y proxy hacia la web de Next.js.
+# Caddy sustituye la cabecera X-Forwarded-For que mande el cliente por la IP real de la conexión.
+{$DATAFLOW_DOMAIN} {
+	encode zstd gzip
+
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "SAMEORIGIN"
+		Referrer-Policy "strict-origin-when-cross-origin"
+		-Server
+	}
+
+	# El proxy de Next limita cada ruta (hasta 3 × 5 MB en los archivos relacionados); esto
+	# corta antes lo que no puede ser una petición válida.
+	request_body {
+		max_size 20MB
+	}
+
+	reverse_proxy web:3000
+}
