@@ -224,7 +224,11 @@ El modo local sin contenedores usa `apps/api/.data/objects` por defecto. Para al
 
 Los Dockerfiles ejecutan con usuario sin privilegios. GitHub Actions tiene pipelines separados para backend y frontend, incluyendo integración con PostgreSQL y pruebas de contrato/navegador. Prettier mantiene formato web/documentación; Ruff formatea Python.
 
-La contraseña de Compose es exclusivamente para desarrollo local. En despliegues HTTPS: secretos externos, `DATAFLOW_COOKIE_SECURE=true`, orígenes exactos y un proxy confiable con políticas de red. El rate limit usa la IP de conexión sin confiar en cabeceras reenviadas; detrás de un proxy compartido debe configurarse un control de entrada por cliente real.
+La contraseña de Compose es exclusivamente para desarrollo local. El rate limit usa la IP de conexión; uvicorn sólo cree `X-Forwarded-For` desde `FORWARDED_ALLOW_IPS` (por defecto nadie más que `127.0.0.1`).
+
+## Producción
+
+Un servidor Linux con Docker Compose, Caddy (HTTPS automático) delante de la web e imágenes publicadas en GHCR por `.github/workflows/deploy.yml`, que despliega cada fusión en `main` (ADR-052). La capa `infrastructure/compose/compose.production.yaml` fija orígenes, cookie `Secure`, la IP real de cada persona en el límite de intentos y reinicio automático; `infrastructure/production/` prepara el servidor (`provision.sh`), despliega con vuelta atrás (`deploy.sh`) y hace la copia diaria (`backup.sh`). Pasos completos, operación y restauración en [Despliegue en producción](docs/operations/deployment.md).
 
 ## Dependencias
 

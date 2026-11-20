@@ -20,6 +20,9 @@ async function proxy(
     "x-csrf-token",
     "x-correlation-id",
     "idempotency-key",
+    // La IP de la persona que pone Caddy en producción; la API sólo la cree si llega desde
+    // su red interna (FORWARDED_ALLOW_IPS, ADR-052) y la usa en los límites de intentos.
+    "x-forwarded-for",
   ]) {
     const value = request.headers.get(name);
     if (value) headers.set(name, value);

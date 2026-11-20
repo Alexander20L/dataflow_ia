@@ -155,6 +155,10 @@ descriptor de catálogo + ejecutor y falla al arrancar si falta uno).
   caído → 503 `DATABASE_CONNECTOR_UNAVAILABLE`). Compose: perfil `public-databases`, redes
   `backend` / `connector` (interna) / `egress`; `egress-firewall.sh` en el anfitrión Linux. Sin
   conector ni token el modo público sólo arranca con `DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true`.
+- Producción (ADR-052, `docs/operations/deployment.md`): VPS Linux con Compose + `compose.production.yaml`
+  (Caddy en la red `edge`, imágenes de GHCR, `FORWARDED_ALLOW_IPS` = subred fija de `backend`);
+  `infrastructure/production/` (`provision.sh`, `deploy.sh`, `backup.sh`, unidades systemd) y
+  `.github/workflows/deploy.yml` (fusión en `main` → despliegue por SSH).
 - delivery (Fase 17): informe automático (`delivery.report@1`, sólo reordena lo publicado; ReportLab
   sólo en `delivery/pdf.py`) y progreso por etapas; `bootstrap/delivery_job.py` lo une a la cola.
 - No volver a crear `automation`, `templates` ni `analysis_sessions` (prueba AST). La detección pura de

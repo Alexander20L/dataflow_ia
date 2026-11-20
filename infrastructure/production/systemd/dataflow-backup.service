@@ -1,0 +1,8 @@
+[Unit]
+Description=DataFlow AI: copia de seguridad de la base y los archivos
+After=docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh /opt/dataflow/infrastructure/production/backup.sh
