@@ -1,7 +1,7 @@
 # Fase 32 — Conexión a bases de datos públicas
 
-Estado: **32A implementada** (API 0.40.0, migración 0029); **32B pendiente** (sin ella el
-modo público no arranca salvo en desarrollo). Decisión:
+Estado: **implementada**: 32A (API 0.40.0, migración 0029) y 32B (API 0.41.0, servicio
+`connector`, sin migración). Decisión:
 [ADR-050](../adr/050-public-database-connections.md). Amplía la [Fase 31](phase-31.md)
 ([ADR-049](../adr/049-related-sources-and-postgresql.md) §7) y la Fase 18B
 ([ADR-035](../adr/035-regional-sources-tables-and-structure.md) §8).
@@ -132,28 +132,50 @@ subproceso trabaja dentro de su directorio temporal (no ve el `.env` de la API) 
 `python -P` (ese directorio no entra en `sys.path`). Vale para todos los pasos aislados, no sólo
 para las bases.
 
-**32B — en el despliegue.** Nuevo servicio `connector` (misma imagen,
-`python -m dataflow.bootstrap.connector`) que hace las copias y fotos de bases. La API lo llama
-por HTTP interno con un token compartido cuando `DATAFLOW_CONNECTOR_URL` está definido; si no,
-usa el subproceso local como hoy.
+**32B — en el despliegue** (implementada). Servicio `connector`
+(`python -m dataflow.bootstrap.connector`, la misma imagen que la API) que copia los esquemas de
+los destinos **que no están en la lista**. La API lo llama por HTTP interno
+(`POST /v1/snapshot/postgresql`, `bootstrap/connector_client.py`) con un token compartido de al
+menos 32 caracteres; el conector ejecuta el mismo subproceso aislado, que repite
+`database-destination-v1`, y devuelve la copia o el mismo error. Si no responde: 503
+`DATABASE_CONNECTOR_UNAVAILABLE` (la API nunca copia por su cuenta un destino público si hay
+conector configurado).
 
 ```
-red backend (interna) : web, api, worker, postgres
+red backend            : web, api, worker, postgres (la API sale a internet por aquí: IA)
 red connector (interna): api ◀──▶ connector
-red egress            : connector ──▶ internet   (cortafuegos: sin RFC 1918, 169.254/16, 100.64/10)
+red egress             : connector ──▶ internet   (puente df-egress, subred 172.31.250.0/24)
 ```
 
-- `connector` no tiene credenciales de la base de DataFlow, ni clave de IA, ni volúmenes;
-  sistema de archivos de sólo lectura, usuario sin privilegios, límite de memoria y CPU.
-- La red `egress` necesita además una regla de cortafuegos (cadena `DOCKER-USER` o el grupo de
-  seguridad de la nube) que niegue rangos privados y de metadatos: Docker por sí solo deja
-  salir hacia la red local del anfitrión. Es la defensa que cubre lo que la regla no ve
-  (redirecciones del controlador, errores de libpq o FreeTDS).
-- Con `DATAFLOW_DATABASE_PUBLIC_ACCESS=true` y sin `DATAFLOW_CONNECTOR_URL`, la API **no
-  arranca**, salvo con `DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true` (sólo para desarrollo local),
-  igual que `bootstrap/operations.py` falla al arrancar cuando falta una pieza. Desde la 32A
-  la comprobación ya existe (`Settings.require_database_isolation`): como aún no hay
-  `connector`, el modo público sólo arranca con `DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true`.
+- El conector no tiene credenciales de la base de DataFlow, ni clave de IA, ni volúmenes ni
+  puertos publicados; sistema de archivos de sólo lectura (`/tmp` en memoria), sin
+  capacidades, `no-new-privileges`, usuario sin privilegios y límites de memoria, CPU y procesos.
+  Sin documentación ni esquema OpenAPI; peticiones de hasta 128 KB.
+- Va en su propio perfil de Compose, `public-databases`: `--profile full` sigue igual que antes
+  (sin token y con el modo público desactivado). El token es un secreto de Docker
+  (`DATAFLOW_CONNECTOR_TOKEN_SECRET_FILE`; el marcador vacío versionado deja el modo público
+  apagado).
+- `infrastructure/compose/egress-firewall.sh` (anfitrión Linux, root) añade a `DOCKER-USER`
+  reglas que niegan desde `df-egress` los rangos privados, de metadatos, de documentación y
+  multidifusión (e IPv6 entero). Es la capa que cubre lo que la regla no ve (redirecciones del
+  protocolo, errores de libpq).
+- Arranque: con el modo público, la API no arranca sin `DATAFLOW_CONNECTOR_URL` y un token
+  válido, salvo con `DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true` (sólo desarrollo; entonces copia
+  en su propio subproceso, como en la 32A).
+
+Comprobado en Docker Desktop (Windows), desde dentro del conector: `postgres` por nombre no se
+resuelve y `169.254.169.254` no responde, el entorno sólo tiene `DATAFLOW_CONNECTOR_TOKEN_FILE`
+y el disco es de sólo lectura. **Pero sí llega a la IP de `postgres` (172.20.0.2) y al anfitrión
+(`host.docker.internal`)**: Docker Desktop no aísla entre sí las redes puente. En un anfitrión
+Linux Docker sí las aísla, y el cortafuegos corta además toda la red privada; en Docker Desktop
+sólo protege la regla de la aplicación. Por eso el modo público en producción exige un
+anfitrión Linux (o la política de red de la nube) con el cortafuegos aplicado y una contraseña
+de `postgres` distinta de la de desarrollo.
+
+Recorrido real en Compose (API en modo público): con el conector parado, 503
+`DATABASE_CONNECTOR_UNAVAILABLE`; `127.0.0.1` y `postgres` (nombre de Compose, resuelve a una IP
+privada) → `DATABASE_HOST_PRIVATE` sin llegar al conector; `example.com:5432` → pasa por el
+conector, sale a internet y vuelve `POSTGRESQL_CONNECTION` (no hay base ahí).
 
 ## Experiencia
 
@@ -188,35 +210,40 @@ Sin pasos nuevos para la persona. En «Conectar base de datos», con el modo pú
 
 ## Configuración
 
-| Variable                                | Por defecto | Uso                                                       |
-| --------------------------------------- | ----------- | --------------------------------------------------------- |
-| `DATAFLOW_DATABASE_PUBLIC_ACCESS`       | `false`     | Activa el modo público                                    |
-| `DATAFLOW_DATABASE_DENIED_HOSTS`        | `[]`        | Nombres o CIDR propios que nunca se conectan              |
-| `DATAFLOW_DATABASE_EGRESS_IPS`          | `[]`        | Direcciones de salida que se muestran a la persona        |
-| `DATAFLOW_DATABASE_MAX_BYTES`           | `52428800`  | Tamaño máximo de una copia                                |
-| `DATAFLOW_DATABASE_MAX_CELL_BYTES`      | `65536`     | Tamaño máximo de una celda                                |
-| `DATAFLOW_DATABASE_ATTEMPTS_PER_USER`   | `10`        | Intentos por usuario en 15 min                            |
-| `DATAFLOW_DATABASE_FAILURES_PER_DAY`    | `30`        | Intentos fallidos por usuario y día                       |
-| `DATAFLOW_DATABASE_ATTEMPTS_PER_TARGET` | `20`        | Intentos hacia un destino en 15 min                       |
-| `DATAFLOW_CONNECTOR_URL`                | —           | Servicio `connector` (32B)                                |
-| `DATAFLOW_CONNECTOR_TOKEN`              | —           | Token compartido API ↔ connector (secreto)                |
-| `DATAFLOW_DATABASE_PUBLIC_UNISOLATED`   | `false`     | Permite el modo público sin `connector` (sólo desarrollo) |
+| Variable                                | Por defecto       | Uso                                                             |
+| --------------------------------------- | ----------------- | --------------------------------------------------------------- |
+| `DATAFLOW_DATABASE_PUBLIC_ACCESS`       | `false`           | Activa el modo público                                          |
+| `DATAFLOW_DATABASE_DENIED_HOSTS`        | `[]`              | Nombres o CIDR propios que nunca se conectan                    |
+| `DATAFLOW_DATABASE_EGRESS_IPS`          | `[]`              | Direcciones de salida que se muestran a la persona              |
+| `DATAFLOW_DATABASE_MAX_BYTES`           | `52428800`        | Tamaño máximo de una copia                                      |
+| `DATAFLOW_DATABASE_MAX_CELL_BYTES`      | `65536`           | Tamaño máximo de una celda                                      |
+| `DATAFLOW_DATABASE_ATTEMPTS_PER_USER`   | `10`              | Intentos por usuario en 15 min                                  |
+| `DATAFLOW_DATABASE_FAILURES_PER_DAY`    | `30`              | Intentos fallidos por usuario y día                             |
+| `DATAFLOW_DATABASE_ATTEMPTS_PER_TARGET` | `20`              | Intentos hacia un destino en 15 min                             |
+| `DATAFLOW_CONNECTOR_URL`                | —                 | Servicio `connector` (32B; en Compose, `http://connector:8100`) |
+| `DATAFLOW_CONNECTOR_TOKEN` / `_FILE`    | —                 | Token compartido API ↔ connector (≥ 32 caracteres; secreto)     |
+| `DATAFLOW_CONNECTOR_PORT`               | `8100`            | Puerto del conector                                             |
+| `DATAFLOW_EGRESS_SUBNET` (Compose)      | `172.31.250.0/24` | Subred de la red `egress`                                       |
+| `DATAFLOW_DATABASE_PUBLIC_UNISOLATED`   | `false`           | Permite el modo público sin `connector` (sólo desarrollo)       |
 
 ## Piezas
 
-| Pieza                                         | Dónde                                                      |
-| --------------------------------------------- | ---------------------------------------------------------- |
-| Regla `database-destination-v1` y `resolve`   | `platform/destinations.py`                                 |
-| Comprobación en el subproceso y memoria       | `modules/ingestion/processor.py`                           |
-| Conexión fijada y `verify-full`               | `integrations/sources/postgresql_reader.py`                |
-| Límites de bytes y lotes (`fetch_rows`)       | `sqlserver_reader.py` (compartido), `postgresql_reader.py` |
-| Entorno mínimo del subproceso                 | `platform/isolation.py`                                    |
-| Intentos (`database_attempts`, 0029)          | `modules/ingestion/infrastructure.py`                      |
-| Comprobación previa, intentos y modo          | `modules/ingestion/application.py`                         |
-| Ruta `database-access` y campo de certificado | `modules/ingestion/presentation.py`, `contracts.py`        |
-| Arranque condicionado                         | `platform/config.py`, `bootstrap/app.py`                   |
-| Servicio `connector` (32B)                    | `bootstrap/connector.py`, `infrastructure/compose/`        |
-| Nota, opciones avanzadas y mensajes           | `apps/web/src/features/ingestion/database-fields.tsx`      |
+| Pieza                                         | Dónde                                                                                            |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------ |
+| Regla `database-destination-v1` y `resolve`   | `platform/destinations.py`                                                                       |
+| Comprobación en el subproceso y memoria       | `modules/ingestion/processor.py`                                                                 |
+| Conexión fijada y `verify-full`               | `integrations/sources/postgresql_reader.py`                                                      |
+| Límites de bytes y lotes (`fetch_rows`)       | `sqlserver_reader.py` (compartido), `postgresql_reader.py`                                       |
+| Entorno mínimo del subproceso                 | `platform/isolation.py`                                                                          |
+| Intentos (`database_attempts`, 0029)          | `modules/ingestion/infrastructure.py`                                                            |
+| Comprobación previa, intentos y modo          | `modules/ingestion/application.py`                                                               |
+| Ruta `database-access` y campo de certificado | `modules/ingestion/presentation.py`, `contracts.py`                                              |
+| Arranque condicionado                         | `platform/config.py`, `bootstrap/app.py`                                                         |
+| Servicio `connector` (32B)                    | `bootstrap/connector.py`                                                                         |
+| Cliente de la API y desvío de destinos        | `bootstrap/connector_client.py`, `bootstrap/services.py`, `application.py` (`SnapshotConnector`) |
+| Redes, perfil y endurecimiento                | `infrastructure/compose/compose.yaml`                                                            |
+| Cortafuegos de salida                         | `infrastructure/compose/egress-firewall.sh`                                                      |
+| Nota, opciones avanzadas y mensajes           | `apps/web/src/features/ingestion/database-fields.tsx`                                            |
 
 ## Pruebas
 
@@ -238,16 +265,29 @@ Sin pasos nuevos para la persona. En «Conectar base de datos», con el modo pú
 - `isolation.py`: el subproceso no ve `DATAFLOW_*`, `PG*`, `FREETDS*` ni proxies; trabaja en su
   directorio temporal y arranca con `-P`.
 - `test_architecture.py`: `platform/destinations.py` sólo usa la biblioteca estándar.
-- Pendiente: `verify-full` con éxito contra un servidor con certificado propio (la base de
-  pruebas no tiene SSL) y, en la 32B, la prueba de Compose donde `connector` no alcanza
-  `postgres:5432` ni `169.254.169.254`.
+  32B, en `test_phase32b_connector.py`:
+
+- El conector no arranca sin token (o con uno de menos de 32 caracteres), sólo atiende con el
+  token correcto, rechaza peticiones no válidas o de más de 128 KB y no publica documentación.
+- Copia real de un esquema por el conector y, en el modo público, rechazo de la red interna en
+  el propio conector aunque la API se hubiera equivocado.
+- Cliente contra un conector real (uvicorn): la copia, los errores del subproceso tal cual
+  (`DATABASE_HOST_PRIVATE`, `POSTGRESQL_CONNECTION` sin la contraseña), y token equivocado o
+  conector caído → 503 `DATABASE_CONNECTOR_UNAVAILABLE`.
+- API: los destinos públicos van al conector (con la base de DataFlow como denegada); los de la
+  lista, no; los privados no llegan a él.
+- Arranque condicionado y `compose.yaml` (redes, perfil, sin credenciales ni volúmenes).
+
+Pendiente: `verify-full` con éxito contra un servidor con certificado propio (la base de pruebas
+no tiene SSL) y aplicar `egress-firewall.sh` en un anfitrión Linux (en Docker Desktop no hay
+cadena `DOCKER-USER`).
 
 ## Etapas y criterios de aceptación
 
-| Etapa | Contenido                                                                                   | Se puede activar en producción |
-| ----- | ------------------------------------------------------------------------------------------- | ------------------------------ |
-| 32A   | Regla, fijación, TLS verificado, límites, intentos, entorno mínimo, interfaz (implementada) | No                             |
-| 32B   | Servicio `connector`, redes, cortafuegos de salida (pendiente)                              | Sí                             |
+| Etapa | Contenido                                                                                   | Se puede activar en producción  |
+| ----- | ------------------------------------------------------------------------------------------- | ------------------------------- |
+| 32A   | Regla, fijación, TLS verificado, límites, intentos, entorno mínimo, interfaz (implementada) | No                              |
+| 32B   | Servicio `connector`, redes, cortafuegos de salida (implementada)                           | Sí, en Linux con el cortafuegos |
 
 La fase está terminada cuando una persona puede conectar una base PostgreSQL pública (por
 ejemplo, Pagila en un servicio gestionado) y analizarla, y las pruebas demuestran que ninguno
@@ -263,6 +303,19 @@ de los riesgos de la tabla inicial sigue abierto.
 - La copia por lotes no evita que una sola celda enorme llegue a memoria antes de medirla; lo
   frena el límite de memoria del subproceso (y el plazo de cada consulta).
 - Un servidor público legítimo que comparte IP con algo denegado no se puede conectar.
+- En Docker Desktop las redes puente no están aisladas entre sí: el conector llega por IP a
+  `postgres` y al anfitrión. Sólo vale para desarrollo.
+- El conector comparte la red `connector` con la API, así que puede llamar a su API HTTP (la
+  misma que es pública).
+
+## Decisiones tomadas sin consulta (32B)
+
+- **Sólo los destinos fuera de la lista van al conector.** Los de la lista son de confianza y a
+  menudo privados (bases de la propia organización), que el cortafuegos de `egress` bloquearía.
+- **Perfil propio de Compose (`public-databases`)** en vez de añadirlo a `full`: así nadie
+  necesita crear un token para el uso de siempre y el modo público se activa a propósito.
+- **HTTP con la biblioteca estándar** (`urllib`, sin proxies ni redirecciones) en el cliente:
+  `httpx` sólo es dependencia de desarrollo.
 
 ## Decisiones del usuario
 

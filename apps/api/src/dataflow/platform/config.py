@@ -49,9 +49,15 @@ class Settings(BaseSettings):
     database_attempts_per_user: int = Field(default=10, ge=1, le=1000)
     database_failures_per_day: int = Field(default=30, ge=1, le=10000)
     database_attempts_per_target: int = Field(default=20, ge=1, le=10000)
-    # Hasta la Fase 32B (servicio `connector` con red de salida aislada) el modo público sólo
-    # arranca si se reconoce explícitamente que no está aislado: sólo para desarrollo local.
+    # Fase 32B: el modo público necesita el servicio `connector` (red de salida aislada, sin
+    # credenciales de DataFlow), salvo que se reconozca que no está aislado (sólo desarrollo).
     database_public_unisolated: bool = False
+    # URL interna del servicio `connector` y su token compartido (variable o secreto de Docker).
+    # En el conector, `connector_token*` es el que exige a la API.
+    connector_url: str | None = None
+    connector_token: SecretStr | None = None
+    connector_token_file: Path | None = None
+    connector_port: int = Field(default=8100, ge=1, le=65535)
 
     # Explicación IA (Fase 10, ADR-022; Fase 13B). `auto` (por defecto): Anthropic si hay clave
     # configurada; si no, desactivada (sin IA todo lo demás funciona). La clave nunca se registra
@@ -100,14 +106,35 @@ class Settings(BaseSettings):
             )
 
     def require_database_isolation(self) -> None:
-        """Fase 32: el modo público de bases de datos no arranca sin aislamiento de red (32B) salvo
-        que se reconozca que es un entorno de desarrollo."""
-        if self.database_public_access and not self.database_public_unisolated:
+        """Fase 32: el modo público de bases de datos no arranca sin el servicio `connector`
+        (32B) salvo que se reconozca que es un entorno de desarrollo."""
+        if not self.database_public_access or self.database_public_unisolated:
+            return
+        if not self.connector_url:
             raise RuntimeError(
                 "DATAFLOW_DATABASE_PUBLIC_ACCESS=true necesita el servicio connector con la red de "
-                "salida aislada (Fase 32B). Para probar en local, añade "
-                "DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true."
+                "salida aislada (DATAFLOW_CONNECTOR_URL, Fase 32B). Para probar en local sin él, "
+                "añade DATAFLOW_DATABASE_PUBLIC_UNISOLATED=true."
             )
+        if self.connector_secret() is None:
+            raise RuntimeError(
+                "DATAFLOW_CONNECTOR_URL necesita el token compartido con el conector "
+                "(DATAFLOW_CONNECTOR_TOKEN o DATAFLOW_CONNECTOR_TOKEN_FILE, de al menos 32 "
+                "caracteres)."
+            )
+
+    def connector_secret(self) -> str | None:
+        """Token compartido API ↔ connector: el archivo (secreto de Docker) tiene prioridad.
+        Vacío, ilegible o de menos de 32 caracteres: ninguno."""
+        value: str | None = None
+        if self.connector_token_file is not None:
+            try:
+                value = self.connector_token_file.read_text(encoding="utf-8").strip()
+            except OSError:
+                return None
+        elif self.connector_token is not None:
+            value = self.connector_token.get_secret_value().strip()
+        return value if value and len(value) >= 32 else None
 
     def ai_key(self) -> str | None:
         """Clave del proveedor: el archivo (secreto de Docker) tiene prioridad sobre la

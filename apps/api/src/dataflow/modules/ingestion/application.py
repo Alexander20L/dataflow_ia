@@ -177,6 +177,16 @@ class ConnectionAttempts(Protocol):
     def succeeded(self, attempt: UUID) -> None: ...
 
 
+class SnapshotConnector(Protocol):
+    """Fase 32B (ADR-050): copia de una base fuera del proceso de la API, en el servicio
+    `connector` (red de salida aislada, sin credenciales de DataFlow). Sólo para destinos que no
+    están en la lista: los de la lista son de confianza y se copian como antes."""
+
+    def snapshot_postgresql(
+        self, connection: PostgresConnection, config: ProcessingConfig, policy: DestinationPolicy
+    ) -> SqlSnapshot: ...
+
+
 @dataclass(frozen=True)
 class ConnectionAccess:
     """Fase 32: a qué servidores se puede conectar (`database-destination-v1`) y desde qué IP
@@ -293,12 +303,14 @@ class IngestionService:
         inspector: XlsxInspector | None = None,
         attempts: ConnectionAttempts | None = None,
         attempt_limits: AttemptLimits | None = None,
+        connector: SnapshotConnector | None = None,
     ) -> None:
         self.datasets, self.executions, self.objects = datasets, executions, objects
         self.projects, self.preview_reader, self.uow = projects, preview, uow
         self.config, self.quota, self.maximum_upload = config, quota, maximum_upload
         self.inspector = inspector
         self.attempts, self.attempt_limits = attempts, attempt_limits or AttemptLimits()
+        self.connector = connector
 
     def submit(
         self,
@@ -570,7 +582,7 @@ class IngestionService:
             DestinationPolicy(access.policy.allowed_hosts, False, access.policy.denied),
             access.client,
         )
-        attempt = self._gate(
+        attempt, _ = self._gate(
             owner, project, connection.server, connection.port, sqlserver, "SQLSERVER", "SQL Server"
         )
         if self.inspector is None:
@@ -586,9 +598,15 @@ class IngestionService:
         connection: PostgresConnection,
         access: ConnectionAccess,
     ) -> SqlSnapshot:
-        attempt = self._gate(
+        attempt, listed = self._gate(
             owner, project, connection.server, connection.port, access, "POSTGRESQL", "PostgreSQL"
         )
+        # Fase 32B: un destino fuera de la lista se copia en el servicio `connector` si existe
+        # (sin él sólo se llega aquí en desarrollo, con DATAFLOW_DATABASE_PUBLIC_UNISOLATED).
+        if not listed and self.connector is not None:
+            snapshot = self.connector.snapshot_postgresql(connection, self.config, access.policy)
+            self._succeeded(attempt)
+            return snapshot
         if self.inspector is None:
             raise ApplicationError("POSTGRESQL_UNAVAILABLE", "PostgreSQL no está activo.", 503)
         snapshot = self.inspector.snapshot_postgresql(connection, self.config, access.policy)
@@ -604,10 +622,11 @@ class IngestionService:
         access: ConnectionAccess,
         prefix: str,
         engine: str,
-    ) -> UUID | None:
+    ) -> tuple[UUID | None, bool]:
         """Fase 32 (`database-destination-v1`, ADR-050): comprobación previa en la API, para
         responder sin lanzar el subproceso (que la repite justo antes de conectar), y límite
-        de intentos. Un servidor de la lista no se resuelve aquí."""
+        de intentos. Un servidor de la lista no se resuelve aquí. Devuelve el intento y si el
+        servidor es de la lista."""
         try:
             self.projects.require(owner, project, writable=True)
         finally:
@@ -632,7 +651,7 @@ class IngestionService:
                 code, message, status = DESTINATION_REFUSALS[decision.reason]
                 raise ApplicationError(code, message, status)
             target = decision.address
-        return self._admit(owner, access.client, target)
+        return self._admit(owner, access.client, target), policy.listed(server)
 
     def _admit(self, owner: UUID, client: str, target: str) -> UUID | None:
         if self.attempts is None:

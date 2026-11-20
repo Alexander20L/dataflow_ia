@@ -412,6 +412,30 @@ class SqlSnapshot(BaseModel):
     tls: Literal["verified", "encrypted", "none"] | None = None
 
 
+class ConnectorPolicy(BaseModel):
+    """Fase 32B: la política de destinos tal como viaja de la API al servicio `connector`."""
+
+    model_config = ConfigDict(extra="forbid")
+    allowed_hosts: list[str] = Field(default_factory=list, max_length=100)
+    public: bool = False
+    denied: list[str] = Field(default_factory=list, max_length=500)
+
+
+class ConnectorSnapshotRequest(BaseModel):
+    """Fase 32B (ADR-050): petición interna de la API al servicio `connector` para copiar un
+    esquema de PostgreSQL. Lleva la contraseña (y el certificado, si lo hay) sólo para esa
+    copia; el conector no guarda nada y repite la regla de destinos antes de conectar."""
+
+    model_config = ConfigDict(extra="forbid")
+    connection: PostgresConnection
+    policy: ConnectorPolicy
+    max_rows: int = Field(ge=1, le=100_000)
+    max_columns: int = Field(ge=1, le=128)
+    timeout_seconds: int = Field(ge=5, le=60)
+    max_bytes: int = Field(ge=1, le=200 * 1024 * 1024)
+    max_cell_bytes: int = Field(ge=1, le=1024 * 1024)
+
+
 class DatabaseAccess(BaseModel):
     """Fase 32 (ADR-050): a qué bases se puede conectar en este entorno, para que la pantalla
     de carga muestre lo que corresponde. `public`: cualquier servidor accesible desde internet

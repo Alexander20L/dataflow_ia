@@ -18,3 +18,4 @@ playwright-report/
 # Secretos locales de Docker (clave del proveedor de IA): sólo el marcador vacío se versiona.
 infrastructure/compose/secrets/*
 !infrastructure/compose/secrets/ai_api_key.empty
+!infrastructure/compose/secrets/connector_token.empty
