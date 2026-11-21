@@ -1,0 +1,287 @@
+{
+  "base": "http://127.0.0.1:8011",
+  "repeticiones": 5,
+  "recorrido_completo": {
+    "csv_ventas_calidad": {
+      "segundos": {
+        "n": 5,
+        "media": 6.969,
+        "de": 0.412,
+        "ic95": [6.458, 7.481],
+        "p50": 6.696,
+        "p90": 7.434,
+        "p99": 7.573,
+        "min": 6.674,
+        "max": 7.589
+      },
+      "versiones": 1,
+      "etapas_fallidas": 0,
+      "estados_ultima": {
+        "analysis": "1/1 hechas",
+        "comprehension": "1/1 hechas",
+        "dashboard": "1/1 hechas",
+        "exploration": "1/1 hechas",
+        "report": "1/1 hechas"
+      }
+    },
+    "relacionadas_5_csv": {
+      "segundos": {
+        "n": 5,
+        "media": 60.694,
+        "de": 1.574,
+        "ic95": [58.739, 62.649],
+        "p50": 60.769,
+        "p90": 62.175,
+        "p99": 62.587,
+        "min": 58.403,
+        "max": 62.632
+      },
+      "versiones": 8,
+      "etapas_fallidas": 0,
+      "estados_ultima": {
+        "analysis": "8/8 hechas",
+        "comprehension": "8/8 hechas",
+        "dashboard": "8/8 hechas",
+        "exploration": "8/8 hechas",
+        "report": "8/8 hechas"
+      }
+    }
+  },
+  "escalabilidad_filas": {
+    "1000": {
+      "bytes": 51123,
+      "segundos": {
+        "n": 5,
+        "media": 7.254,
+        "de": 0.049,
+        "ic95": [7.193, 7.316],
+        "p50": 7.253,
+        "p90": 7.304,
+        "p99": 7.329,
+        "min": 7.205,
+        "max": 7.332
+      }
+    },
+    "10000": {
+      "bytes": 520856,
+      "segundos": {
+        "n": 5,
+        "media": 10.706,
+        "de": 0.069,
+        "ic95": [10.621, 10.791],
+        "p50": 10.706,
+        "p90": 10.776,
+        "p99": 10.798,
+        "min": 10.627,
+        "max": 10.8
+      }
+    },
+    "50000": {
+      "bytes": 2647742,
+      "segundos": {
+        "n": 5,
+        "media": 20.847,
+        "de": 0.188,
+        "ic95": [20.614, 21.08],
+        "p50": 20.865,
+        "p90": 21.031,
+        "p99": 21.051,
+        "min": 20.608,
+        "max": 21.053
+      }
+    }
+  },
+  "escalabilidad_etapas_fallidas": 0,
+  "kruskal_wallis_tiempo_vs_filas": {
+    "H": 12.5,
+    "gl": 2,
+    "p": 0.0019304541362277093,
+    "epsilon2": 0.893
+  },
+  "latencia_lectura": {
+    "GET /health/live": {
+      "ms": {
+        "n": 300,
+        "media": 1.836,
+        "de": 1.984,
+        "ic95": [1.612, 2.061],
+        "p50": 1.642,
+        "p90": 2.01,
+        "p99": 2.298,
+        "min": 1.339,
+        "max": 35.011
+      },
+      "errores": 0
+    },
+    "GET /auth/me": {
+      "ms": {
+        "n": 300,
+        "media": 6.957,
+        "de": 3.576,
+        "ic95": [6.552, 7.362],
+        "p50": 6.374,
+        "p90": 7.457,
+        "p99": 21.926,
+        "min": 4.954,
+        "max": 40.077
+      },
+      "errores": 0
+    },
+    "GET /projects": {
+      "ms": {
+        "n": 300,
+        "media": 9.423,
+        "de": 0.881,
+        "ic95": [9.323, 9.523],
+        "p50": 9.245,
+        "p90": 10.148,
+        "p99": 13.082,
+        "min": 7.99,
+        "max": 15.272
+      },
+      "errores": 0
+    },
+    "GET /versions/{id}/progress": {
+      "ms": {
+        "n": 300,
+        "media": 21.343,
+        "de": 3.671,
+        "ic95": [20.928, 21.758],
+        "p50": 20.872,
+        "p90": 22.919,
+        "p99": 30.873,
+        "min": 17.331,
+        "max": 58.295
+      },
+      "errores": 0
+    },
+    "GET /versions/{id}/preview": {
+      "ms": {
+        "n": 300,
+        "media": 23.342,
+        "de": 1.362,
+        "ic95": [23.187, 23.496],
+        "p50": 23.292,
+        "p90": 24.53,
+        "p99": 29.193,
+        "min": 20.16,
+        "max": 30.095
+      },
+      "errores": 0
+    },
+    "GET /versions/{id}/dashboard": {
+      "ms": {
+        "n": 300,
+        "media": 44.867,
+        "de": 5.889,
+        "ic95": [44.201, 45.534],
+        "p50": 44.085,
+        "p90": 47.47,
+        "p99": 57.26,
+        "min": 39.403,
+        "max": 112.698
+      },
+      "errores": 0
+    },
+    "GET /versions/{id}/inspection": {
+      "ms": {
+        "n": 300,
+        "media": 40.52,
+        "de": 3.596,
+        "ic95": [40.113, 40.927],
+        "p50": 40.093,
+        "p90": 43.173,
+        "p99": 48.59,
+        "min": 33.675,
+        "max": 78.67
+      },
+      "errores": 0
+    }
+  },
+  "throughput": {
+    "GET /projects": [
+      {
+        "concurrencia": 1,
+        "req_s": 102.8,
+        "ok": 1516,
+        "errores": 0,
+        "tasa_error": 0.0,
+        "lat_ms_p50": 9.6,
+        "lat_ms_p90": 10.4,
+        "lat_ms_p99": 12.2
+      },
+      {
+        "concurrencia": 5,
+        "req_s": 216.7,
+        "ok": 3197,
+        "errores": 0,
+        "tasa_error": 0.0,
+        "lat_ms_p50": 22.6,
+        "lat_ms_p90": 25.9,
+        "lat_ms_p99": 33.4
+      },
+      {
+        "concurrencia": 10,
+        "req_s": 211.6,
+        "ok": 3126,
+        "errores": 0,
+        "tasa_error": 0.0,
+        "lat_ms_p50": 45.5,
+        "lat_ms_p90": 53.8,
+        "lat_ms_p99": 100.1
+      },
+      {
+        "concurrencia": 20,
+        "req_s": 218.0,
+        "ok": 3227,
+        "errores": 0,
+        "tasa_error": 0.0,
+        "lat_ms_p50": 88.6,
+        "lat_ms_p90": 104.7,
+        "lat_ms_p99": 156.8
+      }
+    ],
+    "GET /versions/{id}/dashboard": [
+      {
+        "concurrencia": 1,
+        "req_s": 21.8,
+        "ok": 322,
+        "errores": 0,
+        "tasa_error": 0.0,
+        "lat_ms_p50": 44.9,
+        "lat_ms_p90": 48.0,
+        "lat_ms_p99": 69.6
+      },
+      {
+        "concurrencia": 5,
+        "req_s": 43.7,
+        "ok": 650,
+        "errores": 0,
+        "tasa_error": 0.0,
+        "lat_ms_p50": 105.7,
+        "lat_ms_p90": 162.9,
+        "lat_ms_p99": 192.3
+      },
+      {
+        "concurrencia": 10,
+        "req_s": 42.2,
+        "ok": 626,
+        "errores": 0,
+        "tasa_error": 0.0,
+        "lat_ms_p50": 224.8,
+        "lat_ms_p90": 294.2,
+        "lat_ms_p99": 330.0
+      },
+      {
+        "concurrencia": 20,
+        "req_s": 41.4,
+        "ok": 624,
+        "errores": 0,
+        "tasa_error": 0.0,
+        "lat_ms_p50": 438.5,
+        "lat_ms_p90": 661.7,
+        "lat_ms_p99": 738.5
+      }
+    ]
+  }
+}
