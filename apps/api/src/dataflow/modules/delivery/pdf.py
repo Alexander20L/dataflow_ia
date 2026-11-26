@@ -77,14 +77,7 @@ def render_pdf(document: ReportDocument) -> bytes:
     )
     story: list[Flowable] = [
         Paragraph(text(document.title), TITLE),
-        Paragraph(
-            text(
-                f"Versión v{source.version_number} ({source.version_id}) · análisis "
-                f"{source.analysis_execution_id} · investigación "
-                f"{source.investigation_execution_id} · generado {generated}"
-            ),
-            META,
-        ),
+        Paragraph(text(header_line(document, generated)), META),
         Spacer(1, 4),
     ]
     for section in document.sections:
@@ -96,6 +89,22 @@ def render_pdf(document: ReportDocument) -> bytes:
             story.extend(block_flowables(block))
     template.build(story, onFirstPage=on_page, onLaterPages=on_page)
     return buffer.getvalue()
+
+
+def header_line(document: ReportDocument, generated: str) -> str:
+    """Línea de origen bajo el título. El informe v2 cita la investigación de la pestaña
+    Investigación (exploración, Fase 25); el v1, la de la Fase 16. Sin ninguna, se omite en vez de
+    imprimir un valor vacío («None»)."""
+    source = document.source
+    parts = [
+        f"Versión v{source.version_number} ({source.version_id})",
+        f"análisis {source.analysis_execution_id}",
+    ]
+    investigation = source.exploration_execution_id or source.investigation_execution_id
+    if investigation is not None:
+        parts.append(f"investigación {investigation}")
+    parts.append(f"generado {generated}")
+    return " · ".join(parts)
 
 
 def block_flowables(block: ReportBlock) -> list[Flowable]:
