@@ -36,7 +36,7 @@ flowchart TB
     WK <--> OBJ
     WK --> AN
     API --> CON --> XDB
-    GH -. deploy.sh por SSH .-> VPS
+    GH -. "deploy.sh por SSH" .-> VPS
 ```
 
 ## A.2 Módulos del backend y dependencias
