@@ -502,11 +502,20 @@ def relate(tables: list[Table], declared: list[Declared], max_columns: int) -> R
                     row.append(value)
             if added:
                 sources.append(fact.label)
-                relation.status = "joined"
-                relation.added_columns = relation.added_columns + added
-                relation.reason = relation.reason or (
-                    f"Cada «{entity_label}» resume sus registros de «{fact.label}»."
-                )
+                if relation.status == "joined":
+                    # Ya une la vista de hechos: sus columnas añadidas son las de esa vista; las
+                    # métricas van a la vista general y se nombran aparte, antes de la frase de
+                    # la vista de hechos (la interfaz muestra «Columnas añadidas» al final).
+                    relation.reason = (
+                        f"En la vista general, cada «{entity_label}» resume sus registros de "
+                        f"«{fact.label}» ({', '.join(added)}). {relation.reason}"
+                    ).strip()
+                else:
+                    relation.status = "joined"
+                    relation.added_columns = added
+                    relation.reason = relation.reason or (
+                        f"Cada «{entity_label}» resume sus registros de «{fact.label}»."
+                    )
         if sources:
             entity_view = View(
                 f"{base_name(entity_label)} (vista general)",

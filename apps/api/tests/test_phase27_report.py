@@ -24,6 +24,7 @@ from dataflow.modules.copilot.investigation import Figure
 from dataflow.modules.copilot.report import verify_narrative
 from dataflow.modules.datasets.objects import LocalObjects
 from dataflow.modules.delivery.contracts import ReportSource
+from dataflow.modules.delivery.pdf import header_line
 from dataflow.modules.delivery.public import build_report_v2, render_pdf, review_items
 from dataflow.modules.delivery.report import CAUTION
 from dataflow.platform.config import get_settings
@@ -130,6 +131,26 @@ def test_figures_match_evidence_and_the_methodology_is_described() -> None:
         assert not re.search(r"\b(causa|provoca|se debe a|debido a|porque)\b", text, re.I)
     pdf = render_pdf(document)
     assert pdf.startswith(b"%PDF") and render_pdf(document) == pdf
+
+
+def test_pdf_header_never_prints_an_empty_investigation() -> None:
+    """Las cargas nuevas no tienen la investigación de la Fase 16: la cabecera no dice «None» y,
+    si hay exploración (pestaña Investigación), cita esa."""
+    document, _, _ = report({})
+    assert document.source.investigation_execution_id is None
+    without = header_line(document, "2026-11-13 00:00 UTC")
+    assert "None" not in without and "investigación" not in without
+    exploration_id = uuid4()
+    explored = document.model_copy(
+        update={
+            "source": document.source.model_copy(
+                update={"exploration_execution_id": exploration_id}
+            )
+        }
+    )
+    line = header_line(explored, "2026-11-13 00:00 UTC")
+    assert f"investigación {exploration_id}" in line
+    assert line.endswith("generado 2026-11-13 00:00 UTC")
 
 
 def test_ai_narrative_cannot_write_numbers_or_causes() -> None:
