@@ -214,16 +214,14 @@ export function ImportProject() {
       return;
     }
     try {
-      const project = await ensureProject(data);
+      // Archivos relacionados: la foto no necesita proyecto. Base de datos: la copia se registra
+      // en el proyecto, así que se crea (y se reutiliza al continuar).
       setModel(
         mode === "related"
-          ? await inspectRelated.mutateAsync({
-              files: related,
-              projectId: project.id,
-            })
+          ? await inspectRelated.mutateAsync({ files: related })
           : await inspectDatabase.mutateAsync({
               ...connection(),
-              projectId: project.id,
+              projectId: (await ensureProject(data)).id,
             }),
       );
     } catch (failure) {
@@ -537,8 +535,9 @@ export function ImportProject() {
                   : "Ver esquema"}
               </Button>
               <small>
-                Muestra las tablas, sus claves y cómo se relacionan antes de
-                analizar. No guarda nada.
+                {mode === "related"
+                  ? "Muestra las tablas, sus claves y cómo se relacionan antes de analizar. No guarda nada."
+                  : "Muestra las tablas, sus claves y cómo se relacionan antes de copiar. Crea el proyecto, que se usa al continuar; no copia ni analiza nada."}
               </small>
             </div>
           )}

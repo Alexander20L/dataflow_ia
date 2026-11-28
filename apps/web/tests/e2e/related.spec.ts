@@ -73,7 +73,10 @@ test("Archivos relacionados: foto del esquema y vista general de todas las tabla
     "asistencia",
   );
 
-  // Foto del esquema antes de analizar: no guarda versiones.
+  // Foto del esquema antes de analizar: no guarda versiones ni crea el proyecto (defecto D-02).
+  const projectsBefore = (
+    await (await page.request.get("/api/v1/projects")).json()
+  ).total;
   await page.getByRole("button", { name: "Ver esquema" }).click();
   const schema = page.getByRole("region", { name: "Esquema" });
   await expect(
@@ -88,6 +91,9 @@ test("Archivos relacionados: foto del esquema y vista general de todas las tabla
   await expect(
     schema.getByRole("list", { name: "Vistas que se analizan" }),
   ).toContainText("asistencia (tablas unidas)");
+  expect(
+    (await (await page.request.get("/api/v1/projects")).json()).total,
+  ).toBe(projectsBefore);
 
   await page.getByRole("button", { name: "Continuar al análisis" }).click();
   const related = page.getByRole("region", { name: "Tablas relacionadas" });

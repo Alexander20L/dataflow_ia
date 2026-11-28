@@ -14103,7 +14103,7 @@
   "info": {
     "description": "DataFlow AI: análisis automático de archivos propios (sin intervención manual).",
     "title": "DataFlow AI API",
-    "version": "0.42.0"
+    "version": "0.42.1"
   },
   "openapi": "3.1.0",
   "paths": {
@@ -16521,6 +16521,208 @@
         "summary": "Execution Quality",
         "tags": [
           "Executions"
+        ]
+      }
+    },
+    "/api/v1/imports/related/inspect": {
+      "post": {
+        "description": "«Ver esquema» antes de crear el proyecto: la misma foto que la ruta con proyecto, sin\ncrear ni guardar nada (el proyecto sólo se crea al continuar al análisis).",
+        "operationId": "inspectRelatedFilesWithoutProject",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CSRF-Token",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Csrf-Token"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "additionalProperties": false,
+                "description": "Fase 31: de 2 a 5 archivos que se analizan por separado y, si comparten claves, unidos\n(`relations-v1`).",
+                "properties": {
+                  "files": {
+                    "items": {
+                      "additionalProperties": false,
+                      "description": "Fase 31: un archivo de un conjunto relacionado (CSV o .xlsx), en base64.",
+                      "properties": {
+                        "content_base64": {
+                          "minLength": 1,
+                          "title": "Content Base64",
+                          "type": "string"
+                        },
+                        "name": {
+                          "maxLength": 255,
+                          "minLength": 1,
+                          "title": "Name",
+                          "type": "string"
+                        }
+                      },
+                      "required": [
+                        "name",
+                        "content_base64"
+                      ],
+                      "title": "RelatedFile",
+                      "type": "object"
+                    },
+                    "maxItems": 5,
+                    "minItems": 2,
+                    "title": "Files",
+                    "type": "array"
+                  }
+                },
+                "required": [
+                  "files"
+                ],
+                "title": "RelatedFilesRequest",
+                "type": "object"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DataModel"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Bad Request"
+          },
+          "401": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unauthorized"
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Forbidden"
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Not Found"
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Conflict"
+          },
+          "413": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Request Entity Too Large"
+          },
+          "415": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unsupported Media Type"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Unprocessable Entity"
+          },
+          "429": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Too Many Requests"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Internal Server Error"
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ErrorResponse"
+                }
+              }
+            },
+            "description": "Service Unavailable"
+          }
+        },
+        "security": [
+          {
+            "APIKeyCookie": []
+          }
+        ],
+        "summary": "Inspect Related Without Project",
+        "tags": [
+          "Datasets"
         ]
       }
     },

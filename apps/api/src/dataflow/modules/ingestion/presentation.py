@@ -518,6 +518,23 @@ async def inspect_related(
 
 
 @router.post(
+    "/imports/related/inspect",
+    response_model=DataModel,
+    operation_id="inspectRelatedFilesWithoutProject",
+    openapi_extra=RELATED_BODY,
+)
+async def inspect_related_without_project(
+    request: Request,
+    identity: CurrentIdentity,
+    service: Ingestion,
+) -> DataModel:
+    """«Ver esquema» antes de crear el proyecto: la misma foto que la ruta con proyecto, sin
+    crear ni guardar nada (el proyecto sólo se crea al continuar al análisis)."""
+    body = await related_body(request)
+    return await run_in_threadpool(service.inspect_related_files, identity.user.id, body)
+
+
+@router.post(
     "/projects/{project_id}/imports/sqlserver/inspect",
     status_code=202,
     response_model=DatabaseCopy,
