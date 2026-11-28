@@ -1,5 +1,6 @@
 "use client";
-import { useState, type ReactNode } from "react";
+import { useEffect, useState, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -8,9 +9,19 @@ import { Button } from "@/components/ui/button";
 import { api, errorMessage, requireData } from "@/lib/api";
 import { useAuth } from "./auth-provider";
 
+// Direcciones que sólo sirven para entrar: con la sesión abierta no son una página de la
+// aplicación, así que se cambian por el inicio en vez de mostrar «Página no encontrada».
+const ACCESS_PATHS = new Set(["/login", "/register"]);
+
 export function AuthGate({ children }: { children: ReactNode }) {
   const { session, loading, error, retry } = useAuth();
-  if (loading)
+  const path = usePathname();
+  const router = useRouter();
+  const leaveAccessPath = !!session && ACCESS_PATHS.has(path);
+  useEffect(() => {
+    if (leaveAccessPath) router.replace("/");
+  }, [leaveAccessPath, router]);
+  if (loading || leaveAccessPath)
     return (
       <main className="loading-screen" aria-label="Verificando sesión">
         <div className="skeleton" />
@@ -28,11 +39,11 @@ export function AuthGate({ children }: { children: ReactNode }) {
       </main>
     );
   if (session) return children;
-  return <AuthScreen />;
+  return <AuthScreen startInRegister={path === "/register"} />;
 }
 
-function AuthScreen() {
-  const [register, setRegister] = useState(false);
+function AuthScreen({ startInRegister }: { startInRegister: boolean }) {
+  const [register, setRegister] = useState(startInRegister);
   return (
     <main className="auth-page">
       <div className="auth-intro">
