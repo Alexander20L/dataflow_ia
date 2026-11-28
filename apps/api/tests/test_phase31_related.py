@@ -120,6 +120,23 @@ def test_two_fact_tables_are_analyzed_together_in_the_general_view() -> None:
     assert roles["notas.csv"] == "fact" and roles["estudiantes.csv"] == "entity"
 
 
+def test_fact_relation_lists_only_the_columns_of_its_fact_view() -> None:
+    """Las métricas de la vista general no se listan como columnas de la vista de hechos."""
+    result = relate([CARRERAS, ESTUDIANTES, ASISTENCIA, NOTAS], [], 128)
+    relation = next(
+        r for r in result.relations if (r.table, r.column) == ("asistencia.csv", "id_estudiante")
+    )
+    fact = next(v for v in result.views if v.name == "asistencia (tablas unidas)")
+    assert relation.added_columns == ["nombre", "id_carrera"]
+    assert set(relation.added_columns) <= set(fact.headers)
+    assert "registros en asistencia" not in fact.headers
+    assert relation.reason == (
+        "En la vista general, cada «estudiantes.csv» resume sus registros de «asistencia.csv» "
+        "(registros en asistencia, % asistio = no (asistencia)). Cada registro de "
+        "«asistencia.csv» tiene un solo «estudiantes.csv» («id_estudiante» → «id»)."
+    )
+
+
 def test_averages_keep_every_decimal() -> None:
     notas = Table("notas.csv", ["id_estudiante", "nota"], [["10", "1"], ["10", "2"], ["11", "1"]])
     result = relate([ESTUDIANTES, notas], [], 128)

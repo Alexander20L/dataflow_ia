@@ -1,0 +1,95 @@
+{
+  "seed": 2026,
+  "schemas": 200,
+  "true_relations": 718,
+  "P_relations_v1": {
+    "tp": 560,
+    "fp": 0,
+    "fn": 158,
+    "precision": 1.0,
+    "recall": 0.7799,
+    "f1": 0.8764,
+    "f1_ci95": [0.8585, 0.8937]
+  },
+  "B1_nombre": {
+    "tp": 623,
+    "fp": 570,
+    "fn": 95,
+    "precision": 0.5222,
+    "recall": 0.8677,
+    "f1": 0.652,
+    "f1_ci95": [0.6339, 0.672]
+  },
+  "B2_inclusion": {
+    "tp": 647,
+    "fp": 2674,
+    "fn": 71,
+    "precision": 0.1948,
+    "recall": 0.9011,
+    "f1": 0.3204,
+    "f1_ci95": [0.3062, 0.3357]
+  },
+  "mcnemar_P_vs_B1_nombre": {
+    "pairs": 3962,
+    "solo_P_acierta": 570,
+    "solo_base_acierta": 63,
+    "chi2": 404.48,
+    "p": 5.829795749389011e-90
+  },
+  "mcnemar_P_vs_B2_inclusion": {
+    "pairs": 3962,
+    "solo_P_acierta": 2674,
+    "solo_base_acierta": 87,
+    "chi2": 2422.092,
+    "p": 0.0
+  },
+  "recall_por_tipo": {
+    "convencion": {
+      "P_relations_v1": "337/337",
+      "B1_nombre": "337/337",
+      "B2_inclusion": "337/337"
+    },
+    "convencion+huerfanos": {
+      "P_relations_v1": "0/42",
+      "B1_nombre": "42/42",
+      "B2_inclusion": "0/42"
+    },
+    "libre": {
+      "P_relations_v1": "0/87",
+      "B1_nombre": "0/87",
+      "B2_inclusion": "87/87"
+    },
+    "libre+huerfanos": {
+      "P_relations_v1": "0/8",
+      "B1_nombre": "0/8",
+      "B2_inclusion": "0/8"
+    },
+    "mismo_nombre": {
+      "P_relations_v1": "223/223",
+      "B1_nombre": "223/223",
+      "B2_inclusion": "223/223"
+    },
+    "mismo_nombre+huerfanos": {
+      "P_relations_v1": "0/21",
+      "B1_nombre": "21/21",
+      "B2_inclusion": "0/21"
+    }
+  },
+  "tiempo_relate_4_tablas_por_filas_de_hechos": {
+    "1000": {
+      "media_s": 0.0125,
+      "de_s": 0.0009,
+      "mediana_s": 0.0127
+    },
+    "10000": {
+      "media_s": 0.1241,
+      "de_s": 0.0377,
+      "mediana_s": 0.1139
+    },
+    "100000": {
+      "media_s": 0.8604,
+      "de_s": 0.047,
+      "mediana_s": 0.8354
+    }
+  }
+}

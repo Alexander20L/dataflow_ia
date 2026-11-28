@@ -58,7 +58,8 @@ export function Overview({ path }: { path: string }) {
             <h2>Archivos por proyecto</h2>
             <p>
               Abre un proyecto para consultar sus originales, versiones y
-              resultados automáticos. Se admiten CSV y Excel (.xlsx).
+              resultados automáticos. Se admiten CSV, Excel (.xlsx) y PDF con
+              tablas.
             </p>
             {projects.map((p) => (
               <Link
@@ -80,19 +81,31 @@ export function Overview({ path }: { path: string }) {
               <Database size={23} />
             </span>
             <h2>Conexiones externas</h2>
-            <p>Se habilitarán tras estabilizar el flujo con archivos.</p>
-            {["SQL Server", "PDF con tablas"].map((name) => (
+            <p>
+              Desde «Nuevo análisis» puedes conectar una base de datos o subir
+              varios archivos relacionados.
+            </p>
+            {[
+              ["SQL Server", "Conectar base de datos"],
+              ["PostgreSQL", "Conectar base de datos"],
+              ["Varios archivos relacionados", "De 2 a 5 CSV o Excel"],
+            ].map(([name, detail]) => (
               <div className="connection" key={name}>
                 <Database size={19} />
                 <strong>{name}</strong>
-                <span className="badge neutral">Próximamente</span>
+                <span className="badge neutral">{detail}</span>
               </div>
             ))}
+            <Button asChild variant="outline">
+              <Link href="/new">
+                Nuevo análisis <ArrowRight size={16} />
+              </Link>
+            </Button>
             <div className="info-banner">
               <ShieldCheck size={17} />
               <span>
-                Las conexiones usarán permisos mínimos de lectura y credenciales
-                gestionadas en el backend.
+                Conexión de un solo uso y de sólo lectura; la contraseña no se
+                guarda. Sólo servidores permitidos por el administrador.
               </span>
             </div>
           </section>
