@@ -984,6 +984,11 @@ class IngestionService:
             self.projects.require(owner, project, writable=True)
         finally:
             self.uow.rollback()
+        return self.inspect_related_files(owner, request)
+
+    def inspect_related_files(self, owner: UUID, request: RelatedFilesRequest) -> DataModel:
+        """«Ver esquema» sin proyecto: no lee ni escribe en la base; sólo valida los archivos y
+        calcula el modelo de datos (`relations-v1`). `owner` es la persona autenticada."""
         related = self._relate(self._related_files(request), [], data=False)
         return DataModel(
             main=related.main,

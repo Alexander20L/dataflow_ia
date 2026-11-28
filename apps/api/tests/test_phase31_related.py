@@ -326,6 +326,33 @@ def test_the_schema_photo_of_related_files_saves_nothing(client: TestClient) -> 
     assert client.get(f"/api/v1/projects/{pid}/versions").json()["items"] == []
 
 
+def test_the_schema_photo_before_creating_the_project_creates_nothing(client: TestClient) -> None:
+    # Defecto D-02 (pruebas funcionales): «Ver esquema» creaba el proyecto para pedir la foto y,
+    # si la persona no continuaba, quedaba un proyecto vacío. Esta ruta no necesita proyecto.
+    headers = account(client)
+    files = [(t.label, csv_bytes(t)) for t in (CARRERAS, ESTUDIANTES, ASISTENCIA, NOTAS)]
+    with_project = client.post(
+        f"/api/v1/projects/{project(client, headers)}/imports/related/inspect",
+        json=related_body(files),
+        headers=headers,
+    ).json()
+    before = client.get("/api/v1/projects").json()["total"]
+    response = client.post(
+        "/api/v1/imports/related/inspect", json=related_body(files), headers=headers
+    )
+    assert response.status_code == 200, response.text
+    assert response.json() == with_project
+    assert client.get("/api/v1/projects").json()["total"] == before
+    # Los archivos se validan igual que en la carga, y sin sesión no hay foto.
+    one = client.post(
+        "/api/v1/imports/related/inspect", json=related_body(files[:1]), headers=headers
+    )
+    assert one.status_code == 422, one.text
+    client.cookies.clear()
+    anonymous = client.post("/api/v1/imports/related/inspect", json=related_body(files))
+    assert anonymous.status_code == 401, anonymous.text
+
+
 def test_related_files_become_versions_and_the_general_view_is_analyzed(
     client: TestClient, db: Session, objects: LocalObjects
 ) -> None:

@@ -380,21 +380,12 @@ export function useInspectDatabase() {
 /** Fase 31: «foto» del modelo de datos de los archivos sin guardar nada. */
 export function useInspectRelated() {
   return useMutation({
-    mutationFn: async ({
-      files,
-      projectId,
-    }: {
-      files: File[];
-      projectId: string;
-    }): Promise<DataModel> =>
+    // Sin proyecto: «Ver esquema» no crea nada si la persona no continúa (defecto D-02).
+    mutationFn: async ({ files }: { files: File[] }): Promise<DataModel> =>
       requireData(
-        await api.POST(
-          "/api/v1/projects/{project_id}/imports/related/inspect",
-          {
-            params: { path: { project_id: projectId } },
-            body: { files: await encodeFiles(files) },
-          },
-        ),
+        await api.POST("/api/v1/imports/related/inspect", {
+          body: { files: await encodeFiles(files) },
+        }),
       ),
   });
 }
